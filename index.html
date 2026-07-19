@@ -1,0 +1,1952 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#FECC02">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="בקשות מלמ">
+<title>דוח משימות בקשות מלמ</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:Arial,sans-serif;background:#f4f6f9;color:#1a1a2e;direction:rtl;font-size:13px}
+.header{background:#FECC02;padding:14px 20px;display:flex;align-items:center;gap:12px;border-bottom:3px solid #D40511}
+.logo{font-size:20px;font-weight:700;color:#D40511;letter-spacing:1px}
+.subtitle{font-size:13px;color:#333;flex:1}
+.btn{padding:7px 14px;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;font-family:Arial}
+.btn-add{background:#D40511;color:#fff}
+.btn-add:hover{background:#b0040e}
+.btn-save{background:#2e7d32;color:#fff}
+.btn-cancel{background:#757575;color:#fff}
+.tabs{display:flex;background:#fff;border-bottom:2px solid #FECC02;padding:0 20px}
+.tab{padding:10px 18px;cursor:pointer;font-size:13px;font-weight:600;color:#666;border-bottom:3px solid transparent;white-space:nowrap}
+.tab:hover{color:#1a1a2e;background:#fffbf0}
+.tab.active{color:#D40511;border-bottom-color:#D40511}
+.pane{display:none;padding:14px 20px}
+.pane.active{display:block}
+.stats{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+.stat{background:#fff;border:1px solid #e8e8e8;border-radius:8px;padding:8px 14px;text-align:center;min-width:80px}
+.stat .n{font-size:20px;font-weight:700}
+.stat .l{font-size:11px;color:#777}
+.n-open{color:#D40511}.n-done{color:#2e7d32}.n-frozen{color:#e65100}.n-cancel{color:#999}.n-wait{color:#3949ab}
+.filters{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px}
+.filters input,.filters select{padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:12px;font-family:Arial}
+.filters input{min-width:200px}
+.count{font-size:12px;color:#888;margin-bottom:8px}
+.tbl-wrap{overflow-x:auto;background:#fff;border-radius:8px;border:1px solid #e8e8e8}
+table{width:100%;border-collapse:collapse}
+th{background:#1a1a2e;color:#fff;padding:9px 10px;text-align:right;font-size:12px;white-space:nowrap;font-weight:600}
+td{padding:7px 10px;border-bottom:1px solid #f2f2f2;vertical-align:top;font-size:12px}
+tr:hover td{background:#fffbf0}
+.badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;white-space:nowrap}
+.s-פתוח{background:#fde8e8;color:#c62828}
+.s-בבדיקה{background:#e3f2fd;color:#1565c0}
+.s-מוקפא{background:#fff3e0;color:#e65100}
+.s-הושהה{background:#f3e5f5;color:#6a1b9a}
+.s-בוצע{background:#e8f5e9;color:#2e7d32}
+.s-טופל{background:#e8f5e9;color:#1b5e20}
+.s-בוטל{background:#f5f5f5;color:#9e9e9e}
+.s-ממתין-לבדיקה{background:#e8eaf6;color:#3949ab}
+.s-בטיפול{background:#e0f2f1;color:#00695c}
+.muted{color:#ccc}
+.nores{text-align:center;padding:30px;color:#aaa}
+.act-btn{background:none;border:none;cursor:pointer;padding:3px 5px;border-radius:4px;font-size:14px}
+.act-btn:hover{background:#f0f0f0}
+.saving{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#1a1a2e;color:#fff;padding:10px 20px;border-radius:8px;font-size:13px;z-index:999;display:none}
+.modal-bg{position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1000;display:none;align-items:center;justify-content:center}
+.modal-bg.open{display:flex}
+.modal{background:#fff;border-radius:12px;padding:24px;width:90%;max-width:540px;max-height:90vh;overflow-y:auto}
+.modal h3{font-size:15px;margin-bottom:0;color:#1a1a2e}
+.form-row{margin-bottom:11px}
+.form-row label{display:block;font-size:11px;color:#666;margin-bottom:3px;font-weight:700}
+.form-row input,.form-row select,.form-row textarea{width:100%;padding:7px 10px;border:1px solid #ddd;border-radius:6px;font-size:13px;font-family:Arial;direction:rtl}
+.form-row textarea{height:75px;resize:vertical}
+.form-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:16px;padding-top:12px;border-top:1px solid #f0f0f0}
+.dtag{font-size:10px;background:#e3f2fd;color:#1565c0;padding:1px 6px;border-radius:3px;display:inline-block;margin-bottom:2px}
+.loading{text-align:center;padding:40px;color:#999;font-size:14px}
+
+/* Chat tooltip */
+.chat-preview{position:relative;cursor:pointer;font-size:11px;line-height:1.6}
+.chat-last{color:#555}
+.chat-last span.ml{color:#1565c0;font-weight:600}
+.chat-last span.dh{color:#e65100;font-weight:600}
+.chat-tooltip{display:none;position:fixed;z-index:9999;background:#fff;border:1px solid #ddd;border-radius:10px;box-shadow:0 4px 20px rgba(0,0,0,0.15);padding:14px;width:320px;max-height:360px;overflow-y:auto;font-size:12px}
+.tt-msg{padding:6px 10px;border-radius:8px;margin-bottom:6px;line-height:1.5}
+.tt-msg.malm{background:#e3f2fd;text-align:right}
+.tt-msg.dhl{background:#fff3e0;text-align:left}
+.tt-sender{font-size:10px;font-weight:700;margin-bottom:2px}
+.tt-sender.malm{color:#1565c0}
+.tt-sender.dhl{color:#e65100}
+.tt-time{font-size:9px;color:#999;margin-top:2px}
+.tt-divider{font-size:10px;color:#aaa;text-align:center;margin:8px 0;border-top:1px solid #f0f0f0;padding-top:6px}
+.no-chat{color:#ccc;font-size:11px}
+
+/* File upload */
+.drop-zone{border:2px dashed #ddd;border-radius:8px;padding:10px 14px;text-align:center;font-size:12px;color:#aaa;cursor:pointer;transition:all .2s;margin-bottom:8px}
+.drop-zone.drag-over{border-color:#D40511;background:#fff5f5;color:#D40511}
+.drop-zone:hover{border-color:#bbb;color:#888}
+.attachments{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}
+.att-item{display:flex;align-items:center;gap:6px;background:#f0f7ff;border:1px solid #b3d4f5;border-radius:6px;padding:4px 10px;font-size:11px}
+.att-item a{color:#1565c0;text-decoration:none;font-weight:600}
+.att-item a:hover{text-decoration:underline}
+.att-size{color:#999;font-size:10px}
+.uploading{color:#e65100;font-size:11px;padding:4px 0}
+/* Chat */
+.chat-section{margin-top:20px;border-top:2px solid #FECC02;padding-top:16px}
+.chat-tabs{display:flex;gap:0;margin-bottom:12px;border-bottom:1px solid #e0e0e0}
+.chat-tab{padding:7px 16px;cursor:pointer;font-size:12px;font-weight:600;color:#666;border-bottom:2px solid transparent}
+.chat-tab.active{color:#D40511;border-bottom-color:#D40511}
+.chat-messages{height:200px;overflow-y:auto;border:1px solid #e8e8e8;border-radius:8px;padding:10px;background:#f9f9f9;margin-bottom:10px;display:flex;flex-direction:column;gap:8px}
+.msg{max-width:75%;padding:8px 12px;border-radius:10px;font-size:12px;line-height:1.5}
+.msg-malm{background:#e3f2fd;color:#1a1a2e;align-self:flex-end;border-bottom-left-radius:2px}
+.msg-dhl{background:#fff3e0;color:#1a1a2e;align-self:flex-start;border-bottom-right-radius:2px}
+.msg-time{font-size:10px;color:#999;margin-top:3px}
+.msg-sender{font-size:10px;font-weight:700;margin-bottom:2px}
+.msg-malm .msg-sender{color:#1565c0}
+.msg-dhl .msg-sender{color:#e65100}
+.chat-input-row{display:flex;gap:8px;align-items:flex-end}
+.chat-input-row textarea{flex:1;padding:8px 10px;border:1px solid #ddd;border-radius:8px;font-size:12px;font-family:Arial;direction:rtl;resize:none;height:60px}
+.chat-send-col{display:flex;flex-direction:column;gap:6px}
+.chat-sender-sel{padding:6px 8px;border:1px solid #ddd;border-radius:6px;font-size:11px;font-family:Arial}
+.btn-send{background:#D40511;color:#fff;border:none;border-radius:6px;padding:8px 14px;cursor:pointer;font-size:12px;font-weight:700;font-family:Arial;white-space:nowrap}
+.btn-send:hover{background:#b0040e}
+.no-msgs{color:#bbb;font-size:12px;text-align:center;padding:20px}
+
+.lg-overlay{position:fixed;inset:0;background:#1a1a2e;z-index:9999;display:flex;align-items:center;justify-content:center}
+.lg-box{background:#fff;border-radius:12px;padding:32px;width:320px;text-align:center}
+.lg-logo{background:#FECC02;color:#D40511;font-size:16px;font-weight:700;padding:6px 16px;border-radius:4px;display:inline-block;margin-bottom:14px}
+.lg-box h3{font-size:15px;color:#1a1a2e;margin-bottom:18px}
+.lg-inp{width:100%;padding:9px 12px;border:1.5px solid #ddd;border-radius:7px;font-size:13px;font-family:Arial;direction:rtl;margin-bottom:10px;text-align:right}
+.lg-inp:focus{border-color:#D40511;outline:none}
+.lg-btn{width:100%;background:#D40511;color:#fff;border:none;border-radius:7px;padding:11px;font-size:14px;font-weight:700;cursor:pointer;font-family:Arial}
+.lg-err{color:#D40511;font-size:12px;margin-top:6px;min-height:18px}
+.u-badge{font-size:12px;color:#555;display:flex;align-items:center;gap:8px}
+.btn-out{background:none;border:1px solid #D40511;color:#D40511;border-radius:5px;padding:3px 10px;cursor:pointer;font-size:11px;font-family:Arial}
+.th-sort{cursor:pointer;user-select:none;white-space:nowrap}
+.th-sort:hover{background:#2a2a3e}
+.th-sort.asc::after{content:' ↑';font-size:10px;color:#FECC02}
+.th-sort.desc::after{content:' ↓';font-size:10px;color:#FECC02}
+.btn-install{background:#2e7d32;color:#fff;border:none;border-radius:5px;padding:3px 10px;cursor:pointer;font-size:11px;font-family:Arial;display:none;gap:4px;align-items:center}
+.btn-install:hover{background:#1b5e20}
+</style>
+<script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
+</head>
+<body>
+
+<div class="lg-overlay" id="lgOverlay">
+  <div class="lg-box">
+    <div class="lg-logo">DHL Express</div>
+    <h3>כניסה למערכת</h3>
+    <input type="text" id="lgUser" class="lg-inp" placeholder="שם משתמש...">
+    <input type="password" id="lgPass" class="lg-inp" placeholder="סיסמה...">
+    <button class="lg-btn" id="lgBtn">כניסה</button>
+    <div class="lg-err" id="lgErr"></div>
+    <button id="lgInstallBtn" onclick="triggerInstall()" style="display:block;width:100%;margin-top:10px;background:#2e7d32;color:#fff;border:none;border-radius:7px;padding:9px;font-size:13px;font-weight:600;cursor:pointer;font-family:Arial">📲 הוסף לשולחן העבודה</button>
+  </div>
+</div>
+
+<div class="pane" id="pane2" style="padding:14px 20px">
+  <div style="font-size:16px;font-weight:700;color:#1a1a2e;margin-bottom:14px">👥 ניהול משתמשים</div>
+  <div id="usersList"></div>
+  <div style="background:#fff;border:1px solid #e0e0e0;border-radius:10px;padding:16px;margin-top:12px">
+    <div style="font-size:13px;font-weight:700;margin-bottom:12px;color:#1a1a2e">הוסף משתמש חדש</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <input id="nu_name" placeholder="שם מלא..." style="flex:1;min-width:120px;padding:7px 10px;border:1.5px solid #ddd;border-radius:6px;font-size:12px;font-family:Arial;direction:rtl">
+      <input id="nu_user" placeholder="שם משתמש..." style="flex:1;min-width:120px;padding:7px 10px;border:1.5px solid #ddd;border-radius:6px;font-size:12px;font-family:Arial;direction:ltr">
+      <input id="nu_pass" placeholder="סיסמה..." style="flex:1;min-width:100px;padding:7px 10px;border:1.5px solid #ddd;border-radius:6px;font-size:12px;font-family:Arial;direction:ltr">
+      <input id="nu_email" placeholder="אימייל..." style="flex:1;min-width:150px;padding:7px 10px;border:1.5px solid #ddd;border-radius:6px;font-size:12px;font-family:Arial;direction:ltr">
+      <select id="nu_role" style="padding:7px 10px;border:1.5px solid #ddd;border-radius:6px;font-size:12px;font-family:Arial;direction:rtl">
+        <option value="manager">מנהל</option>
+        <option value="admin">אדמין</option>
+      </select>
+      <button onclick="addUser()" style="background:#2e7d32;color:#fff;border:none;border-radius:6px;padding:8px 16px;cursor:pointer;font-size:12px;font-weight:700;font-family:Arial">+ הוסף</button>
+    </div>
+    <div class="saving" id="addUserMsg" style="margin-top:8px"></div>
+  </div>
+</div>
+
+<div class="header">
+  <div class="logo">DHL Express</div>
+  <div class="subtitle" style="flex:1">דוח משימות בקשות מלמ</div>
+  <div class="u-badge" id="uBadge" style="display:none"><span id="uName"></span><button class="btn-out" id="btnOut">יציאה</button></div>
+  <button onclick="refreshDB()" style="background:none;border:1px solid #1a1a2e;color:#1a1a2e;border-radius:5px;padding:5px 10px;cursor:pointer;font-size:12px;font-family:Arial;margin-left:6px" title="רענן נתונים">🔄</button>
+  <span id="backupControls" style="display:none">
+    <button onclick="backupDB()" style="background:none;border:1px solid #2e7d32;color:#2e7d32;border-radius:5px;padding:5px 10px;cursor:pointer;font-size:12px;font-family:Arial;margin-left:6px" title="גיבוי נתונים">💾 גיבוי</button>
+    <button onclick="document.getElementById('restoreInput').click()" style="background:none;border:1px solid #1565c0;color:#1565c0;border-radius:5px;padding:5px 10px;cursor:pointer;font-size:12px;font-family:Arial;margin-left:6px" title="שחזור מגיבוי">↩️ שחזור</button>
+    <input type="file" id="restoreInput" accept=".json" style="display:none" onchange="restoreDB(this)">
+  </span>
+<button class="btn btn-add" id="btnAdd" onclick="openAdd()" style="display:none">+ משימה חדשה</button>
+</div>
+
+<div class="tabs" id="mainTabs" style="display:none">
+  <div class="tab active" id="tab0" data-tab="0" onclick="switchTab(0)">משימות מלמ כולל</div>
+  <div class="tab" id="tab1" data-tab="1" onclick="switchTab(1)">משימות לרבקה</div>
+  <div class="tab" id="tabUsers" data-tab="2" onclick="switchTab(2)" style="display:none">👥 משתמשים</div>
+  <div class="tab" id="tabSanity" data-tab="4" onclick="switchTab(4)" style="display:none">✅ בדיקות שפיות <span id="sanityBadge" style="display:none;background:#D40511;color:#fff;border-radius:50%;padding:1px 6px;font-size:10px;font-weight:700;margin-right:4px"></span></div>
+  <div class="tab" id="tabDev" data-tab="3" onclick="switchTab(3)" style="display:none">🛠️ פיתוחים ותיקונים לבדיקה</div>
+</div>
+
+<div class="pane active" id="pane0">
+  <div class="stats" id="s1"></div>
+  <div class="filters">
+    <input type="text" id="q1" placeholder="חיפוש חופשי..." oninput="r1()">
+    <div id="st1wrap" style="position:relative;display:inline-block">
+      <button onclick="toggleStatusDropdown('1')" id="st1btn" style="padding:5px 12px;border:1px solid #ddd;border-radius:5px;background:#fff;cursor:pointer;font-size:12px;font-family:Arial;min-width:130px;text-align:right;direction:rtl">כל הסטטוסים ▾</button>
+      <div id="st1dropdown" style="display:none;position:absolute;top:100%;right:0;background:#fff;border:1px solid #ddd;border-radius:6px;box-shadow:0 4px 12px rgba(0,0,0,0.12);z-index:999;min-width:160px;padding:6px 0">
+        <label style="display:flex;align-items:center;gap:8px;padding:5px 12px;cursor:pointer;font-size:12px;font-family:Arial;direction:rtl"><input type="checkbox" id="st1_all" checked onchange="toggleAllStatuses(this,'1')"> <span>כל הסטטוסים</span></label>
+        <hr style="margin:4px 0;border:none;border-top:1px solid #eee">
+        <label style="display:flex;align-items:center;gap:8px;padding:5px 12px;cursor:pointer;font-size:12px;font-family:Arial;direction:rtl"><input type="checkbox" class="st1cb" value="פתוח" onchange="onStatusChange('1')" checked> <span class="badge s-פתוח">פתוח</span></label>
+        <label style="display:flex;align-items:center;gap:8px;padding:5px 12px;cursor:pointer;font-size:12px;font-family:Arial;direction:rtl"><input type="checkbox" class="st1cb" value="בטיפול" onchange="onStatusChange('1')" checked> <span class="badge s-בטיפול">בטיפול</span></label>
+        <label style="display:flex;align-items:center;gap:8px;padding:5px 12px;cursor:pointer;font-size:12px;font-family:Arial;direction:rtl"><input type="checkbox" class="st1cb" value="בבדיקה" onchange="onStatusChange('1')" checked> <span class="badge s-בבדיקה">בבדיקה</span></label>
+        <label style="display:flex;align-items:center;gap:8px;padding:5px 12px;cursor:pointer;font-size:12px;font-family:Arial;direction:rtl"><input type="checkbox" class="st1cb" value="מוקפא" onchange="onStatusChange('1')" checked> <span class="badge s-מוקפא">מוקפא</span></label>
+        <label style="display:flex;align-items:center;gap:8px;padding:5px 12px;cursor:pointer;font-size:12px;font-family:Arial;direction:rtl"><input type="checkbox" class="st1cb" value="בוטל" onchange="onStatusChange('1')" checked> <span class="badge s-בוטל">בוטל</span></label>
+        <label style="display:flex;align-items:center;gap:8px;padding:5px 12px;cursor:pointer;font-size:12px;font-family:Arial;direction:rtl"><input type="checkbox" class="st1cb" value="בוצע" onchange="onStatusChange('1')" checked> <span class="badge s-בוצע">בוצע</span></label>
+      </div>
+    </div>
+    <select id="dm1" onchange="r1()"><option value="">כל התחומים</option></select>
+    <select id="pr1" onchange="r1()">
+      <option value="">כל העדיפויות</option>
+      <option value="1">1</option><option value="2">2</option><option value="3">3</option>
+      <option value="4">4</option><option value="5">5</option>
+    </select>
+  </div>
+  <div class="count" id="c1"></div>
+  <div class="tbl-wrap">
+    <table><thead><tr>
+      <th style="width:30px"></th><th style="width:88px">תאריך</th><th>תחום / משימה</th>
+      <th style="width:36px">עד'</th><th style="width:90px">סטטוס</th>
+      <th style="width:70px">DHL</th><th style="width:70px">אחראי</th><th>💬 הערות</th>
+    </tr></thead><tbody id="b1"><tr><td colspan="8" class="loading">טוען נתונים...</td></tr></tbody></table>
+  </div>
+</div>
+
+<div class="pane" id="pane1">
+  <div class="stats" id="s2"></div>
+  <div class="filters">
+    <input type="text" id="q2" placeholder="חיפוש חופשי..." oninput="r2()">
+    <div id="st2wrap" style="position:relative;display:inline-block">
+  <button onclick="toggleStatusDropdown()" id="st2btn" style="padding:5px 12px;border:1px solid #ddd;border-radius:5px;background:#fff;cursor:pointer;font-size:12px;font-family:Arial;min-width:130px;text-align:right;direction:rtl">כל הסטטוסים ▾</button>
+  <div id="st2dropdown" style="display:none;position:absolute;top:100%;right:0;background:#fff;border:1px solid #ddd;border-radius:6px;box-shadow:0 4px 12px rgba(0,0,0,0.12);z-index:999;min-width:160px;padding:6px 0">
+    <label style="display:flex;align-items:center;gap:8px;padding:5px 12px;cursor:pointer;font-size:12px;font-family:Arial;direction:rtl"><input type="checkbox" id="st2_all" onchange="toggleAllStatuses(this)"> <span>כל הסטטוסים</span></label>
+    <hr style="margin:4px 0;border:none;border-top:1px solid #eee">
+    <label style="display:flex;align-items:center;gap:8px;padding:5px 12px;cursor:pointer;font-size:12px;font-family:Arial;direction:rtl"><input type="checkbox" class="st2cb" value="פתוח" onchange="onStatusChange()" checked> <span class="badge s-פתוח">פתוח</span></label>
+    <label style="display:flex;align-items:center;gap:8px;padding:5px 12px;cursor:pointer;font-size:12px;font-family:Arial;direction:rtl"><input type="checkbox" class="st2cb" value="בטיפול" onchange="onStatusChange()" checked> <span class="badge s-בטיפול">בטיפול</span></label>
+    <label style="display:flex;align-items:center;gap:8px;padding:5px 12px;cursor:pointer;font-size:12px;font-family:Arial;direction:rtl"><input type="checkbox" class="st2cb" value="בבדיקה" onchange="onStatusChange()" checked> <span class="badge s-בבדיקה">בבדיקה</span></label>
+    <label style="display:flex;align-items:center;gap:8px;padding:5px 12px;cursor:pointer;font-size:12px;font-family:Arial;direction:rtl"><input type="checkbox" class="st2cb" value="מוקפא" onchange="onStatusChange()" checked> <span class="badge s-מוקפא">מוקפא</span></label>
+    <label style="display:flex;align-items:center;gap:8px;padding:5px 12px;cursor:pointer;font-size:12px;font-family:Arial;direction:rtl"><input type="checkbox" class="st2cb" value="בוטל" onchange="onStatusChange()"> <span class="badge s-בוטל">בוטל</span></label>
+    <label style="display:flex;align-items:center;gap:8px;padding:5px 12px;cursor:pointer;font-size:12px;font-family:Arial;direction:rtl"><input type="checkbox" class="st2cb" value="בוצע" onchange="onStatusChange()"> <span class="badge s-בוצע">בוצע</span></label>
+  </div>
+</div>
+    <select id="pr2" onchange="r2()">
+      <option value="">כל העדיפויות</option>
+      <option value="1">1</option><option value="2">2</option><option value="3">3</option>
+      <option value="4">4</option><option value="5">5</option>
+    </select>
+  </div>
+  <div class="count" id="c2"></div>
+  <div class="tbl-wrap">
+    <table><thead><tr>
+      <th style="width:30px"></th>
+      <th class="th-sort" onclick="sortTable2('נ')" id="th2-נ">נושא</th>
+      <th class="th-sort" style="width:80px" onclick="sortTable2('מב')" id="th2-מב">מבקש</th>
+      <th class="th-sort" style="width:88px" onclick="sortTable2('ת')" id="th2-ת">תאריך</th>
+      <th>בקשה / כותרת</th>
+      <th style="width:70px">מטפל</th>
+      <th class="th-sort" style="width:36px" onclick="sortTable2('ע')" id="th2-ע">עד'</th>
+      <th class="th-sort" style="width:90px" onclick="sortTable2('ס')" id="th2-ס">סטטוס</th>
+      <th>💬 הערות</th>
+    </tr></thead><tbody id="b2"><tr><td colspan="9" class="loading">טוען נתונים...</td></tr></tbody></table>
+  </div>
+</div>
+
+<!-- Modal -->
+<div class="modal-bg" id="modalBg">
+  <div class="modal">
+    <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:2px solid #FECC02;padding-bottom:8px;margin-bottom:16px">
+      <h3 id="modalTitle" style="border:none;padding:0;margin:0">משימה חדשה</h3>
+      <button onclick="closeModal()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#999;line-height:1;padding:0 4px">&times;</button>
+    </div>
+    <div id="modalFields"></div>
+    <div class="form-actions">
+      <button class="btn btn-cancel" onclick="closeModal()">ביטול</button>
+      <button class="btn btn-save" onclick="saveModal()">💾 שמור</button>
+    </div>
+    <!-- Chat -->
+    <div class="chat-section" id="chatSection" style="display:none">
+      <div style="font-size:13px;font-weight:700;color:#1a1a2e;margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid #f0f0f0">💬 הערות</div>
+      <div class="chat-input-row">
+        <textarea id="chatInput" placeholder="כתוב הערה..."></textarea>
+        <div class="chat-send-col">
+          <div id="chatSenderLabel" style="font-size:11px;color:#555;text-align:center;padding:2px 6px;background:#f0f0f0;border-radius:5px;white-space:nowrap"></div>
+          <button class="btn-send" onclick="sendMsg()">שלח ↵</button>
+        </div>
+      </div>
+
+      <div class="chat-messages" id="chatMessages"></div>
+      <div id="dropZone" class="drop-zone" onclick="document.getElementById('fileInput').click()">
+        📎 גרור קובץ לכאן או לחץ לבחירה (.msg, .pdf, .docx, .xlsx, תמונות)
+      </div>
+      <input type="file" id="fileInput" style="display:none" multiple onchange="handleFiles(this.files)">
+      <div id="uploadStatus"></div>
+      <div id="attachments" class="attachments"></div>
+    </div>
+  </div>
+</div>
+
+<div class="saving" id="savingMsg">⏳ שומר ב-GitHub...</div>
+
+<script src="config.js"></script>
+<script>
+const OWNER=window.APP_CONFIG.owner,REPO=window.APP_CONFIG.repo,TOKEN=window.APP_CONFIG.token;
+let DB={malm:[],rivka:[]},currentTab=0,editIdx=-1,editSheet='',editRecId=null,sortCol2='ע',sortDir2=1,sortCol1='',sortDir1=1;
+const SM=['פתוח','בטיפול','בבדיקה','ממתין לבדיקה','מוקפא','הושהה','בוצע','טופל','בוטל'];
+const SR=['פתוח','בטיפול','בוצע'];
+const SR_ADMIN=['פתוח','בטיפול','בוצע','מוקפא','בבדיקה','בוטל'];
+
+// ═══════════════════════════════════════
+// AUTH SYSTEM
+// ═══════════════════════════════════════
+var CU = null;
+var ADMIN_ROLES = ['admin', 'malam', 'Admin', 'Malam'];
+
+// EmailJS init happens in DOMContentLoaded
+
+function sendEmailNotification(toEmail, toName, subject, message, taskTitle, status) {
+  if (!toEmail) return;
+  // CC ido.efrati on all admin notifications (critical + status changes to matan)
+  if (toEmail === 'matan.naor@dhl.com') {
+    if (typeof emailjs !== 'undefined') {
+      emailjs.send('service_q2ekmcf','template_jylk5i7',{
+        to_email:'ido.efrati@dhl.com', to_name:'עידו',
+        subject:subject, message:message, task_name:taskTitle, status:status
+      });
+    }
+  }
+  if (typeof emailjs === 'undefined') { console.warn('EmailJS not loaded'); return; }
+  const now = new Date();
+  const time = now.toLocaleDateString('he-IL') + ' ' + now.toLocaleTimeString('he-IL', {hour:'2-digit',minute:'2-digit'});
+  emailjs.send('service_q2ekmcf', 'template_jylk5i7', {
+    to_email: toEmail,
+    to_name: toName || '',
+    subject: subject,
+    message: message,
+    task_title: taskTitle || '',
+    status: status || '',
+    time: time
+  }).then(function() {
+    console.log('מייל נשלח ל-' + toEmail);
+  }, function(err) {
+    console.warn('שגיאת מייל:', err);
+  });
+}
+
+async function lgLogin() {
+  var u = document.getElementById('lgUser').value.trim();
+  var p = document.getElementById('lgPass').value.trim();
+  var found = (DB.users||[]).find(function(x){ return x.username===u && x.password===p; });
+  if (!found) { document.getElementById('lgErr').textContent='שם משתמש או סיסמה שגויים'; return; }
+  CU = found;
+  try { sessionStorage.setItem('mu', JSON.stringify(found)); } catch(e){}
+  showApp();
+}
+
+function lgLogout() {
+  CU = null;
+  try { sessionStorage.removeItem('mu'); } catch(e){}
+  location.reload();
+}
+
+function isAdmin() {
+  return CU && CU.role !== 'manager';
+}
+
+function canEditRow(r) {
+  if (!CU) return false;
+  if (isAdmin()) return true;
+  // Non-admin: they only see their own rows, always allow edit
+  return true;
+}
+
+function showApp() {
+  document.getElementById('lgOverlay').style.display = 'none';
+  document.getElementById('uBadge').style.display = 'flex';
+  document.getElementById('uName').textContent = 'שלום, ' + CU.name;
+  document.getElementById('mainTabs').style.display = 'flex';
+
+  if (isAdmin()) {
+    document.getElementById('backupControls').style.display = 'inline';
+    document.getElementById('tabUsers').style.display = 'block';
+    document.getElementById('tabDev').style.display = 'block';
+    document.getElementById('tabSanity').style.display = 'block';
+    document.getElementById('btnAdd').style.display = 'block';
+    document.getElementById('tab0').style.display = 'block';
+    // Admin starts on משימות לרבקה tab
+    switchTab(1);
+    initFilters(); r1(); r2();
+  } else {
+    // manager — רואה רק רבקה
+    document.getElementById('tab0').style.display = 'none';
+    document.getElementById('tabUsers').style.display = 'none';
+    document.getElementById('tabSanity').style.display = 'block';
+    document.getElementById('btnAdd').style.display = 'block';
+    // הסתר pane0, הצג pane1
+    var p0 = document.getElementById('pane0');
+    var p1 = document.getElementById('pane1');
+    if(p0) { p0.classList.remove('active'); }
+    if(p1) { p1.classList.add('active'); }
+    // עדכן טאב פעיל ל-1
+    document.querySelectorAll('#mainTabs .tab').forEach(function(t,j){
+      t.classList.toggle('active', j===1);
+    });
+    currentTab = 1;
+    initFilters();
+    r2();
+  }
+}
+
+function genId(){ return 'r_'+Date.now()+'_'+Math.random().toString(36).slice(2,9); }
+
+// מבטיח שלכל רשומה יש _id ייחודי. אם חסר — מוסיף ושומר בחזרה ל-Firebase.
+async function ensureIds(){
+  var changed = false;
+  ['malm','rivka'].forEach(function(sheet){
+    (DB[sheet]||[]).forEach(function(rec){
+      if(!rec._id){ rec._id = genId(); changed = true; }
+    });
+  });
+  if(changed){
+    try{
+      await fetch('https://malm-focus-default-rtdb.firebaseio.com/db.json',{
+        method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(DB)
+      });
+    }catch(e){ console.warn('ensureIds save failed:', e); }
+  }
+}
+
+async function loadDB(){
+  try{
+    const fbUrl='https://malm-focus-default-rtdb.firebaseio.com/db.json?t='+Date.now();
+    const raw=await fetch(fbUrl);
+    if(!raw.ok)throw new Error('firebase fetch failed: '+raw.status);
+    DB=await raw.json();
+    await ensureIds();
+
+    // ── Session restore ────────────────────────────────────────────
+    // FIX: call showApp() instead of inline DOM manipulation
+    try {
+      var sv = sessionStorage.getItem('mu');
+      if (sv) {
+        var u = JSON.parse(sv);
+        var f = (DB.users||[]).find(function(x){ return x.username===u.username && x.password===u.password; });
+        if (f) {
+          CU = f;
+          showApp();
+          // Check sanity tasks after DB is ready
+          setTimeout(checkSanityOnLogin, 500);
+          return; // showApp handles initFilters/r1/r2
+        }
+      }
+    } catch(e2) {}
+
+    document.getElementById('lgOverlay').style.display='flex';
+    initFilters(); r1(); r2();
+  }catch(e){
+    document.getElementById('b1').innerHTML='<tr><td colspan="8" style="color:red;padding:20px">שגיאה בטעינה: '+e.message+'</td></tr>';
+  }
+}
+
+async function saveDB(){
+  const el=document.getElementById('savingMsg');
+  el.style.display='block';
+  el.style.background='#1a1a2e';
+  el.textContent='⏳ שומר...';
+  try{
+    const r=await fetch('https://malm-focus-default-rtdb.firebaseio.com/db.json',{
+      method:'PUT',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify(DB)
+    });
+    if(!r.ok)throw new Error('Firebase error: '+r.status);
+    el.textContent='✓ נשמר!';
+    setTimeout(()=>{el.style.display='none';},1500);
+  }catch(e){
+    el.textContent='❌ שגיאה: '+e.message;
+    el.style.background='#c62828';
+    setTimeout(()=>{el.style.display='none';el.style.background='#1a1a2e';},3000);
+  }
+}
+
+// שמירה אטומית של רשומה בודדת לפי _id — מונעת דריסה/כפילות בין משתמשים
+// תמיד טוען את המערך המלא טרי מ-Firebase, מאתר את הרשומה לפי _id (לא לפי אינדקס),
+// מעדכן/מוסיף אותה, ושומר את כל המערך בחזרה. כך אינדקסים שזזו בינתיים לא משנים כלום.
+async function saveRecord(sheet, idx, rec){
+  const el=document.getElementById('savingMsg');
+  el.style.display='block';
+  el.style.background='#1a1a2e';
+  el.textContent='⏳ שומר...';
+  try{
+    // טען טרי מ-Firebase כדי לא לדרוס שינויים של אחרים
+    const fresh = await fetch('https://malm-focus-default-rtdb.firebaseio.com/db/'+sheet+'.json?t='+Date.now());
+    let arr = await fresh.json() || [];
+
+    if(rec._id){
+      const fi = arr.findIndex(function(x){ return x._id===rec._id; });
+      if(fi >= 0){
+        arr[fi] = rec; // עדכון רשומה קיימת — לפי ID, לא אינדקס
+      } else {
+        arr.unshift(rec); // לא נמצא (למשל רשומה חדשה) — הוסף בראש
+      }
+    } else {
+      // הגנה לאחור — אם משום מה אין _id, ייצר אחד כדי לא ליצור כפילות עתידיות
+      rec._id = genId();
+      arr.unshift(rec);
+    }
+
+    const r=await fetch('https://malm-focus-default-rtdb.firebaseio.com/db/'+sheet+'.json',{
+      method:'PUT',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify(arr)
+    });
+    if(!r.ok)throw new Error('Firebase error: '+r.status);
+
+    // סנכרן DB המקומי עם מה שבאמת נשמר
+    DB[sheet] = arr;
+
+    el.textContent='✓ נשמר!';
+    setTimeout(()=>{el.style.display='none';},1500);
+  }catch(e){
+    el.textContent='❌ שגיאה: '+e.message;
+    el.style.background='#c62828';
+    setTimeout(()=>{el.style.display='none';el.style.background='#1a1a2e';},3000);
+  }
+}
+
+function sc(s){const k=(s||'פתוח').replace(/ /g,'-');return`<span class="badge s-${k}">${s||'פתוח'}</span>`}
+function pc(p){if(!p)return'<span class="muted">—</span>';let n=Number(p);let bg=n<=1?'#fde8e8':n<=3?'#fff3e0':n<=5?'#fff9c4':'#e8f5e9';let co=n<=1?'#c62828':n<=3?'#e65100':n<=5?'#f57f17':'#2e7d32';return`<span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;font-size:10px;font-weight:700;background:${bg};color:${co}">${p}</span>`}
+function m(v){return v||'<span class="muted">—</span>'}
+
+function buildStats(data,el){
+  const cnt={};data.forEach(r=>{cnt[r.ס]=(cnt[r.ס]||0)+1});
+  const adminExtra = isAdmin() ? `
+    <div class="stat"><div class="n" style="color:#1a1a2e">${data.length}</div><div class="l">סה"כ</div></div>
+    <div class="stat"><div class="n" style="color:#2e7d32">${cnt['בוצע']||0}</div><div class="l">בוצע</div></div>
+    ${cnt['בבדיקה']?`<div class="stat"><div class="n" style="color:#1565c0">${cnt['בבדיקה']}</div><div class="l">בבדיקה</div></div>`:''}
+    ${cnt['מוקפא']?`<div class="stat"><div class="n" style="color:#e65100">${cnt['מוקפא']}</div><div class="l">מוקפא</div></div>`:''}
+    ${cnt['בוטל']?`<div class="stat"><div class="n" style="color:#9e9e9e">${cnt['בוטל']}</div><div class="l">בוטל</div></div>`:''}` : '';
+  el.innerHTML=`
+    <div class="stat"><div class="n n-open">${cnt['פתוח']||0}</div><div class="l">פתוחות</div></div>
+    <div class="stat"><div class="n n-wait">${cnt['בטיפול']||0}</div><div class="l">בטיפול</div></div>
+    ${adminExtra}`;
+}
+
+function populateSel(id,vals){
+  const s=document.getElementById(id);
+  const f=s.options[0];
+  // Keep any fixed options (non-dynamic) that were in HTML
+  const fixed=Array.from(s.options).filter(o=>o.dataset.fixed==='1');
+  s.innerHTML='';s.appendChild(f);
+  fixed.forEach(o=>s.appendChild(o));
+  [...new Set(vals)].filter(Boolean).sort().forEach(v=>{const o=document.createElement('option');o.value=v;o.textContent=v;s.appendChild(o)});
+}
+
+function initFilters(){
+  populateSel('dm1',DB.malm.map(r=>r.ד));
+  // st1 and st2 are checkbox dropdowns — no populateSel needed
+}
+
+function r1(){
+  updateStatusBtn('1');
+  const q=document.getElementById('q1').value.toLowerCase();
+  const st1cbs=document.querySelectorAll('.st1cb');
+  const selectedStatuses=[...st1cbs].filter(cb=>cb.checked).map(cb=>cb.value);
+  const allChecked=st1cbs.length===0||selectedStatuses.length===st1cbs.length;
+  const dm=document.getElementById('dm1').value;
+  const pr=document.getElementById('pr1').value;
+  buildStats(DB.malm,document.getElementById('s1'));
+  let f=DB.malm.filter(r=>{
+    if(!allChecked&&!selectedStatuses.includes(r.ס||'פתוח'))return false;
+    if(dm&&r.ד!==dm)return false;
+    if(pr&&String(r.ע)!==pr)return false;
+    if(q&&!(r.מ+r.ד+r.א+(r.dhl||'')+r.ה).toLowerCase().includes(q))return false;
+    return true;
+  });
+  document.getElementById('c1').textContent=`מציג ${f.length} מתוך ${DB.malm.length}`;
+  document.getElementById('b1').innerHTML=f.length
+    ?f.map(r=>{const idx=DB.malm.indexOf(r);return`<tr>
+      <td style="white-space:nowrap">
+        <button class="act-btn" onclick="openEdit('malm',${idx})" title="עריכה">✏️</button>
+        ${isAdmin()?`<button class="act-btn" onclick="deleteRec('malm',${idx})" title="מחק" style="color:#D40511">🗑️</button>`:''}
+      </td>
+      <td style="color:#888;font-size:11px">${r.ת||''}</td>
+      <td>${r.ד?`<div class="dtag">${r.ד}</div><br>`:''} ${r.מ||''}</td>
+      <td>${pc(r.ע)}</td><td>${sc(r.ס)}</td><td>${m(r.dhl)}</td><td>${m(r.א)}</td>
+      <td>${chatPreviewHtml(r)}</td></tr>`}).join('')
+    :'<tr><td colspan="8" class="nores">לא נמצאו תוצאות</td></tr>';
+}
+
+function r2(){
+  updateStatusBtn();
+  document.querySelectorAll('[id^="th2-"]').forEach(el => { el.classList.remove('asc','desc'); });
+  if(sortCol2){ const th0=document.getElementById('th2-'+sortCol2); if(th0) th0.classList.add(sortDir2===1?'asc':'desc'); }
+  const q=document.getElementById('q2').value.toLowerCase();
+  const st2cbs=document.querySelectorAll('.st2cb');
+  const selectedStatuses=[...st2cbs].filter(cb=>cb.checked).map(cb=>cb.value);
+  const allChecked=st2cbs.length===0||selectedStatuses.length===st2cbs.length;
+  const pr=document.getElementById('pr2').value;
+  const rivkaOwn = isAdmin() ? DB.rivka : DB.rivka.filter(r=>r.מב===(CU?CU.name:''));
+  buildStats(rivkaOwn,document.getElementById('s2'));
+  let f=DB.rivka.filter(r=>{
+    if(!isAdmin() && r.מב !== (CU?CU.name:'')) return false;
+    if(!allChecked&&!selectedStatuses.includes(r.ס||'פתוח'))return false;
+    if(pr&&String(r.ע)!==pr)return false;
+    if(q&&!(r.נ+r.מב+r.כ+r.ב+r.מט+r.ה).toLowerCase().includes(q))return false;
+    return true;
+  });
+  if(sortCol2){f.sort((a,b)=>{let av=a[sortCol2]??'',bv=b[sortCol2]??'';if(sortCol2==='ת'){return sortDir2*(av<bv?-1:av>bv?1:0);}if(sortCol2==='ע'){return sortDir2*((av===''?99:Number(av))-(bv===''?99:Number(bv)));}return sortDir2*String(av).localeCompare(String(bv),'he');});}
+  document.getElementById('c2').textContent=`מציג ${f.length} מתוך ${DB.rivka.length}`;
+  document.getElementById('b2').innerHTML=f.length
+    ?f.map(r=>{const idx=DB.rivka.indexOf(r);const eb=canEditRow(r)?'<button class="act-btn" onclick="openEdit(\'rivka\','+idx+')" title="עריכה">✏️</button>':'';
+        const db2=isAdmin()?'<button class="act-btn" onclick="deleteRec(\'rivka\','+idx+')" title="מחק" style="color:#D40511">🗑️</button>':'';
+        return`<tr>
+      <td style="white-space:nowrap">${eb}${db2}</td>
+      <td>${m(r.נ)}</td><td>${m(r.מב)}</td>
+      <td style="color:#888;font-size:11px">${r.ת||''}</td>
+      <td>${r.כ?`<strong>${r.כ}</strong><br>`:''} ${r.ב||''}</td>
+      <td>${m(r.מט)}</td><td>${pc(r.ע)}</td><td>${sc(r.ס)}</td>
+      <td>${chatPreviewHtml(r)}</td></tr>`}).join('')
+    :'<tr><td colspan="9" class="nores">לא נמצאו תוצאות</td></tr>';
+}
+
+function malmFields(r={}){
+  return`
+    <div class="form-row"><label>תאריך</label><input id="f_ת" type="date" value="${r.ת||new Date().toISOString().slice(0,10)}"></div>
+    <div class="form-row"><label>תחום</label><input id="f_ד" value="${(r.ד||'').replace(/"/g,'&quot;')}" placeholder="תחום..."></div>
+    <div class="form-row"><label>משימה</label><textarea id="f_מ">${r.מ||''}</textarea></div>
+    <div class="form-row"><label>עדיפות <small style="color:#888;font-weight:normal">(1 = גבוהה, 5 = נמוכה)</small></label><select id="f_ע" onchange="checkCritical(this)"><option value="">—</option><option value="0" ${r.ע==0?'selected':''} style="color:#D40511;font-weight:bold">🚨 0 = קריטי</option>${[1,2,3,4,5].map(n=>`<option ${r.ע==n?'selected':''}>${n}</option>`).join('')}</select></div>
+    <div class="form-row"><label>סטטוס</label><select id="f_ס">${SM.map(s=>`<option ${(r.ס||'פתוח')===s?'selected':''}>${s}</option>`).join('')}</select></div>
+    <div class="form-row"><label>DHL</label><input id="f_dhl" value="${(r.dhl||'').replace(/"/g,'&quot;')}" placeholder="שם..."></div>
+    <div class="form-row"><label>אחראי מלמ</label><input id="f_א" value="${(r.א||'').replace(/"/g,'&quot;')}" placeholder="שם..."></div>`;
+}
+
+function rivkaFields(r={}, isEdit=false){
+  return`
+    <div class="form-row"><label>נושא</label><input id="f_נ" value="${(r.נ||'').replace(/"/g,'&quot;')}" placeholder="נושא..."></div>
+    <div class="form-row"><label>תאריך</label><input id="f_ת" type="date" value="${r.ת||new Date().toISOString().slice(0,10)}"></div>
+    <div class="form-row"><label>כותרת</label><input id="f_כ" value="${(r.כ||'').replace(/"/g,'&quot;')}" placeholder="כותרת..."></div>
+    <div class="form-row"><label>בקשה</label><textarea id="f_ב">${r.ב||''}</textarea></div>
+    <div class="form-row"><label>עדיפות <small style="color:#888;font-weight:normal">(1 = גבוהה, 5 = נמוכה)</small></label><select id="f_ע" onchange="checkCritical(this)"><option value="">—</option><option value="0" ${r.ע==0?'selected':''} style="color:#D40511;font-weight:bold">🚨 0 = קריטי</option>${[1,2,3,4,5].map(n=>`<option ${r.ע==n?'selected':''}>${n}</option>`).join('')}</select></div>
+    ${isEdit && isAdmin()?`<div class="form-row"><label>מטפל</label><input id="f_מט" value="${(r.מט||'').replace(/"/g,'&quot;')}" placeholder="שם מטפל..."></div>`:''}
+    ${isEdit?`<div class="form-row"><label>סטטוס</label><select id="f_ס">${(isAdmin()?SR_ADMIN:SR).map(s=>`<option ${(r.ס||'פתוח')===s?'selected':''}>${s}</option>`).join('')}</select></div>`:''}`;
+}
+
+function openAdd(){
+  if(!CU){return;}
+  editIdx=-1;editSheet=currentTab===0?'malm':'rivka';editRecId=null;
+  document.getElementById('modalTitle').textContent=currentTab===0?'✏️ משימה חדשה — מלמ כולל':'✏️ משימה חדשה — רבקה';
+  document.getElementById('modalFields').innerHTML=currentTab===0?malmFields():rivkaFields({}, false);
+  // Show file upload for new requests too
+  var cs = document.getElementById('chatSection');
+  cs.style.display = 'block';
+  // Hide chat messages and input, show only file upload
+  document.getElementById('chatMessages').style.display = 'none';
+  document.querySelectorAll('.chat-tabs, .chat-input-row').forEach(function(el){ el.style.display='none'; });
+  pendingFiles = [];
+  renderAttachments();
+  setTimeout(initDropZone, 100);
+  document.getElementById('modalBg').classList.add('open');
+}
+
+function openEdit(sheet,idx){
+  const r=DB[sheet][idx];
+  if(sheet==='rivka' && !isAdmin() && (!r || (r.מב !== (CU?CU.name:'') && r.מב !== (CU?CU.username:'')))) return;
+  editIdx=idx;editSheet=sheet;editRecId=r?r._id:null;
+  document.getElementById('modalTitle').textContent='✏️ עריכת משימה';
+  document.getElementById('modalFields').innerHTML=sheet==='malm'?malmFields(r):rivkaFields(r, true);
+  document.getElementById('chatSection').style.display='block';
+  document.getElementById('chatMessages').style.display = 'flex';
+  document.querySelectorAll('.chat-tabs, .chat-input-row').forEach(function(el){ el.style.display=''; });
+  pendingFiles=[];
+  setTimeout(function(){ var lbl=document.getElementById('chatSenderLabel'); if(lbl&&CU) lbl.textContent=CU.name; },50);
+  renderChat();
+  renderAttachments();
+  setTimeout(initDropZone,100);
+  document.getElementById('modalBg').classList.add('open');
+}
+
+function closeModal(){document.getElementById('modalBg').classList.remove('open')}
+function g(id){const el=document.getElementById(id);return el?el.value.trim():''}
+
+function saveModal(){
+  // FIX: define r to preserve status and chat on edit
+  const r = editIdx >= 0 ? DB[editSheet][editIdx] : null;
+  let rec;
+  if(editSheet==='malm'){
+    rec={
+      ת:g('f_ת'), ד:g('f_ד'), מ:g('f_מ'), ע:g('f_ע'),
+      ס:g('f_ס')||(r?r.ס:'פתוח'),
+      dhl:g('f_dhl'), א:g('f_א'),
+      ה:r?r.ה||'':'',
+      chat:r?r.chat||{}:{}
+    };
+  }else{
+    rec={
+      נ:g('f_נ'), מב:r?r.מב:(CU?CU.name:''), ת:g('f_ת'), כ:g('f_כ'), ב:g('f_ב'),
+      מט:g('f_מט'), ע:g('f_ע'),
+      ס:r?(g('f_ס')||r.ס):'פתוח',
+      ה:r?r.ה||'':'',
+      chat:r?r.chat||{}:{}
+    };
+  }
+  const wasStatus = r ? r.ס : null;
+  // Attach pending files to new record
+  if(pendingFiles.length && editIdx===-1){
+    if(!rec.chat)rec.chat={malm:[],dhl:[]};
+    const now=new Date();
+    const time=now.toLocaleDateString('he-IL')+' '+now.toLocaleTimeString('he-IL',{hour:'2-digit',minute:'2-digit'});
+    rec.chat['malm']=[{sender:CU?CU.name:'',side:'malm',text:'📎 קבצים מצורפים',time,ts:now.getTime(),files:[...pendingFiles]}];
+    pendingFiles=[];
+  }
+  // Send CRITICAL alert to matan + rivka if priority 0
+  if(editSheet==='rivka' && String(rec.ע)==='0'){
+    sendEmailNotification('matan.naor@dhl.com', 'מתן', '🚨 בקשה קריטית נפתחה', 'בקשה בעדיפות קריטית מחכה לטיפול מיידי', rec.כ||rec.נ||'', '🚨 קריטי');
+  }
+  // Send confirmation email to manager when new request is opened
+  if(editIdx===-1 && editSheet==='rivka'){
+    var ownerName3 = rec.מב || '';
+    var ownerUser3 = (DB.users||[]).find(function(u){ return u.name===ownerName3 || u.username===ownerName3; });
+    if(ownerUser3 && ownerUser3.email){
+      sendEmailNotification(ownerUser3.email, ownerUser3.name, 'הבקשה שלך נפתחה בהצלחה', 'בקשתך התקבלה ונמצאת בטיפול', rec.כ||rec.נ||'', 'פתוח');
+    }
+  }
+  if(editIdx===-1){
+    rec._id = genId();
+    DB[editSheet].unshift(rec);
+  } else {
+    rec._id = editRecId;
+    // עדכן את הרשומה הנכונה לפי _id (לא לפי אינדקס שעלול להיות מיושן)
+    var localIdx = DB[editSheet].findIndex(function(x){ return x._id===editRecId; });
+    if(localIdx===-1) localIdx = editIdx; // נפילה לאחור אם לא נמצא
+    DB[editSheet][localIdx]=rec;
+  }
+  // Email on status change to בוצע
+  const notifyStatuses = ['בוצע', 'בטיפול'];
+  if (editSheet==='rivka' && notifyStatuses.includes(rec.ס) && wasStatus!==rec.ס) {
+    var ownerName2 = rec.מב || '';
+    var ownerUser2 = (DB.users||[]).find(function(u){ return u.name===ownerName2 || u.username===ownerName2; });
+    if (ownerUser2 && ownerUser2.email) {
+      var msgText = rec.ס==='בוצע' ? 'הבקשה שלך טופלה במלואה ✓' : 'הבקשה שלך נמצאת כעת בטיפול אצל הצוות';
+      sendEmailNotification(ownerUser2.email, ownerUser2.name, 'עדכון סטטוס בקשה', msgText, rec.כ||rec.נ||'', rec.ס);
+    }
+  }
+  const savedIdx = editIdx; // שמור לפני closeModal מאפס
+  const savedSheet = editSheet;
+  closeModal();
+  initFilters();
+  if(savedSheet==='malm')r1();else r2();
+  saveRecord(savedSheet, savedIdx, rec);
+}
+
+// Smart tooltip positioning
+document.addEventListener('mouseover',function(e){
+  const preview=e.target.closest('.chat-preview');
+  if(!preview)return;
+  const tt=preview.querySelector('.chat-tooltip');
+  if(!tt)return;
+  tt.style.display='block';
+  const rect=preview.getBoundingClientRect();
+  const ttW=320, ttH=Math.min(tt.scrollHeight,360);
+  const vw=window.innerWidth, vh=window.innerHeight;
+  let left=rect.right-ttW;
+  if(left<8)left=8;
+  if(left+ttW>vw-8)left=vw-ttW-8;
+  let top=rect.bottom+5;
+  if(top+ttH>vh-8)top=rect.top-ttH-5;
+  if(top<8)top=8;
+  tt.style.left=left+'px';
+  tt.style.top=top+'px';
+  tt.style.right='auto';
+});
+document.addEventListener('mouseout',function(e){
+  const preview=e.target.closest('.chat-preview');
+  if(!preview)return;
+  const to=e.relatedTarget;
+  if(to&&preview.contains(to))return;
+  const tt=preview.querySelector('.chat-tooltip');
+  if(tt)tt.style.display='none';
+});
+
+// ── Users tab ──────────────────────────
+function renderUsers() {
+  var el = document.getElementById('usersList');
+  if (!el) return;
+  var users = (DB.users||[]).filter(function(u){ return u.username !== 'admin' && u.username !== 'malam'; });
+  if (!users.length) { el.innerHTML = '<p style="color:#aaa;padding:10px">אין משתמשים עדיין</p>'; return; }
+  el.innerHTML = '';
+  users.forEach(function(u) {
+    var row = document.createElement('div');
+    row.style.cssText = 'background:#fff;border:1px solid #e0e0e0;border-radius:8px;margin-bottom:8px;font-size:13px;overflow:hidden';
+    // Display row
+    var display = document.createElement('div');
+    display.style.cssText = 'display:flex;align-items:center;gap:12px;padding:10px 14px';
+    var name = document.createElement('b'); name.style.flex='1'; name.textContent = u.name;
+    var roleBadge = document.createElement('span');
+    roleBadge.textContent = u.role==='admin' ? 'אדמין' : 'מנהל';
+    roleBadge.style.cssText = 'font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px;min-width:44px;text-align:center;' + (u.role==='admin' ? 'background:#fdecea;color:#D40511' : 'background:#e8f0fe;color:#1565c0');
+    var uname = document.createElement('span'); uname.style.cssText='color:#888;font-size:12px;min-width:80px'; uname.textContent = u.username;
+    var pwd = document.createElement('span'); pwd.style.cssText='color:#aaa;font-size:12px;min-width:80px'; pwd.textContent = u.password;
+    var eml = document.createElement('span'); eml.style.cssText='color:#1565c0;font-size:12px;min-width:140px'; eml.textContent = u.email||'—';
+    var editBtn = document.createElement('button');
+    editBtn.textContent = '✏️ ערוך';
+    editBtn.style.cssText = 'border:1px solid #1565c0;color:#1565c0;background:none;border-radius:5px;padding:3px 10px;cursor:pointer;font-size:11px;font-family:Arial;margin-left:4px';
+    var delBtn = document.createElement('button');
+    delBtn.textContent = 'מחק';
+    delBtn.style.cssText = 'border:1px solid #D40511;color:#D40511;background:none;border-radius:5px;padding:3px 10px;cursor:pointer;font-size:11px;font-family:Arial';
+    display.appendChild(name); display.appendChild(roleBadge); display.appendChild(uname); display.appendChild(pwd); display.appendChild(eml); display.appendChild(editBtn); display.appendChild(delBtn);
+    // Edit form (hidden)
+    var editForm = document.createElement('div');
+    editForm.style.cssText = 'display:none;padding:10px 14px;background:#f9f9f9;border-top:1px solid #eee;gap:8px;flex-wrap:wrap;align-items:center';
+    editForm.innerHTML = '<input class="eu_name" placeholder="שם מלא..." value="'+u.name+'" style="flex:1;min-width:100px;padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:12px;font-family:Arial;direction:rtl">'
+      +'<input class="eu_user" placeholder="שם משתמש..." value="'+u.username+'" style="flex:1;min-width:100px;padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:12px;font-family:Arial;direction:ltr">'
+      +'<input class="eu_pass" placeholder="סיסמה..." value="'+u.password+'" style="flex:1;min-width:80px;padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:12px;font-family:Arial;direction:ltr">'
+      +'<input class="eu_email" placeholder="אימייל..." value="'+(u.email||'')+'" style="flex:1;min-width:150px;padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:12px;font-family:Arial;direction:ltr">'
+      +'<select class="eu_role" style="padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:12px;font-family:Arial;direction:rtl"><option value="manager"'+(u.role!=='admin'?' selected':'')+'>מנהל</option><option value="admin"'+(u.role==='admin'?' selected':'')+'>אדמין</option></select>'
+      +'<button class="eu_save" style="background:#2e7d32;color:#fff;border:none;border-radius:6px;padding:7px 14px;cursor:pointer;font-size:12px;font-weight:700;font-family:Arial">💾 שמור</button>'
+      +'<button class="eu_cancel" style="background:#757575;color:#fff;border:none;border-radius:6px;padding:7px 14px;cursor:pointer;font-size:12px;font-family:Arial">ביטול</button>';
+    editForm.style.display = 'none';
+    // Toggle edit
+    editBtn.addEventListener('click', function() {
+      editForm.style.display = editForm.style.display==='none' ? 'flex' : 'none';
+    });
+    editForm.querySelector('.eu_cancel').addEventListener('click', function() {
+      editForm.style.display = 'none';
+    });
+    editForm.querySelector('.eu_save').addEventListener('click', (function(un) { return async function() {
+      var idx = DB.users.findIndex(function(x){ return x.username===un; });
+      if (idx < 0) return;
+      DB.users[idx].name = editForm.querySelector('.eu_name').value.trim();
+      DB.users[idx].username = editForm.querySelector('.eu_user').value.trim();
+      DB.users[idx].password = editForm.querySelector('.eu_pass').value.trim();
+      DB.users[idx].email = editForm.querySelector('.eu_email').value.trim();
+      DB.users[idx].role = editForm.querySelector('.eu_role').value;
+      await saveDB();
+      renderUsers();
+    }; })(u.username));
+    delBtn.addEventListener('click', (function(un){ return function(){ delUser(un); }; })(u.username));
+    row.appendChild(display);
+    row.appendChild(editForm);
+    el.appendChild(row);
+  });
+}
+
+async function addUser() {
+  var n = document.getElementById('nu_name').value.trim();
+  var u = document.getElementById('nu_user').value.trim();
+  var p = document.getElementById('nu_pass').value.trim();
+  if (!n||!u||!p) { alert('נא למלא הכל'); return; }
+  if ((DB.users||[]).find(function(x){ return x.username===u; })) { alert('שם משתמש קיים'); return; }
+  var msg = document.getElementById('addUserMsg');
+  msg.textContent = 'שומר...';
+  try {
+    var em = document.getElementById('nu_email').value.trim();
+    var role = document.getElementById('nu_role').value || 'manager';
+    DB.users.push({name:n, username:u, password:p, role:role, email:em});
+    await saveDB();
+    document.getElementById('nu_name').value='';
+    document.getElementById('nu_user').value='';
+    document.getElementById('nu_pass').value='';
+    document.getElementById('nu_email').value='';
+    document.getElementById('nu_role').value='manager';
+    msg.textContent = '✅ נוסף! (' + (role==='admin'?'הרשאת אדמין':'מנהל') + ')';
+    setTimeout(function(){ msg.textContent=''; }, 2500);
+    renderUsers();
+  } catch(e) { msg.textContent = '❌ '+e.message; }
+}
+
+async function delUser(username) {
+  if (!confirm('למחוק?')) return;
+  DB.users = DB.users.filter(function(u){ return u.username !== username; });
+  await saveDB();
+  renderUsers();
+}
+
+function deleteRec(sheet, idx) {
+  if (!isAdmin()) return;
+  var rec = DB[sheet][idx];
+  if (!rec) return;
+  var name = rec.נ || rec.מ || 'משימה זו';
+  var recId = rec._id;
+  if (!confirm('למחוק את "' + name + '"?')) return;
+  DB[sheet].splice(idx, 1);
+  initFilters();
+  if(sheet==='malm') r1(); else r2();
+  // מחיקה אטומית — טוען טרי, מוחק לפי _id, שומר בחזרה
+  (async()=>{
+    const el=document.getElementById('savingMsg');
+    el.style.display='block'; el.style.background='#1a1a2e'; el.textContent='⏳ שומר...';
+    try{
+      const fresh = await fetch('https://malm-focus-default-rtdb.firebaseio.com/db/'+sheet+'.json?t='+Date.now());
+      let arr = await fresh.json() || [];
+      arr = recId ? arr.filter(function(x){ return x._id!==recId; }) : arr;
+      const r=await fetch('https://malm-focus-default-rtdb.firebaseio.com/db/'+sheet+'.json',{
+        method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(arr)
+      });
+      if(!r.ok)throw new Error('Firebase error: '+r.status);
+      DB[sheet] = arr;
+      el.textContent='✓ נמחק!';
+      setTimeout(()=>{el.style.display='none';},1500);
+    }catch(e){
+      el.textContent='❌ שגיאה: '+e.message; el.style.background='#c62828';
+      setTimeout(()=>{el.style.display='none';el.style.background='#1a1a2e';},3000);
+    }
+  })();
+}
+
+function switchTab(i) {
+  currentTab = i;
+  document.querySelectorAll('#mainTabs .tab').forEach(function(t){ t.classList.toggle('active', t.dataset.tab==i); });
+  ['pane0','pane1','pane2','pane3','pane4'].forEach(function(id){ var el=document.getElementById(id); if(el)el.classList.remove('active'); });
+  var target=document.getElementById('pane'+i); if(target)target.classList.add('active');
+  var ba=document.getElementById('btnAdd');
+  if(ba){ ba.style.display=(i===2||i===3||i===4)?'none':'block'; if(i===0)ba.textContent='+ משימה חדשה (מלמ)'; if(i===1)ba.textContent='+ משימה חדשה (רבקה)'; }
+  if(i===2)renderUsers();
+  if(i===3){loadDevTasks().then(function(){renderDevTable();});}
+  if(i===4)loadSanityTab();
+}
+
+// Auth events
+document.addEventListener('DOMContentLoaded', function() {
+  if (typeof emailjs !== 'undefined') emailjs.init('KSlu6K4gQJlBuxuLg');
+
+// Register Service Worker
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/work-arrangement/malm/sw.js');
+}
+  document.getElementById('lgBtn').addEventListener('click', lgLogin);
+  document.getElementById('lgPass').addEventListener('keydown', function(e){ if(e.key==='Enter') lgLogin(); });
+  document.getElementById('lgUser').addEventListener('keydown', function(e){ if(e.key==='Enter') document.getElementById('lgPass').focus(); });
+  document.getElementById('btnOut').addEventListener('click', lgLogout);
+  document.getElementById('mainTabs').style.display='none';
+});
+
+// PWA Install
+let deferredPrompt = null;
+window.addEventListener('beforeinstallprompt', function(e) {
+  e.preventDefault();
+  deferredPrompt = e;
+});
+
+function checkCritical(sel) {
+  if (sel.value === '0') {
+    sel.style.color = '#D40511';
+    sel.style.fontWeight = 'bold';
+  } else {
+    sel.style.color = '';
+    sel.style.fontWeight = '';
+  }
+}
+
+function triggerInstall() {
+  if (deferredPrompt) {
+    deferredPrompt.prompt();
+    deferredPrompt.userChoice.then(function(result) {
+      var btn = document.getElementById('lgInstallBtn');
+      if (result.outcome === 'accepted' && btn) btn.style.display = 'none';
+      deferredPrompt = null;
+    });
+  } else {
+    // Download a .url shortcut file
+    var content = '<html><head><meta charset="UTF-8"><meta http-equiv="refresh" content="0;url=https://matanaor1987-lgtm.github.io/work-arrangement/malm/index.html"></head><body></body></html>';
+    var blob = new Blob([content], {type: 'text/html'});
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'בקשות מלמ.html';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(a.href);
+  }
+}
+
+function sortTable2(col) {
+  if (sortCol2 === col) { sortDir2 *= -1; } else { sortCol2 = col; sortDir2 = 1; }
+  // Update header classes
+  document.querySelectorAll('[id^="th2-"]').forEach(el => { el.classList.remove('asc','desc'); });
+  const th = document.getElementById('th2-' + col);
+  if (th) th.classList.add(sortDir2 === 1 ? 'asc' : 'desc');
+  r2();
+}
+
+function sortTable1(col) {
+  if (sortCol1 === col) { sortDir1 *= -1; } else { sortCol1 = col; sortDir1 = 1; }
+  document.querySelectorAll('[id^="th1-"]').forEach(el => { el.classList.remove('asc','desc'); });
+  const th = document.getElementById('th1-' + col);
+  if (th) th.classList.add(sortDir1 === 1 ? 'asc' : 'desc');
+  r1();
+}
+
+function restoreDB(input) {
+  const file = input.files[0];
+  if (!file) return;
+  if (!confirm('האם לשחזר את המערכת מהקובץ ' + file.name + '?\nפעולה זו תחליף את כל הנתונים הקיימים.')) {
+    input.value = '';
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = async function(e) {
+    try {
+      const parsed = JSON.parse(e.target.result);
+      // Support both old format (plain db) and new format {db, devTasks}
+      const dbData = parsed.db || parsed;
+      const devTasksData = parsed.devTasks || null;
+      const r = await fetch('https://malm-focus-default-rtdb.firebaseio.com/db.json', {
+        method: 'PUT',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(dbData)
+      });
+      if (!r.ok) { alert('❌ שגיאה בשחזור'); input.value=''; return; }
+      DB = dbData;
+      await ensureIds();
+      if (devTasksData) {
+        await fetch('https://malm-focus-default-rtdb.firebaseio.com/devTasks.json', {
+          method: 'PUT',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify(devTasksData)
+        });
+      }
+      initFilters(); r1(); r2();
+      alert('✅ שוחזר בהצלחה!');
+    } catch(err) {
+      alert('❌ קובץ לא תקין: ' + err.message);
+    }
+    input.value = '';
+  };
+  reader.readAsText(file);
+}
+
+async function backupDB() {
+  const now = new Date();
+  const date = now.toLocaleDateString('he-IL').replace(/\//g,'-');
+  const time = now.toLocaleTimeString('he-IL',{hour:'2-digit',minute:'2-digit'}).replace(':','-');
+  const filename = 'backup_malm_' + date + '_' + time + '.json';
+  let devTasks = {};
+  try {
+    const r = await fetch('https://malm-focus-default-rtdb.firebaseio.com/devTasks.json?t='+Date.now());
+    devTasks = (await r.json()) || {};
+  } catch(e) {}
+  const fullBackup = {db: DB, devTasks: devTasks};
+  const content = JSON.stringify(fullBackup, null, 2);
+  const blob = new Blob([content], {type: 'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(a.href);
+}
+
+async function refreshDB(){
+  const btn = document.querySelector('[onclick="refreshDB()"]');
+  if(btn){ btn.textContent='⏳'; btn.disabled=true; }
+  try {
+    const raw=await fetch('https://malm-focus-default-rtdb.firebaseio.com/db.json?t='+Date.now());
+    DB=await raw.json();
+    initFilters(); r1(); r2();
+    if(btn){ btn.textContent='✅'; setTimeout(()=>{ btn.textContent='🔄'; btn.disabled=false; },1500); }
+  } catch(e) {
+    if(btn){ btn.textContent='❌'; setTimeout(()=>{ btn.textContent='🔄'; btn.disabled=false; },2000); }
+  }
+}
+
+loadDB();
+
+// Reliable sort key for chat messages: prefer numeric ts (added going forward),
+// fall back to parsing the he-IL display string "D.M.YYYY HH:MM" for older messages
+// that were saved before ts existed (string localeCompare on that format is unreliable,
+// e.g. "10.1.2026" sorts before "2.1.2026").
+function msgSortKey(m){
+  if(typeof m.ts==='number') return m.ts;
+  var s=m.time||'';
+  var parts=s.split(' ');
+  var d=(parts[0]||'').split('.');
+  var t=(parts[1]||'0:0').split(':');
+  if(d.length<3) return 0;
+  return new Date(Number(d[2]),Number(d[1])-1,Number(d[0]),Number(t[0])||0,Number(t[1])||0).getTime();
+}
+
+function chatPreviewHtml(r){
+  const chat=r.chat||{};
+  const malm=chat.malm||[];
+  const dhl=chat.dhl||[];
+  if(!malm.length&&!dhl.length) return '<span class="no-chat">—</span>';
+  const lastM=malm[malm.length-1];
+  const lastD=dhl[dhl.length-1];
+  const all=[
+    ...malm.map(m=>({...m,side:'malm'})),
+    ...dhl.map(m=>({...m,side:'dhl'}))
+  ].sort((a,b)=>msgSortKey(a)-msgSortKey(b));
+  const tooltip=all.map(m=>`
+    <div class="tt-msg ${m.side}">
+      <div class="tt-sender ${m.side}">${m.sender}</div>
+      <div>${m.text}</div>
+      <div class="tt-time">${m.time}</div>
+    </div>`).join('');
+  const preview=[
+    lastM?`<div><span class="ml">${lastM.sender}</span> <span style="color:#888">${lastM.time.split(' ')[0]}</span>: ${lastM.text.slice(0,40)}${lastM.text.length>40?'...':''}</div>`:'',
+    lastD?`<div><span class="dh">${lastD.sender}</span> <span style="color:#888">${lastD.time.split(' ')[0]}</span>: ${lastD.text.slice(0,40)}${lastD.text.length>40?'...':''}</div>`:''
+  ].filter(Boolean).join('');
+  return `<div class="chat-preview">
+    <div class="chat-last">${preview}</div>
+    <div class="chat-tooltip">${tooltip||'<span class="no-chat">אין הערות</span>'}</div>
+  </div>`;
+}
+
+// File upload
+let pendingFiles=[];
+
+function initDropZone(){
+  const dz=document.getElementById('dropZone');
+  if(!dz)return;
+  dz.addEventListener('dragover',e=>{e.preventDefault();dz.classList.add('drag-over')});
+  dz.addEventListener('dragleave',()=>dz.classList.remove('drag-over'));
+  dz.addEventListener('drop',e=>{
+    e.preventDefault();
+    dz.classList.remove('drag-over');
+    handleFiles(e.dataTransfer.files);
+  });
+}
+
+async function handleFiles(files){
+  const status=document.getElementById('uploadStatus');
+  for(const file of files){
+    status.innerHTML=`<div class="uploading">⏳ מעלה: ${file.name}...</div>`;
+    try{
+      const url=await uploadFile(file);
+      pendingFiles.push({name:file.name,url,size:formatSize(file.size)});
+      renderAttachments();
+      status.innerHTML='';
+    }catch(e){
+      status.innerHTML=`<div class="uploading" style="color:#c62828">❌ שגיאה: ${e.message}</div>`;
+      setTimeout(()=>status.innerHTML='',3000);
+    }
+  }
+}
+
+function formatSize(bytes){
+  if(bytes<1024)return bytes+'B';
+  if(bytes<1024*1024)return Math.round(bytes/1024)+'KB';
+  return (bytes/1024/1024).toFixed(1)+'MB';
+}
+
+async function uploadFile(file){
+  const path='attachments/'+Date.now()+'_'+file.name.replace(/[^a-zA-Z0-9._\-\u0590-\u05ff]/g,'_');
+  const content=await new Promise((res,rej)=>{
+    const r=new FileReader();
+    r.onload=()=>res(r.result.split(',')[1]);
+    r.onerror=rej;
+    r.readAsDataURL(file);
+  });
+  const resp=await fetch(`https://api.github.com/repos/${OWNER}/${REPO}/contents/${path}`,{
+    method:'PUT',
+    headers:{Authorization:'token '+TOKEN,'Content-Type':'application/json',Accept:'application/vnd.github.v3+json'},
+    body:JSON.stringify({message:'Upload attachment: '+file.name,content})
+  });
+  if(!resp.ok){const e=await resp.json();throw new Error(e.message||resp.status);}
+  return `https://github.com/${OWNER}/${REPO}/raw/main/${path}`;
+}
+
+function renderAttachments(){
+  const el=document.getElementById('attachments');
+  if(!pendingFiles.length){el.innerHTML='';return;}
+  el.innerHTML=pendingFiles.map((f,i)=>`
+    <div class="att-item">
+      📎 <a href="${f.url}" target="_blank">${f.name}</a>
+      <span class="att-size">${f.size}</span>
+      <span style="cursor:pointer;color:#999" onclick="pendingFiles.splice(${i},1);renderAttachments()">✕</span>
+    </div>`).join('');
+}
+
+let chatTab='malm';
+
+function switchChatTab(tab){
+  chatTab=tab;
+  document.querySelectorAll('.chat-tab').forEach((t,i)=>t.classList.toggle('active',(tab==='malm'&&i===0)||(tab==='dhl'&&i===1)));
+  renderChat();
+}
+
+function getEditRec(){
+  if(editIdx===-1)return null;
+  if(editRecId){
+    const found = DB[editSheet].find(function(x){ return x._id===editRecId; });
+    if(found) return found;
+  }
+  return DB[editSheet][editIdx]||null;
+}
+
+function renderChat(){
+  if(editIdx===-1)return;
+  const rec=getEditRec();
+  if(!rec)return;
+  const chat=rec.chat||{};
+  const all=[
+    ...(chat.malm||[]).map(m=>({...m,side:'malm'})),
+    ...(chat.dhl||[]).map(m=>({...m,side:'dhl'}))
+  ].sort((a,b)=>msgSortKey(a)-msgSortKey(b));
+  const el=document.getElementById('chatMessages');
+  if(!all.length){el.innerHTML='<div class="no-msgs">אין הערות עדיין</div>';return}
+  el.innerHTML=all.map(m=>`
+    <div class="msg msg-${m.side==='malm'?'malm':'dhl'}">
+      <div class="msg-sender">${m.sender}</div>
+      <div>${m.text}</div>
+      ${(m.files||[]).map(f=>`<div style="margin-top:4px"><a href="${f.url}" target="_blank" style="font-size:11px;color:#1565c0">📎 ${f.name} <span style="color:#999">${f.size}</span></a></div>`).join('')}
+      <div class="msg-time">${m.time}</div>
+    </div>`).join('');
+  el.scrollTop=el.scrollHeight;
+}
+
+function sendMsg(){
+  const text=document.getElementById('chatInput').value.trim();
+  const sender=CU?CU.name:'';
+  if(!text&&!pendingFiles.length)return;
+  if(editIdx===-1)return;
+  const rec=getEditRec();
+  if(!rec)return;
+  if(!rec.chat)rec.chat={malm:[],dhl:[]};
+  const side=isAdmin()?'malm':'dhl';
+  if(!rec.chat[side])rec.chat[side]=[];
+  const now=new Date();
+  const time=now.toLocaleDateString('he-IL')+' '+now.toLocaleTimeString('he-IL',{hour:'2-digit',minute:'2-digit'});
+  const files=[...pendingFiles];
+  rec.chat[side].push({sender,side,text:text||'📎 צרף קבצים',time,ts:now.getTime(),files});
+  chatTab=side;
+  // Email notification
+  if (isAdmin() && editSheet==='rivka') {
+    // notify the manager who opened this request
+    var ownerName = rec.מב || '';
+    var ownerUser = (DB.users||[]).find(function(u){ return u.name===ownerName || u.username===ownerName; });
+    if (ownerUser && ownerUser.email) {
+      sendEmailNotification(ownerUser.email, ownerUser.name, 'הודעה חדשה בבקשה שלך', 'התקבלה הודעה חדשה: ' + (text||''), rec.כ||rec.נ||'', rec.ס||'');
+    }
+  }
+  document.getElementById('chatInput').value='';
+  pendingFiles=[];
+  renderAttachments();
+  renderChat();
+  if(editSheet==='malm')r1();else r2();
+  saveRecord(editSheet, editIdx, rec);
+}
+
+document.addEventListener('keydown',e=>{
+  if(e.key==='Enter'&&!e.shiftKey&&document.activeElement.id==='chatInput'){
+    e.preventDefault();sendMsg();
+  }
+});
+
+function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+var DEV_TASKS=[{"id": "13770", "dev": "קארו", "status": "", "desc": "שינוי בחירת יבואן ממשק DCC על פי האפיון", "notes": "מאושר 5 שעות. DH תכ' 82,83,89,54", "comp": "DH", "ver": "5.1557", "iface": "DCC", "tester": "", "tNotes": "", "tStatus": ""}, {"id": "14281", "dev": "קארו", "status": "", "desc": "ממשק 116-3 DCC עדכון קוד הנחה במשלוחים מסחריים ערך נמוך", "notes": "אושרו 27 שעות. מייל לנועה 26/5/26", "comp": "DH", "ver": "5.1555", "iface": "DCC", "tester": "", "tNotes": "", "tStatus": ""}, {"id": "12311", "dev": "קארו", "status": "", "desc": "ממשק GCCP חלק א - ממשק יוצא במבנה JSON", "notes": "אושרה הצעת מחיר 150 שע'. FF תכ' 1646,1647", "comp": "TB|FF", "ver": "5.1523", "iface": "GCCP", "tester": "", "tNotes": "", "tStatus": ""}, {"id": "13557", "dev": "קארו", "status": "", "desc": "GCCP - שינוי AppCd ל-FOCUS-IL, AppNm ל-FOCUS", "notes": "FF תכ' 1642", "comp": "FF", "ver": "5.1523", "iface": "GCCP", "tester": "", "tNotes": "", "tStatus": ""}, {"id": "13606", "dev": "קארו", "status": "", "desc": "GCCP - שינוי שדות שורה 17+25 לערך FOCUS", "notes": "FF תכ' 1642", "comp": "FF", "ver": "5.1525", "iface": "GCCP", "tester": "", "tNotes": "", "tStatus": ""}, {"id": "13712", "dev": "קארו", "status": "", "desc": "GCCP 380 - ריבוי אנשי קשר: מייל ראשון EML, שאר CC", "notes": "FF תכ' 1577", "comp": "FF", "ver": "5.1525", "iface": "GCCP", "tester": "", "tNotes": "", "tStatus": ""}, {"id": "13741", "dev": "קארו", "status": "", "desc": "GCCP 380 - תיקון שגיאת סינטקס (נקודה במקום נקודתיים)", "notes": "FF תכ' 1578", "comp": "FF", "ver": "5.1525", "iface": "GCCP", "tester": "", "tNotes": "", "tStatus": ""}, {"id": "13754", "dev": "קארו", "status": "", "desc": "GCCP 280 - שינויים במיפוי, שדה B2C/B2B", "notes": "FF תכ' 1578", "comp": "FF", "ver": "5.1530", "iface": "GCCP", "tester": "", "tNotes": "", "tStatus": ""}, {"id": "13816", "dev": "קארו", "status": "", "desc": "GCCP/GCCR - אירועים לא נתפסים, בדיקת תאריך ריצה ב-SWC", "notes": "FF תכ' 1575,1578", "comp": "FF", "ver": "5.1531", "iface": "GCCP", "tester": "", "tNotes": "", "tStatus": ""}, {"id": "14482", "dev": "קארו", "status": "", "desc": "GCCP 380 - שינוי שדה מאובייקט למערך, תיקון אלמנט ריק", "notes": "לחיוב 2 שעות. FF תכ' 1581", "comp": "FF", "ver": "5.1555", "iface": "GCCP", "tester": "", "tNotes": "", "tStatus": ""}, {"id": "13545", "dev": "קארו", "status": "", "desc": "GCCR 280 - שדות S001 D002 הוספת גרשיים", "notes": "FF תכ' 1639", "comp": "FF", "ver": "5.1524", "iface": "GCCR", "tester": "", "tNotes": "", "tStatus": ""}, {"id": "13617", "dev": "קארו", "status": "", "desc": "GCCR - גרשיים מחוץ לסוגריים + חסרים בשדות string", "notes": "FF תכ' 1639", "comp": "FF", "ver": "5.1525", "iface": "GCCR", "tester": "", "tNotes": "", "tStatus": ""}, {"id": "13629", "dev": "קארו", "status": "", "desc": "GCCR - הוספת שדה רץ שורה באירוע 678", "notes": "FF תכ' 1639", "comp": "FF", "ver": "5.1525", "iface": "GCCR", "tester": "", "tNotes": "", "tStatus": ""}, {"id": "14358", "dev": "קארו", "status": "", "desc": "GCCR 280 - גרשיים מיותרים בשדות נומריים DR01+SR01", "notes": "FF תכ' 1571", "comp": "FF", "ver": "5.1554", "iface": "GCCR", "tester": "", "tNotes": "", "tStatus": ""}, {"id": "14377", "dev": "קארו", "status": "", "desc": "GCCR - ריבוי שורות סיווג + בעיה בבסיס מס לחשבונית", "notes": "FF תכ' 1575", "comp": "FF", "ver": "5.1554", "iface": "GCCR", "tester": "", "tNotes": "", "tStatus": ""}, {"id": "14627", "dev": "קארו", "status": "", "desc": "GCCR - CUST SP מציג מיילים ריקים, טלפונים לא כ-string", "notes": "FF תכ' 1582", "comp": "FF", "ver": "5.1559", "iface": "GCCR", "tester": "", "tNotes": "", "tStatus": ""}, {"id": "14732", "dev": "קארו", "status": "", "desc": "GCCR 280 - שדות L009 L021 ללא גרשיים בהצהרה ארוכה", "notes": "", "comp": "FF", "ver": "5.1559", "iface": "GCCR", "tester": "", "tNotes": "", "tStatus": ""}, {"id": "11974", "dev": "אשכנזי", "status": "", "desc": "ביטול בדיקה - פתח שלב במקום לבטל", "notes": "4/8/25 מוחזר לפיתוח", "comp": "NE", "ver": "5.1525", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"id": "13531", "dev": "זוקי", "status": "", "desc": "בכניסה לרצף תחנות בלדרות F8 - ניירת נעלמת", "notes": "", "comp": "NF", "ver": "5.1523", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"id": "13532", "dev": "זוקי", "status": "", "desc": "מסך בחירת פלט תדפיס הצהרה - לא נשלח סוג/מספר תיק", "notes": "", "comp": "OP", "ver": "5.1525", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"id": "13533", "dev": "זוקי", "status": "", "desc": "לאחר שליחת תדפיס הצהרה - לא נרשם אירוע משלוח", "notes": "", "comp": "OP", "ver": "5.1525", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"id": "13548", "dev": "ברסקי", "status": "", "desc": "בדיקת פרוצדורה p_get_status_by_delay_file ב-SORT MACHINE", "notes": "", "comp": "Nothing", "ver": "5.1523", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"id": "13595", "dev": "אשכנזי", "status": "", "desc": "משלוחים בדרך - שגיאה בשידור מפוקוס ומהכס", "notes": "", "comp": "NE", "ver": "5.1524", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"id": "13611", "dev": "גליק", "status": "", "desc": "תעודת עיכוב - שגיאה על עמיל שאינו במאגר, הפוך להזהרה", "notes": "", "comp": "MA", "ver": "5.1525", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"id": "13648", "dev": "זוקי", "status": "", "desc": "הוספת צרופה בדרישות מסמך - התראה גודל 0 שלא ניתן לסגור", "notes": "", "comp": "NE", "ver": "5.1530", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"id": "13700", "dev": "רוזובסקי", "status": "", "desc": "ממשק PDF חשבוניות מס לתקיה - יבוא אישי בלבד", "notes": "03/2/26 אושרה הצעת מחיר. יעבוד מול SWC", "comp": "FF", "ver": "5.1547", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"id": "13947", "dev": "ברסקי", "status": "", "desc": "סרגל חישוב 19 קריטריון 11 - מחיר פיקס כפול ימי אחסנה", "notes": "לחיוב 18 שע' לפי 270. מייל 27/1/26", "comp": "AP", "ver": "5.1537", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"id": "14044", "dev": "קבטני", "status": "", "desc": "לא ניתן לעדכן אישורים תוקף מעל 2030 - input century ב-TOOLS", "notes": "", "comp": "TD", "ver": "5.1539", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"id": "14075", "dev": "קארו", "status": "", "desc": "כניסה לסוג אישור - תחום לפי גורם מאשר, תכנית נפרדת", "notes": "TG + NF תכ' 857", "comp": "TG|NF", "ver": "5.1541", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"id": "14314", "dev": "קבטני", "status": "", "desc": "שטמ בלדר כניסה ל-H - תוקעת מערכת, H נשאר ברירת מחדל", "notes": "הסטוריה חצי שנה אחורה", "comp": "NF", "ver": "5.1554", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"id": "14520", "dev": "קארו", "status": "", "desc": "קבלת ייפוי כוח מהמכס - מסר PoaUpdateForCustomsAgent", "notes": "נבדק ואושר. NE תכ' 83", "comp": "NE", "ver": "5.1555", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"id": "13261", "dev": "", "status": "", "desc": "בדיקות פיזיות - כאשר מגיע מסר סגירת בדיקה בבלדרות לסגור גם בדיקה במסוף\nבפתיחת בדיקה פיזית במסוף לבצע בדיקה האם בדיקה זו כבר נסגרה בבלדות , אם כן לפתוח אותה עם תאריך סגירה", "notes": "", "comp": "NE", "ver": "5.1524", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"id": "13313", "dev": "", "status": "", "desc": "בלדרות יבוא:\nערך בשקל לא תמיד מתעדכן\nלבטל חישוב בקליטת שט\"מ ולעדכן את הערך ממשוב מסר הכנה\nלבצע עדכון כל פעם כשמתקבל משוב בתנאי שערך במשוב לא ריק", "notes": "", "comp": "DH | NE | FF", "ver": "5.1523", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"id": "13438", "dev": "", "status": "", "desc": "שמירת תדפיסי הצהרת יבוא בתיקיה:\n1. שליפת תדפיס הצהרה לפי תנאי SWC\n2. בניית אצווה לשמירת תדפיס בתיקיה\nלהוסיף SWC לממשק 22 1=1 (סיסטם)", "notes": "", "comp": "EC", "ver": "5.1524", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"id": "14166", "dev": "", "status": "", "desc": "בפתיחת שלב 219 דרישות ממכס להכניס מלל של דרישה להערה של שלב", "notes": "", "comp": "NE", "ver": "5.1554", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"id": "14077", "dev": "", "status": "", "desc": "שידור יציאה מהמסוף -\nיש לשדר סוג יציאה בהתאם לסטטוס תעודת העיכוב (התרה/אישור סב\"ן/אישור שטעון וכו') ולא לפי אירועים.", "notes": "", "comp": "NE", "ver": "5.1541", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"id": "10666", "dev": "", "status": "", "desc": "לאחר התקנת גרסה, בטבלת סיסטם 2139- טבלת סטטוסים (תפריט שער עולמי  - טבלאות - סטטוסים הצהרת יבוא), קוד סטטוס 98- טיוטה שגויה (בלבד),  בעמודת מצב, הערך מתעדכן ל\" הוגש\" כאשר הוא צריך להיות \"טיוטה\" - משבש את התהליך בזמן השידורים במקרה של טיוטה שגויה.", "notes": "", "comp": "Nothing", "ver": "5.1536", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"id": "13779", "dev": "", "status": "", "desc": "בלדרות יבוא- תיקון הצהרה.\nבפתיחת תיקון הצהרה השדות לא מועתקים בזהה להצהרה הקצרה ששודרה ולכן לא עובר אוטומטית במכס ומצריך אישור של מעריך.", "notes": "", "comp": "NE", "ver": "5.1536", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"id": "14542", "dev": "", "status": "", "desc": "חשבונית עמילות טיוטה (סוג 11) שמוגדרת בשפה אנגלית בבנייה של חשבונית הטיוטה תיאור סעיפי החיוב מוצגים באנגלית.\nבביצוע רענון ידני לטיוטה (כפתור רענון בכותרת החשבונית) תיאור סעיפי החיוב מתעדכן לעברית.\nמצורפת חשבונית לדוגמא + צילום מסך.", "notes": "", "comp": "HH", "ver": "5.1556", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"id": "13183", "dev": "", "status": "", "desc": "להוסיף לטבלת פרמטרים של אצווה 185 תאריך ומעדכן אחרון", "notes": "", "comp": "BA", "ver": "5.1523", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"id": "13318", "dev": "", "status": "", "desc": "SWC לשידור צרופות עמילות\nשידור צרופה למכס -\nלתת אזהרה במידה וגודל הצרופה מעל 10MB", "notes": "", "comp": "NE", "ver": "5.1537", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"id": "13359", "dev": "", "status": "", "desc": "להחליף שימוש בקוד מדינה נומרי לקוד ISO", "notes": "", "comp": "NF", "ver": "5.1525", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"id": "13361", "dev": "", "status": "", "desc": "מעבר לשימוש בקוד ISO של מטבע -\n1. רשימת חשבוניות ספק, כותרת חשבוניות ספק, שרורות חשבוניות ספק\n2. הורדת מטבע נומרי מהכותרות והוספה ל-tooltip על קוד ISO (בדומה לקיים בשט\"מ בלדרות יבוא)\n3. שינוי תכנית בחירת מטבע שמחזירה את קוד ISO לשדה החדש\n4. שינוי של ודא תקינות\n5. שינוי הפניה לתכנית שליפת שערי מטבע\n6. שימוש בפונקציה של דניאל בהקלדת מטבע (דוגמה מכותרת שט\"מ בלדר יבוא)\n7. בניית טריגר להוספה בלבד להשלמת קוד נומרי מ-ISO וההיפך בתנאי שקיים אחד ולא קיים השני.\n8. בניית סקריפט לעדכון רשומות ישנות", "notes": "", "comp": "HH", "ver": "5.1523", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"id": "13393", "dev": "", "status": "", "desc": "בטבלת שערי מטבע (חשבונות - טבלאות - מטבעות) -\nלבצע מנגנון הזנת מטבע כמו בכל מקום אחר.\nלהוריד את השדה הנומרי מהתצוגה ולהשאיר רק קוד ISO.\nלהציג את הנומרי ב-tooltip.", "notes": "", "comp": "NF | RD | HG", "ver": "5.1523", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"id": "13402", "dev": "", "status": "", "desc": "ניראות מסך טיסות בלדרות יבוא- מצורף קובץ עם צילום מסך\nבנוסף, במסך כותרת שטר המטען המסגרת של שדה קניה ברובריקה של המסים לא סגורה.", "notes": "", "comp": "NF", "ver": "5.1524", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"id": "13453", "dev": "", "status": "", "desc": "מעבר לשימוש בקוד ISO של מטבע -\n1. רשימת תשלום לספק, כותרת תשלום לספק, שורות תשלום לספק\n2. הורדת מטבע נומרי מהכותרות והוספה ל-tooltip על קוד ISO (בדומה לקיים בשט\"מ בלדרות יבוא)\n3. שינוי תכנית בחירת מטבע שמחזירה את קוד ISO לשדה החדש\n4. שינוי של ודא תקינות\n5. שינוי הפניה לתכנית שליפת שערי מטבע\n6. שימוש בפונקציה של דניאל בהקלדת מטבע (דוגמה מכותרת שט\"מ בלדר יבוא)\n7. בניית טריגר להוספה בלבד להשלמת קוד נומרי מ-ISO וההיפך בתנאי שקיים אחד ולא קיים השני.\n8. בניית סקריפט לעדכון רשומות ישנות", "notes": "", "comp": "HH | HG", "ver": "5.1531", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"id": "13454", "dev": "", "status": "", "desc": "מעבר לשימוש בקוד ISO של מטבע -\n1. רשימת תשלום לתיק, כותרת תשלום לתיק, שורות תשלום לתיק\n2. הורדת מטבע נומרי מהכותרות והוספה ל-tooltip על קוד ISO (בדומה לקיים בשט\"מ בלדרות יבוא)\n3. שינוי תכנית בחירת מטבע שמחזירה את קוד ISO לשדה החדש\n4. שינוי של ודא תקינות\n5. שינוי הפניה לתכנית שליפת שערי מטבע\n6. שימוש בפונקציה של דניאל בהקלדת מטבע (דוגמה מכותרת שט\"מ בלדר יבוא)\n7. בניית טריגר להוספה בלבד להשלמת קוד נומרי מ-ISO וההיפך בתנאי שקיים אחד ולא קיים השני.\n8. בניית סקריפט לעדכון רשומות ישנות", "notes": "", "comp": "HT | HH", "ver": "5.1531", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"id": "13466", "dev": "", "status": "", "desc": "תיקים בתחנות:\nלא ניתן לפתוח תחנה מהקופסה.\nמתקבלת שגיאת ORA - מצורף צילום מסך", "notes": "", "comp": "EC", "ver": "5.1524", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"id": "13473", "dev": "", "status": "", "desc": "בטבלת שערי מטבעות בהזנה ידנית לא מופיע קוד ISO של מטבע", "notes": "", "comp": "RD", "ver": "5.1523", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"id": "13519", "dev": "", "status": "", "desc": "בלדרות יבוא - כותרת שטר מטען:\nבעמידה על שדה מספר הצהרה נפתח טבלת לקוחות.", "notes": "", "comp": "NF", "ver": "5.1524", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"id": "13614", "dev": "", "status": "", "desc": "מעבר לשימוש בקוד ISO של מטבע -\n1. רשימת קבלות, כותרת קבלה, שורות קבלה\n2. הורדת מטבע נומרי מהכותרות והוספה ל-tooltip על קוד ISO (בדומה לקיים בשט\"מ בלדרות יבוא)\n3. שינוי תכנית בחירת מטבע שמחזירה את קוד ISO לשדה החדש\n4. שינוי של ודא תקינות\n5. שינוי הפניה לתכנית שליפת שערי מטבע\n6. שימוש בפונקציה של דניאל בהקלדת מטבע (דוגמה מכותרת שט\"מ בלדר יבוא)\n7. בניית טריגר להוספה בלבד להשלמת קוד נומרי מ-ISO וההיפך בתנאי שקיים אחד ולא קיים השני.\n8. בניית סקריפט לעדכון רשומות ישנות", "notes": "", "comp": "HG", "ver": "5.1525", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"id": "13615", "dev": "", "status": "", "desc": "מעבר לשימוש בקוד ISO של מטבע -\n1. רשימת הפקדות, כותרת הפקדה\n2. הורדת מטבע נומרי מהכותרות והוספה ל-tooltip על קוד ISO (בדומה לקיים בשט\"מ בלדרות יבוא)\n3. שינוי תכנית בחירת מטבע שמחזירה את קוד ISO לשדה החדש\n4. שינוי של ודא תקינות\n5. שינוי הפניה לתכנית שליפת שערי מטבע\n6. שימוש בפונקציה של דניאל בהקלדת מטבע (דוגמה מכותרת שט\"מ בלדר יבוא)\n7. בניית טריגר להוספה בלבד להשלמת קוד נומרי מ-ISO וההיפך בתנאי שקיים אחד ולא קיים השני.\n8. בניית סקריפט לעדכון רשומות ישנות", "notes": "", "comp": "HG", "ver": "5.1525", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"id": "13616", "dev": "", "status": "", "desc": "מעבר לשימוש בקוד ISO של מטבע -\n1. כותרת תנועות יומן\n2. הורדת מטבע נומרי מהכותרות והוספה ל-tooltip על קוד ISO (בדומה לקיים בשט\"מ בלדרות יבוא)\n3. שינוי תכנית בחירת מטבע שמחזירה את קוד ISO לשדה החדש\n4. שינוי של ודא תקינות\n5. שינוי הפניה לתכנית שליפת שערי מטבע\n6. שימוש בפונקציה של דניאל בהקלדת מטבע (דוגמה מכותרת שט\"מ בלדר יבוא)\n7. בניית טריגר להוספה בלבד להשלמת קוד נומרי מ-ISO וההיפך בתנאי שקיים אחד ולא קיים השני.\n8. בניית סקריפט לעדכון רשומות ישנות", "notes": "", "comp": "HG", "ver": "5.1525", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"id": "13623", "dev": "", "status": "", "desc": "במסך רשימת בעלי הרשאה ממסך הרשאות - להציג את כל המשתמשים שיש להם את ההרשאה ומה המקור -1. הרשאה בודדת, 2. שיוך לרשימת קבוצות\nבמסך רשימת משתמשים לפי מספר הרשאה לתת כניסה למסך הקודם עם תחום של המשתמש.\nלאפשר מסך קודם כמסך ריק.", "notes": "", "comp": "TD", "ver": "5.153", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"id": "13624", "dev": "", "status": "", "desc": "להוסיף הרשאת חברה \"שליפת הקצאה לכל סכום\"\nכאשר ההרשאה פעילה יישלף מספר הקצאה כאשר מע\"מ גדול מ-0 ולקוח ישראלי", "notes": "", "comp": "HH", "ver": "5.153", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"id": "13698", "dev": "", "status": "", "desc": "שינוי מנגנון של כתיבת שלבים לפי מפתח יחודי\n1. סוג תיק\n2. מספר תיק\n3. קוד שלב\n4. אסמכתא", "notes": "", "comp": "EC", "ver": "5.1539", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"id": "13755", "dev": "", "status": "", "desc": "בדיקת שפיות לגרסה 5.1526:\nשדה קוד מדינה בכל המסכים הפך לשדה חובה ומתקבלת שגיאה ולא ניתן להמשיך ללא עדכון השדה (בבדיקה ב 9.4 השדה אינו חובה) - נוצר בעקבות פיתוח משימה 13359", "notes": "", "comp": "NF", "ver": "5.1525", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"id": "13762", "dev": "", "status": "", "desc": "בעיה בשיחות CRM - בבחירת כל סוגי התיקים מתקבלת שגיאת אורקל", "notes": "", "comp": "NF", "ver": "5.1531", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"id": "13778", "dev": "", "status": "", "desc": "במסך דרישות מסמך בשדה מזהה מכס מופיעים כוכביות", "notes": "", "comp": "NE", "ver": "5.1532", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"id": "13807", "dev": "", "status": "", "desc": "יש לבצע בתוכנית שמעתיקה - להפעיל תוכנית העתקה שתתן את הודעת השגיאה\nבעקבות פניה מלקוח -\nכאשר הצהרת יבוא לא הוגשה, לחצן תיקון הצהרה מופיע כ disabled.\nהלקוחה לא הבינה מדוע היא לא יכולה לבצע תיקון.\nהאם לא עדיף שהלחצן יהיה enabled ובלחיצה שתקפוץ הודעת שגיאה בנוסח \"ההצהרה טרם הוגשה. אין צורך לפתוח תיקון\"?", "notes": "", "comp": "NE", "ver": "5.1538", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"id": "13828", "dev": "", "status": "", "desc": "מעבר לשימוש בקוד ISO של מטבע - מסך שיערוך כותרת\n2. הורדת מטבע נומרי מהכותרות והוספה ל-tooltip על קוד ISO (בדומה לקיים בשט\"מ בלדרות יבוא)\n3. שינוי תכנית בחירת מטבע שמחזירה את קוד ISO לשדה החדש\n4. שינוי של ודא תקינות\n5. שינוי הפניה לתכנית שליפת שערי מטבע\n6. שימוש בפונקציה של דניאל בהקלדת מטבע (דוגמה מכותרת שט\"מ בלדר יבוא)\n7. בניית טריגר להוספה בלבד להשלמת קוד נומרי מ-ISO וההיפך בתנאי שקיים אחד ולא קיים השני.", "notes": "", "comp": "HG", "ver": "5.1538", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"id": "13829", "dev": "", "status": "", "desc": "בכל המסכים בהם בוצע שינוי של קוד מטבע לISO לבצע פניה לפונקציה של אלכס\nתיק עמילות יבוא\nתיק עמילות יצוא\nספד ים/אוויר\nספד LAND\nתיק שילוח ים/אוייר\nתיק שילוח LAND\nהזמנה\nהצעת מחיר\nDROP שילוח", "notes": "", "comp": "NF", "ver": "5.1533", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"id": "13830", "dev": "", "status": "", "desc": "מעבר לשימוש בקוד ISO של מטבע -התאמות\n1.  הוספה של שדות ISO ליד כל מטבע \n2. הורדת מטבע נומרי מהכותרות והוספה ל-tooltip על קוד ISO (בדומה לקיים בשט\"מ בלדרות יבוא)\n3. שינוי תכנית בחירת מטבע שמחזירה את קוד ISO לשדה החדש\n4. שינוי של ודא תקינות\n5. שינוי הפניה לתכנית שליפת שערי מטבע\n6. שימוש בפונקציה של דניאל בהקלדת מטבע (דוגמה מכותרת שט\"מ בלדר יבוא)\n7. בניית טריגר להוספה בלבד להשלמת קוד נומרי מ-ISO וההיפך בתנאי שקיים אחד ולא קיים השני.", "notes": "", "comp": "HG", "ver": "5.1538", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"id": "13832", "dev": "", "status": "", "desc": "מעבר לשימוש בקוד ISO של מטבע - חשבון ספק כללי\n1.  הוספה של שדות ISO ליד כל מטבע \n2. הורדת מטבע נומרי מהכותרות והוספה ל-tooltip על קוד ISO (בדומה לקיים בשט\"מ בלדרות יבוא)\n3. שינוי תכנית בחירת מטבע שמחזירה את קוד ISO לשדה החדש\n4. שינוי של ודא תקינות\n5. שינוי הפניה לתכנית שליפת שערי מטבע\n6. שימוש בפונקציה של דניאל בהקלדת מטבע (דוגמה מכותרת שט\"מ בלדר יבוא)\n7. בניית טריגר להוספה בלבד להשלמת קוד נומרי מ-ISO וההיפך בתנאי שקיים אחד ולא קיים השני.", "notes": "", "comp": "HH", "ver": "5.1538", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"id": "13834", "dev": "", "status": "", "desc": "מעבר לשימוש בקוד ISO של מטבע - חשבוניות עמילות שילוח\n1. הוספה של שדות ISO ליד כל מטבע \n2. הורדת מטבע נומרי מהכותרות והוספה ל-tooltip על קוד ISO (בדומה לקיים בשט\"מ בלדרות יבוא)\n3. שינוי תכנית בחירת מטבע שמחזירה את קוד ISO לשדה החדש\n4. שינוי של ודא תקינות\n5. שינוי הפניה לתכנית שליפת שערי מטבע\n6. שימוש בפונקציה של דניאל בהקלדת מטבע (דוגמה מכותרת שט\"מ בלדר יבוא)\n7. בניית טריגר להוספה בלבד להשלמת קוד נומרי מ-ISO וההיפך בתנאי שקיים אחד ולא קיים השני.", "notes": "", "comp": "HH", "ver": "5.1539", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"id": "13835", "dev": "", "status": "", "desc": "מעבר לשימוש בקוד ISO של מטבע - חשבוניות בלדרות סוג תיק  8,11,12\n1. הוספה של שדות ISO ליד כל מטבע \n2. הורדת מטבע נומרי מהכותרות והוספה ל-tooltip על קוד ISO (בדומה לקיים בשט\"מ בלדרות יבוא)\n3. שינוי תכנית בחירת מטבע שמחזירה את קוד ISO לשדה החדש\n4. שינוי של ודא תקינות\n5. שינוי הפניה לתכנית שליפת שערי מטבע\n6. שימוש בפונקציה של דניאל בהקלדת מטבע (דוגמה מכותרת שט\"מ בלדר יבוא)\n7. בניית טריגר להוספה בלבד להשלמת קוד נומרי מ-ISO וההיפך בתנאי שקיים אחד ולא קיים השני.", "notes": "", "comp": "HH", "ver": "5.1539", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"id": "13849", "dev": "", "status": "", "desc": "מעבר לשימוש בקוד ISO של מטבע - כתובות\n1. הוספה של שדות ISO ליד כל מטבע \n2. הורדת מטבע נומרי מהכותרות והוספה ל-tooltip על קוד ISO (בדומה לקיים בשט\"מ בלדרות יבוא)\n3. שינוי תכנית בחירת מטבע שמחזירה את קוד ISO לשדה החדש\n4. שינוי של ודא תקינות\n5. שינוי הפניה לתכנית שליפת שערי מטבע\n6. שימוש בפונקציה של דניאל בהקלדת מטבע (דוגמה מכותרת שט\"מ בלדר יבוא)\n7. בניית טריגר להוספה בלבד להשלמת קוד נומרי מ-ISO וההיפך בתנאי שקיים אחד ולא קיים השני.", "notes": "", "comp": "TG | IG", "ver": "5.1533", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"id": "13903", "dev": "", "status": "", "desc": "במסך עדכון סטטוס שט\"מ -\nכאשר בוחרים HAWB import  ומוסיפים event מס' 338 - בתת אירוע לא ניתן להוסיף שלב מטבלת process אלא רק מ-steps אחרת מתקבלת הודעת שגיאה.", "notes": "", "comp": "TB | NF | VIEW", "ver": "5.1533", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"id": "13914", "dev": "", "status": "", "desc": "להוסיף למנגנון חישוב פרצופים חישוב שעת כניסה לתחנה בהתאם ל-Pin של אותה התחנה. \nלשנות  ערך ברירת מחדל של שדה \"שעת הכניסה לתחנה\" ל-0\nהריתנ של batch רק על שורות עם שדה \"שעת הכניסה לתחנה\" שווה ל-0", "notes": "", "comp": "PROCEDURE | TRIGGER | EC", "ver": "5.1537", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"id": "14015", "dev": "", "status": "", "desc": "לעבור על כל המערכת ולבדוק איפה יש קריאה לתכנית בחירת קוד מטבע\nHH", "notes": "", "comp": "HH", "ver": "5.1543", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"id": "14063", "dev": "", "status": "", "desc": "להפריד הגדרה של שלבים לשלבים חדשים / ישנים\nרשימת לקוחות\n  - אם לא מופעלת הרשאה של בלדרות - להתייחס להגדרה כללית של שלבים\n  - אם לא מופעלת הרשאה של עמולות או שילוח - ישירות שלבים ישנים", "notes": "", "comp": "TG", "ver": "5.1541", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"id": "14256", "dev": "", "status": "", "desc": "אירועים:\nהערות 1, 2, 3 של אירוע שכתובות בעברית לא מוצגות באירוע.", "notes": "", "comp": "SCRIPT", "ver": "5.1545", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"id": "14259", "dev": "", "status": "", "desc": "גרסה 5.1544: - שליפת ספק במכס.\nלא מאפשר ביצוע שליפת ספק ומתקבלת שגיאה במסר.\nשדה קוד מדינה הפך לחובת הזנה בשליפת ספק.", "notes": "", "comp": "NE", "ver": "5.1545", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"id": "14375", "dev": "", "status": "", "desc": "אצווה 185 -\nלבנות טבלה חדשה שדומה לטבלה של השידורים.\nלבצע העתקה מ-tab_sys לטבלה החדשה - סקריפט לגרסה.\nלהוסיף כפתור \"העתקה מ-tab_sys\" שיעבוד רק בתנאי שהטבלה החדשה ריקה - הכפתור יפעיל את הסקריפט.\nלהוסיף ברמה של כל אובייקט (הכנה, הגשה, מצהר וכו') תת SWC ברירת מחדל.\nלשנות תכנית ביצוע 185 ותכנית שליפת SWC ותת SWC שמופעלת בכל הממשקים של האובייקטים.", "notes": "", "comp": "NE", "ver": "5.1554", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"id": "14426", "dev": "", "status": "", "desc": "טבלת state -\nלבצע תחום לא לפי קוד נומרי אלא לפי קוד אלפא-נומרי של המדינה.\nלאתר את כל המקומות שמשתמשים בטבלה tab_num_tab 800", "notes": "", "comp": "TB | AP", "ver": "5.1557", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"id": "14477", "dev": "", "status": "", "desc": "1. בקבלת מסר אישור/דחיית סב\"ן יש לקלוט סוג אסמכתא 5 ומספר אסמכתא מתג warningInternalID לתעודת עיכוב.\n2. לשדר את האסמכתא במסר יציאת סב\"ן בתנאי שאין אסמכתא לשדר מספר תעודת עיכוב.\n3. ביציאה ממסך שידור מסר יציאה ללא שידור - לא לבצע שידור (כיום משודר בכל מקרה)", "notes": "", "comp": "NE", "ver": "5.1555", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"id": "14544", "dev": "", "status": "", "desc": "מספרי הקצאות:\n1. בקבלת שגיאה בניסיון שליפת מספר הקצאה לחשבונית, לא נרשם אירוע 618/3 עם הפנייה למשוב - נרשם אירוע הצלחה 618/2 במקום שגיאה.\n2. ברישום אירוע 618/2 על הצלחה בשליפת מספר הקצאה יש הפנייה לקובץ המסר היוצא במקום למסר הנכנס (המשוב).", "notes": "", "comp": "HH", "ver": "5.1558", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"id": "14545", "dev": "", "status": "", "desc": "נמצא בעקבות בדיקות שפיות לגרסה 5.1555:\ndrag&drop:\nלאחר סריקת צרופה, הכפתורים בסרגל הכפתורים בדואר הנכנס לא פעילים.", "notes": "", "comp": "AP", "ver": "5.1556", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"id": "14588", "dev": "", "status": "", "desc": "גרסה 5.1556\nבניסיון פתיחת מסך רשימת תת אצווה לאצווה 185 (במסך BATCH) \nמתקבלת שגיאת ORA שהטבלה לא קיימת", "notes": "", "comp": "SCRIPT", "ver": "5.1556", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"id": "14607", "dev": "", "status": "", "desc": "נמצא בבדיקות לגרסה 5.1557:\nכותרת שט\"מ בלדר יבוא:\n1. בשדה ארץ (eraz_sholch_iso), ב F5 לא נפתחת טבלת הארצות (Countries table) ומתקבלת שגיאה \"ארץ ספק לא תקינה\". כן ניתן לעדכן את הערך באופן ידני.\n2.בעמידה על שדה מטבע, בערך הובלה (freight_cur_iso) ב F5 לא נפתחת טבלת המטבעות(Currency Table).", "notes": "", "comp": "NF", "ver": "5.1558", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"id": "14711", "dev": "", "status": "", "desc": "בלדרות יבוא: חשבונית מרכזת (סוג 11)\nבבניה של מרכזת המערכת נתקעת עם הודעה REQUEST TAX NUMBER (במקרה של החשבונית הזו אין פנייה להקצאה - מתחת לסכום המוגדר למשיכת הקצאה) וזאת למרות שהחשבונית מופקת למס.", "notes": "", "comp": "HH", "ver": "5.1559", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"id": "14713", "dev": "", "status": "", "desc": "גרסה 5.1558:\nבבלדרות יבוא בשיוך עמיל מכס בכותרת שטר מטען, בתיק שטר המטען לא נפתח שלב 307 - 3PB ושלבים מסויימים בתיק לא מתבטלים (כמו שלב 2- סיווג) בעקבות שיוך עמיל המכס.", "notes": "", "comp": "Nothing", "ver": "5.1559", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"id": "13720", "dev": "", "status": "", "desc": "ברשימת שלבים מלאה, חיפוש שלב לפי שם בעברית, לא עובד (לא מחזיר תוצאות).\nלבצע המרה oem2ansii", "notes": "", "comp": "VIEW | EC", "ver": "5.1525", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"id": "14513", "dev": "", "status": "", "desc": "בשידור מצהר בלדר,\nכאשר אין מספר טלפון Conseignee, משדרים \"0\".\nשער עולמי מחזיר שגיאה \"טלפון לא תקין\" וקולט את המטען בסטטוס \"שגוי\".\nכתוצאה מכך, בשידור מסר הכנה, מקבלים שגיאה \"המטען בסטטוס שגוי\".", "notes": "", "comp": "NE", "ver": "5.1558", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"id": "14667", "dev": "", "status": "", "desc": "בשטר מטען בלדר יבוא,\nבמעבר משורת סיווג אחת לשניה, הסמן תמיד עובר לעמודת \"פרט מכס\".\nמבקשים שיקרה רק עם נכנסים מתוך תחנה שבה מוגדר השדה עליו הסמן צריך לעמוד.", "notes": "", "comp": "NF", "ver": "5.1558", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}];
+function buildDevStats(){
+  var el=document.getElementById('s3');
+  if(!el)return;
+  var cnt={};
+  DEV_TASKS.forEach(function(t){var s=t.status||'לא מוגדר';cnt[s]=(cnt[s]||0)+1;});
+  var tCnt={};
+  DEV_TASKS.forEach(function(t){if(t.tStatus)tCnt[t.tStatus]=(tCnt[t.tStatus]||0)+1;});
+  el.innerHTML=
+    '<div class="stat"><div class="n" style="color:#1a1a2e">'+DEV_TASKS.length+'</div><div class="l">סה"כ</div></div>'+
+    '<div class="stat"><div class="n n-open">'+(cnt['פתוח']||0)+'</div><div class="l">פתוח</div></div>'+
+    '<div class="stat"><div class="n n-wait">'+(cnt['בפיתוח']||0)+'</div><div class="l">בפיתוח</div></div>'+
+    '<div class="stat"><div class="n" style="color:#1565c0">'+(cnt['בבדיקה']||0)+'</div><div class="l">בבדיקה</div></div>'+
+    '<div class="stat"><div class="n" style="color:#6a1b9a">'+(cnt['נבדק']||0)+'</div><div class="l">נבדק</div></div>'+
+    '<div class="stat"><div class="n n-done">'+(cnt['נסגר']||0)+'</div><div class="l">נסגר</div></div>'+
+    (tCnt['לא תקין']?'<div class="stat"><div class="n" style="color:#c62828">'+tCnt['לא תקין']+'</div><div class="l">לא תקין בבדיקה</div></div>':'');
+}
+
+function renderDevTable(){
+  buildDevStats();
+  var tb=document.getElementById('devBody');
+  if(!tb)return;
+  tb.innerHTML=DEV_TASKS.map(function(t,i){
+    var sOpts=['','פתוח','בפיתוח','בבדיקה','נבדק','נסגר'].map(function(s){return'<option value="'+s+'"'+(t.status===s?' selected':'')+'>'+s+'</option>';  }).join('');
+    var tsOpts=['','תקין','לא תקין'].map(function(s){return'<option value="'+s+'"'+(t.tStatus===s?' selected':'')+'>'+s+'</option>';  }).join('');
+    var bg=i%2?'#f9f9f9':'#fff';
+    return '<tr style="background:'+bg+';vertical-align:top" data-tester="'+esc(t.tester)+'" data-tstatus="'+esc(t.tStatus)+'">'+
+      '<td style="padding:7px 10px;border-bottom:1px solid #eee;white-space:nowrap;font-weight:700;color:#D40511">'+esc(t.id)+'</td>'+
+      '<td style="padding:7px 10px;border-bottom:1px solid #eee;white-space:nowrap">'+esc(t.dev)+'</td>'+
+      '<td style="padding:7px 10px;border-bottom:1px solid #eee"><select onchange="DEV_TASKS['+i+'].status=this.value;saveDevTask('+i+');buildDevStats()" style="border:1px solid #ddd;border-radius:4px;padding:3px 5px;font-size:11px;font-family:Arial;direction:rtl">'+sOpts+'</select></td>'+
+      '<td style="padding:7px 10px;border-bottom:1px solid #eee;font-size:11px;line-height:1.5">'+esc(t.desc)+'</td>'+
+      '<td style="padding:7px 10px;border-bottom:1px solid #eee;font-size:11px;color:#555;line-height:1.5">'+esc(t.notes)+'</td>'+
+      '<td style="padding:7px 10px;border-bottom:1px solid #eee;white-space:nowrap;font-size:11px">'+esc(t.comp)+'</td>'+
+      '<td style="padding:7px 10px;border-bottom:1px solid #eee;white-space:nowrap;font-size:11px">'+esc(t.ver)+'</td>'+
+      '<td style="padding:7px 10px;border-bottom:1px solid #eee;white-space:nowrap;font-size:11px;font-weight:700;color:#1565c0">'+esc(t.iface)+'</td>'+
+      '<td style="padding:7px 10px;border-bottom:1px solid #eee"><select onchange="DEV_TASKS['+i+'].tester=this.value;this.parentElement.parentElement.setAttribute(&quot;data-tester&quot;,this.value);saveDevTask('+i+')" style="border:1px solid #ddd;border-radius:4px;padding:3px 5px;font-size:11px;font-family:Arial;direction:rtl">'+
+      ['','מתן','עידו','ניר','רבקה'].map(function(n){return'<option value="'+n+'"'+(t.tester===n?' selected':'')+'>'+n+'</option>';}).join('')+
+    '</select></td>'+
+      '<td style="padding:7px 10px;border-bottom:1px solid #eee"><textarea onchange="DEV_TASKS['+i+'].tNotes=this.value" rows="2" style="width:120px;border:1px solid #ddd;border-radius:4px;padding:3px 5px;font-size:11px;font-family:Arial;direction:rtl;resize:vertical">'+esc(t.tNotes)+'</textarea></td>'+
+      '<td style="padding:7px 10px;border-bottom:1px solid #eee"><select onchange="DEV_TASKS['+i+'].tStatus=this.value;this.parentElement.parentElement.setAttribute(&quot;data-tstatus&quot;,this.value);saveDevTask('+i+')" style="border:1px solid #ddd;border-radius:4px;padding:3px 5px;font-size:11px;font-family:Arial">'+tsOpts+'</select></td>'+
+    '</tr>';
+  }).join('');
+}
+
+function filterDevTable(){
+  var ft=document.getElementById('devFilterTester').value;
+  var fs=document.getElementById('devFilterStatus').value;
+  document.querySelectorAll('#devBody tr').forEach(function(row){
+    var tester=row.getAttribute('data-tester')||'';
+    var status=row.getAttribute('data-tstatus')||'';
+    row.style.display=(!ft||tester===ft)&&(!fs||status===fs)?'':'none';
+  });
+}
+function clearDevFilters(){
+  document.getElementById('devFilterTester').value='';
+  document.getElementById('devFilterStatus').value='';
+  filterDevTable();
+}
+function populateDevTesterFilter(){
+  var sel=document.getElementById('devFilterTester');
+  if(!sel)return;
+  // Reset and rebuild
+  sel.innerHTML='<option value="">כל הבודקים</option>';
+  ['מתן','עידו','ניר','רבקה'].forEach(function(n){
+    var o=document.createElement('option');
+    o.value=n;o.textContent=n;sel.appendChild(o);
+  });
+}
+
+function openNewDevTask(){
+  document.getElementById('ndtId').value='';
+  document.getElementById('ndtDev').value='';
+  document.getElementById('ndtDesc').value='';
+  document.getElementById('ndtComp').value='';
+  document.getElementById('ndtVer').value='';
+  document.getElementById('ndtIface').value='';
+  document.getElementById('ndtNotes').value='';
+  document.getElementById('newDevMsg').textContent='';
+  document.getElementById('newDevModal').style.display='flex';
+}
+function closeNewDevModal(){
+  document.getElementById('newDevModal').style.display='none';
+}
+async function saveNewDevTask(){
+  var desc=document.getElementById('ndtDesc').value.trim();
+  if(!desc){
+    document.getElementById('newDevMsg').textContent='חובה למלא תאור משימה';
+    document.getElementById('newDevMsg').style.color='#c62828';
+    return;
+  }
+  var task={
+    id: document.getElementById('ndtId').value.trim(),
+    dev: document.getElementById('ndtDev').value.trim(),
+    status: '',
+    desc: desc,
+    notes: document.getElementById('ndtNotes').value.trim(),
+    comp: document.getElementById('ndtComp').value.trim(),
+    ver: document.getElementById('ndtVer').value.trim(),
+    iface: document.getElementById('ndtIface').value.trim(),
+    tester: '',
+    tNotes: '',
+    tStatus: ''
+  };
+  document.getElementById('newDevMsg').style.color='#666';
+  document.getElementById('newDevMsg').textContent='שומר...';
+  try{
+    // Determine next free index by checking both local array and server data,
+    // to avoid overwriting an existing record if another session added one meanwhile.
+    var r=await fetch('https://malm-focus-default-rtdb.firebaseio.com/devTasks.json?t='+Date.now());
+    var saved=await r.json();
+    var maxSavedIdx=-1;
+    if(saved){ Object.keys(saved).forEach(function(k){var n=parseInt(k);if(!isNaN(n)&&n>maxSavedIdx)maxSavedIdx=n;}); }
+    var newIdx=Math.max(DEV_TASKS.length, maxSavedIdx+1);
+    DEV_TASKS[newIdx]=task;
+    await fetch('https://malm-focus-default-rtdb.firebaseio.com/devTasks/'+newIdx+'.json',{
+      method:'PUT',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify(task)
+    });
+    renderDevTable();
+    populateDevTesterFilter();
+    closeNewDevModal();
+  }catch(e){
+    document.getElementById('newDevMsg').style.color='#c62828';
+    document.getElementById('newDevMsg').textContent='שגיאה בשמירה, נסה שוב';
+  }
+}
+
+async function saveDevTask(idx) {
+  var task = DEV_TASKS[idx];
+  try {
+    await fetch('https://malm-focus-default-rtdb.firebaseio.com/devTasks/' + idx + '.json', {
+      method: 'PATCH',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({tester: task.tester, tStatus: task.tStatus, tNotes: task.tNotes, status: task.status})
+    });
+  } catch(e) { console.warn('saveDevTask error:', e); }
+}
+
+async function loadDevTasks() {
+  try {
+    var r = await fetch('https://malm-focus-default-rtdb.firebaseio.com/devTasks.json?t=' + Date.now());
+    var saved = await r.json();
+    if (saved) {
+      Object.keys(saved).sort(function(a,b){return parseInt(a)-parseInt(b);}).forEach(function(idx) {
+        var i = parseInt(idx);
+        if (DEV_TASKS[i]) {
+          if (saved[idx].tester !== undefined) DEV_TASKS[i].tester = saved[idx].tester;
+          if (saved[idx].tStatus !== undefined) DEV_TASKS[i].tStatus = saved[idx].tStatus;
+          if (saved[idx].tNotes !== undefined) DEV_TASKS[i].tNotes = saved[idx].tNotes;
+          if (saved[idx].status !== undefined) DEV_TASKS[i].status = saved[idx].status;
+        } else if (saved[idx] && saved[idx].desc) {
+          // Manually added task beyond the hardcoded array — store the full record
+          DEV_TASKS[i] = saved[idx];
+        }
+      });
+      // Remove any holes (e.g. from index gaps) so rendering/sorting stays clean
+      DEV_TASKS = DEV_TASKS.filter(function(t){ return t !== undefined && t !== null; });
+    }
+  } catch(e) { console.warn('loadDevTasks error:', e); }
+}
+
+var devSortCol='', devSortDir=1;
+function sortDevTable(col){
+  if(devSortCol===col){ devSortDir*=-1; } else { devSortCol=col; devSortDir=1; }
+  DEV_TASKS.sort(function(a,b){
+    var av=a[col]||'', bv=b[col]||'';
+    return av.localeCompare(bv,'he')*devSortDir;
+  });
+  // Update sort indicators
+  ['id','dev','status','comp','ver','iface','tester','tStatus'].forEach(function(c){
+    var el=document.getElementById('devSort_'+c);
+    if(el) el.textContent = c===devSortCol ? (devSortDir===1?'▲':'▼') : '';
+  });
+  renderDevTable();
+  filterDevTable();
+}
+
+// ══════════════════════════════════════
+// SANITY CHECKS TAB
+// ══════════════════════════════════════
+var SANITY_TASKS = {};
+
+var SANITY_SEED = {"sanity_001": {"id": "sanity_001", "name": "לבצע חיפוש לפי כל אחד מהשדות במסך, ולוודא שהחיפוש תקין", "module": "שרות לקוחות", "env": "טסט", "desc": "", "assignee": "", "status": "פתוח", "notes": "", "closedBy": "", "createdAt": "2026-06-16T00:00:00.000Z"}, "sanity_002": {"id": "sanity_002", "name": "לוודא ששלבי המשלוח מוצגים באופן תקין", "module": "שרות לקוחות", "env": "טסט", "desc": "", "assignee": "", "status": "פתוח", "notes": "", "closedBy": "", "createdAt": "2026-06-16T00:00:00.000Z"}, "sanity_003": {"id": "sanity_003", "name": "לבחור שטר מטען שיש לו חשבונית עסקה", "module": "שרות לקוחות", "env": "טסט", "desc": "", "assignee": "", "status": "פתוח", "notes": "", "closedBy": "", "createdAt": "2026-06-16T00:00:00.000Z"}, "sanity_004": {"id": "sanity_004", "name": "לוודא שפירטי החשבוניות מוצגים", "module": "שטר מטען - ניירת", "env": "טסט", "desc": "", "assignee": "", "status": "פתוח", "notes": "", "closedBy": "", "createdAt": "2026-06-16T00:00:00.000Z"}, "sanity_005": {"id": "sanity_005", "name": "לפתוח ניירת. לוודא שהניירת ניפתחת וניתנת לקריאה", "module": "שטר מטען - ניירת", "env": "טסט", "desc": "", "assignee": "", "status": "פתוח", "notes": "", "closedBy": "", "createdAt": "2026-06-16T00:00:00.000Z"}, "sanity_006": {"id": "sanity_006", "name": "לשנות את מיקום תצוגת הניירת ולוודא שנשמרת", "module": "שטר מטען - ניירת", "env": "טסט", "desc": "", "assignee": "", "status": "פתוח", "notes": "", "closedBy": "", "createdAt": "2026-06-16T00:00:00.000Z"}, "sanity_007": {"id": "sanity_007", "name": "להשוות בין נתוני שטר המטען והנתונים בניירת", "module": "שטר מטען - תנאי מכר", "env": "טסט", "desc": "", "assignee": "", "status": "פתוח", "notes": "", "closedBy": "", "createdAt": "2026-06-16T00:00:00.000Z"}, "sanity_008": {"id": "sanity_008", "name": "לשנות את תנאי המכר. לוודא שנרשם אירוע מתאים", "module": "שטר מטען - לקוח", "env": "טסט", "desc": "", "assignee": "", "status": "פתוח", "notes": "", "closedBy": "", "createdAt": "2026-06-16T00:00:00.000Z"}, "sanity_009": {"id": "sanity_009", "name": "אם אין לקוח: ללחוץ + ליד לקוח. לוודא שנפתחת רשימת לקוחות לפי 5 תווים ראשונים", "module": "שטר מטען - יבואן", "env": "טסט", "desc": "", "assignee": "", "status": "פתוח", "notes": "", "closedBy": "", "createdAt": "2026-06-16T00:00:00.000Z"}, "sanity_010": {"id": "sanity_010", "name": "ללחוץ על יבואן - לוודא שמופיע + וכשלוחצים שוב נעלם", "module": "שטר מטען - יבואן", "env": "טסט", "desc": "", "assignee": "", "status": "פתוח", "notes": "", "closedBy": "", "createdAt": "2026-06-16T00:00:00.000Z"}, "sanity_011": {"id": "sanity_011", "name": "אם אין יבואן: ללחוץ + ליד יבואן. לוודא שנפתחת רשימת יבואנים כללית", "module": "שטר מטען - יבואן", "env": "טסט", "desc": "", "assignee": "", "status": "פתוח", "notes": "", "closedBy": "", "createdAt": "2026-06-16T00:00:00.000Z"}, "sanity_012": {"id": "sanity_012", "name": "אם אין יבואן: ללחוץ F5 על יבואן. לוודא שנפתחת רשימת יבואנים כללית", "module": "שטר מטען - יבואן", "env": "טסט", "desc": "", "assignee": "", "status": "פתוח", "notes": "", "closedBy": "", "createdAt": "2026-06-16T00:00:00.000Z"}, "sanity_013": {"id": "sanity_013", "name": "ללחוץ על סימן $ מתחת ליבואן - לוודא שנפתחת מטריצת אישור תשלום", "module": "שטר מטען - יבואן", "env": "טסט", "desc": "", "assignee": "", "status": "פתוח", "notes": "", "closedBy": "", "createdAt": "2026-06-16T00:00:00.000Z"}, "sanity_014": {"id": "sanity_014", "name": "ללחוץ על סימן < מתחת ליבואן - לוודא שנפתחת טבלת לקוחות המכס", "module": "שטר מטען - שם יבואן", "env": "טסט", "desc": "", "assignee": "", "status": "פתוח", "notes": "", "closedBy": "", "createdAt": "2026-06-16T00:00:00.000Z"}, "sanity_015": {"id": "sanity_015", "name": "לעמוד על שם היבואן וללחוץ F5. לוודא רשימת יבואנים לפי 5 תווים ראשונים", "module": "שטר מטען - כתובת יבואן", "env": "טסט", "desc": "", "assignee": "", "status": "פתוח", "notes": "", "closedBy": "", "createdAt": "2026-06-16T00:00:00.000Z"}, "sanity_016": {"id": "sanity_016", "name": "לעמוד על כתובת היבואן וללחוץ F5. לוודא רשימת יבואנים לפי כתובת", "module": "שטר מטען - מיקוד", "env": "טסט", "desc": "", "assignee": "", "status": "פתוח", "notes": "", "closedBy": "", "createdAt": "2026-06-16T00:00:00.000Z"}, "sanity_017": {"id": "sanity_017", "name": "לעמוד על שדה המיקוד וללחוץ F5. לוודא רשימת יבואנים לפי מיקוד", "module": "שטר מטען - מספר שולח", "env": "טסט", "desc": "", "assignee": "", "status": "פתוח", "notes": "", "closedBy": "", "createdAt": "2026-06-16T00:00:00.000Z"}, "sanity_018": {"id": "sanity_018", "name": "לשנות את מספר השולח למספר 96 ישראלי. לוודא שהשדה נצבע בכחול", "module": "שטר מטען - שם שולח", "env": "טסט", "desc": "", "assignee": "", "status": "פתוח", "notes": "", "closedBy": "", "createdAt": "2026-06-16T00:00:00.000Z"}, "sanity_019": {"id": "sanity_019", "name": "לעמוד על שדה שם השולח וללחוץ F5. לוודא שנפתח מסך ספק בתצהירים תקופתי", "module": "שטר מטען - שם שולח", "env": "טסט", "desc": "", "assignee": "", "status": "פתוח", "notes": "", "closedBy": "", "createdAt": "2026-06-16T00:00:00.000Z"}, "sanity_020": {"id": "sanity_020", "name": "במסך ספק בתצהירים תקופתי: לסנן לפי סטטוס ולראות שעובד", "module": "שטר מטען - סוכן", "env": "טסט", "desc": "", "assignee": "", "status": "פתוח", "notes": "", "closedBy": "", "createdAt": "2026-06-16T00:00:00.000Z"}, "sanity_021": {"id": "sanity_021", "name": "לעמוד על שדה סוכן וללחוץ F5. לשנות את הסוכן ולראות שזה משתנה", "module": "שטר מטען - ספק במכס", "env": "טסט", "desc": "", "assignee": "", "status": "פתוח", "notes": "", "closedBy": "", "createdAt": "2026-06-16T00:00:00.000Z"}, "sanity_022": {"id": "sanity_022", "name": "לעמוד על שדה ספק במכס וללחוץ F5. לוודא שנפתחת טבלת הספקים", "module": "יחידות צפויות", "env": "טסט", "desc": "", "assignee": "", "status": "פתוח", "notes": "", "closedBy": "", "createdAt": "2026-06-16T00:00:00.000Z"}, "sanity_023": {"id": "sanity_023", "name": "לוודא שהמספר הרשום תואם את מה שיש בשטר המטען", "module": "יחידות בפועל", "env": "טסט", "desc": "", "assignee": "", "status": "פתוח", "notes": "", "closedBy": "", "createdAt": "2026-06-16T00:00:00.000Z"}, "sanity_024": {"id": "sanity_024", "name": "ללחוץ על ה-+ ולוודא שרואים את מספרי היחידות", "module": "יחידות בפועל", "env": "טסט", "desc": "", "assignee": "", "status": "פתוח", "notes": "", "closedBy": "", "createdAt": "2026-06-16T00:00:00.000Z"}, "sanity_025": {"id": "sanity_025", "name": "מסב", "module": "ממשקים", "env": "RDP", "desc": "", "assignee": "", "status": "פתוח", "notes": "", "closedBy": "", "createdAt": "2026-06-16T00:00:00.000Z"}, "sanity_026": {"id": "sanity_026", "name": "ממשק SAP", "module": "ממשקים", "env": "טסט", "desc": "", "assignee": "", "status": "פתוח", "notes": "", "closedBy": "", "createdAt": "2026-06-16T00:00:00.000Z"}, "sanity_027": {"id": "sanity_027", "name": "רשומון ותעודות עיכוב ל-Quicksend (128)", "module": "ממשקים", "env": "RDP", "desc": "", "assignee": "", "status": "פתוח", "notes": "", "closedBy": "", "createdAt": "2026-06-16T00:00:00.000Z"}, "sanity_028": {"id": "sanity_028", "name": "סגירת חשבוניות לאחר קבלת תקבול מיעד (92)", "module": "חשבוניות", "env": "RDP", "desc": "", "assignee": "", "status": "פתוח", "notes": "", "closedBy": "", "createdAt": "2026-06-16T00:00:00.000Z"}, "sanity_029": {"id": "sanity_029", "name": "ממשק CDU גליונות מסירה 115", "module": "ממשקים", "env": "RDP", "desc": "", "assignee": "", "status": "פתוח", "notes": "", "closedBy": "", "createdAt": "2026-06-16T00:00:00.000Z"}, "sanity_030": {"id": "sanity_030", "name": "שליפת ממשק יעד (149)", "module": "ממשקים", "env": "RDP", "desc": "", "assignee": "", "status": "פתוח", "notes": "", "closedBy": "", "createdAt": "2026-06-16T00:00:00.000Z"}, "sanity_031": {"id": "sanity_031", "name": "ממשק רשימונים ניירת - ממשק 22", "module": "ממשקים", "env": "RDP", "desc": "", "assignee": "", "status": "פתוח", "notes": "", "closedBy": "", "createdAt": "2026-06-16T00:00:00.000Z"}, "sanity_032": {"id": "sanity_032", "name": "ממשק רשימונים ללקוחות XML ממשק 100", "module": "ממשקים", "env": "RDP", "desc": "", "assignee": "", "status": "פתוח", "notes": "", "closedBy": "", "createdAt": "2026-06-16T00:00:00.000Z"}, "sanity_033": {"id": "sanity_033", "name": "ממשק DDP ל-IBS", "module": "ממשקים", "env": "RDP", "desc": "", "assignee": "", "status": "פתוח", "notes": "", "closedBy": "", "createdAt": "2026-06-16T00:00:00.000Z"}, "sanity_034": {"id": "sanity_034", "name": "שליחת חשבוניות בלדרות במייל אצווה 120", "module": "ממשקים", "env": "RDP", "desc": "", "assignee": "", "status": "פתוח", "notes": "", "closedBy": "", "createdAt": "2026-06-16T00:00:00.000Z"}, "sanity_035": {"id": "sanity_035", "name": "שליפת מסמכים חסרים DHL קליטת ניירת DOX ממשק 166", "module": "ממשקים", "env": "RDP", "desc": "", "assignee": "", "status": "פתוח", "notes": "", "closedBy": "", "createdAt": "2026-06-16T00:00:00.000Z"}, "sanity_036": {"id": "sanity_036", "name": "חלוקת משלוחים בין נציגי שרות", "module": "תחנות עבודה", "env": "RDP", "desc": "", "assignee": "", "status": "פתוח", "notes": "", "closedBy": "", "createdAt": "2026-06-16T00:00:00.000Z"}, "sanity_037": {"id": "sanity_037", "name": "תיקשורת למכס", "module": "ממשקים", "env": "RDP", "desc": "", "assignee": "", "status": "פתוח", "notes": "", "closedBy": "", "createdAt": "2026-06-16T00:00:00.000Z"}, "sanity_038": {"id": "sanity_038", "name": "הוצאות הודעות ללקוחות", "module": "מסכי יבוא עיקריים", "env": "RDP/XPA", "desc": "", "assignee": "", "status": "פתוח", "notes": "", "closedBy": "", "createdAt": "2026-06-16T00:00:00.000Z"}, "sanity_039": {"id": "sanity_039", "name": "מסך שטר מטען - שליחת טפסים ללקוח", "module": "מסכי יבוא עיקריים", "env": "RDP", "desc": "", "assignee": "", "status": "פתוח", "notes": "", "closedBy": "", "createdAt": "2026-06-16T00:00:00.000Z"}, "sanity_040": {"id": "sanity_040", "name": "בניית חשבונית - לבדוק שהחשבונית נבנית נכון", "module": "חשבוניות", "env": "RDP", "desc": "", "assignee": "", "status": "פתוח", "notes": "", "closedBy": "", "createdAt": "2026-06-16T00:00:00.000Z"}, "sanity_041": {"id": "sanity_041", "name": "שליחת בקשות לתשלום", "module": "מסכי יבוא עיקריים", "env": "RDP", "desc": "", "assignee": "", "status": "פתוח", "notes": "", "closedBy": "", "createdAt": "2026-06-16T00:00:00.000Z"}, "sanity_042": {"id": "sanity_042", "name": "מסך טיסות", "module": "מסכי יבוא עיקריים", "env": "טסט", "desc": "", "assignee": "", "status": "פתוח", "notes": "", "closedBy": "", "createdAt": "2026-06-16T00:00:00.000Z"}, "sanity_043": {"id": "sanity_043", "name": "מסך שטר מטען - סיווג אוטומטי", "module": "מסכי יבוא עיקריים", "env": "RDP", "desc": "", "assignee": "", "status": "פתוח", "notes": "", "closedBy": "", "createdAt": "2026-06-16T00:00:00.000Z"}, "sanity_044": {"id": "sanity_044", "name": "מסך שטר מטען - תצוגת ניירת", "module": "מסכי יבוא עיקריים", "env": "RDP", "desc": "", "assignee": "", "status": "פתוח", "notes": "", "closedBy": "", "createdAt": "2026-06-16T00:00:00.000Z"}, "sanity_045": {"id": "sanity_045", "name": "מסך שטר מטען - שלבים", "module": "מסכי יבוא עיקריים", "env": "RDP", "desc": "", "assignee": "", "status": "פתוח", "notes": "", "closedBy": "", "createdAt": "2026-06-16T00:00:00.000Z"}, "sanity_046": {"id": "sanity_046", "name": "מעבר בין משלוחים", "module": "תחנות עבודה", "env": "RDP", "desc": "", "assignee": "", "status": "פתוח", "notes": "", "closedBy": "", "createdAt": "2026-06-16T00:00:00.000Z"}, "sanity_047": {"id": "sanity_047", "name": "ריענון חשבוניות על סמך אירועים אצווה 178", "module": "חשבוניות", "env": "טסט", "desc": "", "assignee": "", "status": "פתוח", "notes": "", "closedBy": "", "createdAt": "2026-06-16T00:00:00.000Z"}, "sanity_048": {"id": "sanity_048", "name": "מסך שטר מטען - טיוב", "module": "מסכי יבוא עיקריים", "env": "טסט", "desc": "", "assignee": "", "status": "פתוח", "notes": "", "closedBy": "", "createdAt": "2026-06-16T00:00:00.000Z"}, "sanity_049": {"id": "sanity_049", "name": "מסך קליטת סטטוס שטר מטען חדש", "module": "מסכי יבוא עיקריים", "env": "טסט", "desc": "", "assignee": "", "status": "פתוח", "notes": "", "closedBy": "", "createdAt": "2026-06-16T00:00:00.000Z"}, "sanity_050": {"id": "sanity_050", "name": "מסך הצהרה ארוכה", "module": "מסכי יבוא עיקריים", "env": "RDP", "desc": "", "assignee": "", "status": "פתוח", "notes": "", "closedBy": "", "createdAt": "2026-06-16T00:00:00.000Z"}, "sanity_051": {"id": "sanity_051", "name": "בדיקת תצוגת הרמזור", "module": "מסכי יבוא עיקריים", "env": "טסט", "desc": "", "assignee": "", "status": "פתוח", "notes": "", "closedBy": "", "createdAt": "2026-06-16T00:00:00.000Z"}, "sanity_052": {"id": "sanity_052", "name": "מסך חשבוניות", "module": "חשבוניות", "env": "טסט", "desc": "", "assignee": "", "status": "פתוח", "notes": "", "closedBy": "", "createdAt": "2026-06-16T00:00:00.000Z"}, "sanity_053": {"id": "sanity_053", "name": "ביצוע סטורנו", "module": "חשבוניות", "env": "טסט", "desc": "", "assignee": "", "status": "פתוח", "notes": "", "closedBy": "", "createdAt": "2026-06-16T00:00:00.000Z"}, "sanity_054": {"id": "sanity_054", "name": "בדיקה של ממשק BM01 ו-BB02", "module": "מודול מסוף", "env": "טסט", "desc": "", "assignee": "", "status": "פתוח", "notes": "", "closedBy": "", "createdAt": "2026-06-16T00:00:00.000Z"}, "sanity_055": {"id": "sanity_055", "name": "ממשק בקשה לתשלום ל-ODD אצווה 113 ו-118", "module": "ממשקים", "env": "RDP", "desc": "", "assignee": "", "status": "פתוח", "notes": "", "closedBy": "", "createdAt": "2026-06-16T00:00:00.000Z"}, "sanity_056": {"id": "sanity_056", "name": "ממשק בלג ליעד 162", "module": "ממשקים", "env": "RDP", "desc": "", "assignee": "", "status": "פתוח", "notes": "", "closedBy": "", "createdAt": "2026-06-16T00:00:00.000Z"}, "sanity_057": {"id": "sanity_057", "name": "קליטת לקוחות מ-IBS ממשק 114", "module": "ממשקים", "env": "טסט", "desc": "", "assignee": "", "status": "פתוח", "notes": "", "closedBy": "", "createdAt": "2026-06-16T00:00:00.000Z"}, "sanity_058": {"id": "sanity_058", "name": "בניית סטטוסים אחרים ממשק 110", "module": "ממשקים", "env": "RDP", "desc": "", "assignee": "", "status": "פתוח", "notes": "", "closedBy": "", "createdAt": "2026-06-16T00:00:00.000Z"}, "sanity_059": {"id": "sanity_059", "name": "פרופיילינג", "module": "ממשקים", "env": "טסט", "desc": "", "assignee": "", "status": "פתוח", "notes": "", "closedBy": "", "createdAt": "2026-06-16T00:00:00.000Z"}, "sanity_060": {"id": "sanity_060", "name": "מסך שטר מטען - אירועים", "module": "מסכי יבוא עיקריים", "env": "טסט", "desc": "", "assignee": "", "status": "פתוח", "notes": "", "closedBy": "", "createdAt": "2026-06-16T00:00:00.000Z"}, "sanity_061": {"id": "sanity_061", "name": "קליטת קובץ MS 119 ו-112", "module": "ממשקים", "env": "טסט", "desc": "", "assignee": "", "status": "פתוח", "notes": "", "closedBy": "", "createdAt": "2026-06-16T00:00:00.000Z"}, "sanity_062": {"id": "sanity_062", "name": "ממשקי שידור נתונים למאגר SQL סיווגים 123 שלבים 125 טבלת שלבים 127", "module": "ממשקים", "env": "טסט", "desc": "", "assignee": "", "status": "פתוח", "notes": "", "closedBy": "", "createdAt": "2026-06-16T00:00:00.000Z"}, "sanity_063": {"id": "sanity_063", "name": "ממשק ICE 141", "module": "ממשקים", "env": "RDP", "desc": "", "assignee": "", "status": "פתוח", "notes": "", "closedBy": "", "createdAt": "2026-06-16T00:00:00.000Z"}, "sanity_064": {"id": "sanity_064", "name": "ממשק 215 לממיינת ACA ו-SATS", "module": "ממשקים", "env": "RDP", "desc": "", "assignee": "", "status": "פתוח", "notes": "", "closedBy": "", "createdAt": "2026-06-16T00:00:00.000Z"}, "sanity_065": {"id": "sanity_065", "name": "תצוגת ניירת", "module": "תחנות עבודה", "env": "RDP", "desc": "", "assignee": "", "status": "פתוח", "notes": "", "closedBy": "", "createdAt": "2026-06-16T00:00:00.000Z"}, "sanity_066": {"id": "sanity_066", "name": "מסך בניית משתמשים וקבוצות", "module": "כללי", "env": "טסט", "desc": "", "assignee": "", "status": "פתוח", "notes": "", "closedBy": "", "createdAt": "2026-06-16T00:00:00.000Z"}, "sanity_067": {"id": "sanity_067", "name": "קליטת ממשק DCC", "module": "ממשקים", "env": "טסט", "desc": "", "assignee": "", "status": "פתוח", "notes": "", "closedBy": "", "createdAt": "2026-06-16T00:00:00.000Z"}, "sanity_068": {"id": "sanity_068", "name": "הקלדת קבלה לחשבונית של לקוח מזדמן", "module": "קבלות", "env": "RDP", "desc": "", "assignee": "", "status": "פתוח", "notes": "", "closedBy": "", "createdAt": "2026-06-16T00:00:00.000Z"}, "sanity_069": {"id": "sanity_069", "name": "בניית קבלה ללקוח אשראי", "module": "קבלות", "env": "RDP", "desc": "", "assignee": "", "status": "פתוח", "notes": "", "closedBy": "", "createdAt": "2026-06-16T00:00:00.000Z"}, "sanity_070": {"id": "sanity_070", "name": "רשימת עסקאות כרטיסי אשראי", "module": "עסקאות כרטיסי אשראי", "env": "RDP", "desc": "", "assignee": "", "status": "פתוח", "notes": "", "closedBy": "", "createdAt": "2026-06-16T00:00:00.000Z"}, "sanity_071": {"id": "sanity_071", "name": "שידור חשבוניות טיוטא ממשק 122", "module": "ממשקים", "env": "RDP", "desc": "", "assignee": "", "status": "פתוח", "notes": "", "closedBy": "", "createdAt": "2026-06-16T00:00:00.000Z"}, "sanity_072": {"id": "sanity_072", "name": "הפקת חשבוניות שבועית", "module": "חשבוניות", "env": "RDP", "desc": "", "assignee": "", "status": "פתוח", "notes": "", "closedBy": "", "createdAt": "2026-06-16T00:00:00.000Z"}, "sanity_073": {"id": "sanity_073", "name": "קליטת חפ", "module": "RPA", "env": "טסט", "desc": "", "assignee": "", "status": "פתוח", "notes": "", "closedBy": "", "createdAt": "2026-06-16T00:00:00.000Z"}, "sanity_074": {"id": "sanity_074", "name": "עדכון סוג שיחרור יבוא אישי", "module": "RPA", "env": "טסט", "desc": "", "assignee": "", "status": "פתוח", "notes": "", "closedBy": "", "createdAt": "2026-06-16T00:00:00.000Z"}, "sanity_075": {"id": "sanity_075", "name": "שידור ידני לממיינת", "module": "תוספת", "env": "RDP", "desc": "", "assignee": "", "status": "פתוח", "notes": "", "closedBy": "", "createdAt": "2026-06-16T00:00:00.000Z"}};
+
+async function loadSanityTab() {
+  try {
+    var r = await fetch('https://malm-focus-default-rtdb.firebaseio.com/sanity.json?t=' + Date.now());
+    var data = await r.json();
+    // Seed if empty
+    if (!data || Object.keys(data).length === 0) {
+      await fetch('https://malm-focus-default-rtdb.firebaseio.com/sanity.json', {
+        method: 'PUT',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(SANITY_SEED)
+      });
+      SANITY_TASKS = Object.assign({}, SANITY_SEED);
+    } else {
+      SANITY_TASKS = data;
+    }
+  } catch(e) { SANITY_TASKS = Object.assign({}, SANITY_SEED); }
+
+  if (isAdmin()) {
+    document.getElementById('sanityAdminView').style.display = 'block';
+    document.getElementById('sanityManagerView').style.display = 'none';
+    renderSanityAdmin();
+  } else {
+    document.getElementById('sanityAdminView').style.display = 'none';
+    document.getElementById('sanityManagerView').style.display = 'block';
+    renderSanityManager();
+  }
+}
+
+function renderSanityAdmin() {
+  var tb = document.getElementById('sanityAdminBody');
+  if (!tb) return;
+  var tasks = Object.values(SANITY_TASKS);
+  if (!tasks.length) {
+    tb.innerHTML = '<tr><td colspan="6" style="padding:30px;text-align:center;color:#aaa">אין בדיקות עדיין — לחץ "+ בדיקה חדשה"</td></tr>';
+    return;
+  }
+  tb.innerHTML = tasks.map(function(t, i) {
+    var bg = i%2 ? '#f9f9f9' : '#fff';
+    var statusColor = t.status==='בוצע' ? '#2e7d32' : t.status==='פתוח' ? '#e65100' : '#888';
+    var closedInfo = t.status==='בוצע' ? ' <span style="font-size:10px;color:#666">(ע"י ' + esc(t.closedBy||'') + ')</span>' : '';
+    var envBg = t.env==='RDP' ? '#e3f2fd' : t.env==='טסט' ? '#f3e5f5' : '#fff8e1';
+    var envColor = t.env==='RDP' ? '#1565c0' : t.env==='טסט' ? '#6a1b9a' : '#e65100';
+    return '<tr style="background:' + bg + ';vertical-align:top">' +
+      '<td style="padding:8px 10px;border-bottom:1px solid #eee;font-size:11px;font-weight:700;white-space:nowrap">' + esc(t.module||'') + '</td>' +
+      '<td style="padding:8px 10px;border-bottom:1px solid #eee;font-size:11px;line-height:1.5">' + esc(t.name) + '</td>' +
+      '<td style="padding:8px 10px;border-bottom:1px solid #eee;text-align:center"><span style="background:' + envBg + ';color:' + envColor + ';padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700">' + esc(t.env||'') + '</span></td>' +
+      '<td style="padding:8px 10px;border-bottom:1px solid #eee;white-space:nowrap">' + esc(t.assignee||'—') + '</td>' +
+      '<td style="padding:8px 10px;border-bottom:1px solid #eee;white-space:nowrap"><span style="color:' + statusColor + ';font-weight:700">' + esc(t.status||'פתוח') + '</span>' + closedInfo + '</td>' +
+      '<td style="padding:8px 10px;border-bottom:1px solid #eee;font-size:11px">' + esc(t.notes||'') + '</td>' +
+      '<td style="padding:7px 10px;border-bottom:1px solid #eee"><textarea data-sid="' + t.id + '" onchange="updateSanityAdminNotes(this.dataset.sid,this.value)" rows="2" style="width:120px;border:1px solid #ddd;border-radius:4px;padding:3px 5px;font-size:11px;font-family:Arial;direction:rtl;resize:vertical">' + esc(t.adminNotes||'') + '</textarea></td>' +
+      '<td style="padding:8px 10px;border-bottom:1px solid #eee;font-size:11px;white-space:nowrap">' + esc(t.closedAt ? t.closedAt.slice(0,10) : '') + '</td>' +
+      '<td style="padding:8px 10px;border-bottom:1px solid #eee;white-space:nowrap">' +
+        '<button onclick="openEditSanity(\'' + t.id + '\')" style="background:#1565c0;color:#fff;border:none;border-radius:4px;padding:4px 10px;cursor:pointer;font-size:11px;font-family:Arial;margin-left:4px">עריכה</button>' +
+        '<button onclick="deleteSanityTask(\'' + t.id + '\')" style="background:#c62828;color:#fff;border:none;border-radius:4px;padding:4px 10px;cursor:pointer;font-size:11px;font-family:Arial">מחיקה</button>' +
+      '</td>' +
+    '</tr>';
+  }).join('');
+}
+
+function renderSanityManager() {
+  var tb = document.getElementById('sanityManagerBody');
+  if (!tb) return;
+  var myName = CU ? CU.name : '';
+  var tasks = Object.values(SANITY_TASKS).filter(function(t) {
+    return t.assignee === myName && t.status !== 'בוצע';
+  });
+  if (!tasks.length) {
+    tb.innerHTML = '<tr><td colspan="5" style="padding:30px;text-align:center;color:#aaa">אין בדיקות פתוחות כרגע 👍</td></tr>';
+    return;
+  }
+  tb.innerHTML = tasks.map(function(t, i) {
+    var bg = i%2 ? '#f9f9f9' : '#fff';
+    var envBg2 = t.env==='RDP' ? '#e3f2fd' : t.env==='טסט' ? '#f3e5f5' : '#fff8e1';
+    var envColor2 = t.env==='RDP' ? '#1565c0' : t.env==='טסט' ? '#6a1b9a' : '#e65100';
+    return '<tr style="background:' + bg + ';vertical-align:top">' +
+      '<td style="padding:8px 10px;border-bottom:1px solid #eee;font-size:11px;font-weight:700;white-space:nowrap">' + esc(t.module||'') + '</td>' +
+      '<td style="padding:8px 10px;border-bottom:1px solid #eee;font-size:11px;line-height:1.5">' + esc(t.name) + '</td>' +
+      '<td style="padding:8px 10px;border-bottom:1px solid #eee;text-align:center"><span style="background:' + envBg2 + ';color:' + envColor2 + ';padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700">' + esc(t.env||'') + '</span></td>' +
+      '<td style="padding:8px 10px;border-bottom:1px solid #eee;font-size:11px">' + esc(t.notes||'') + '</td>' +
+      '<td style="padding:8px 10px;border-bottom:1px solid #eee;font-size:11px;color:#1565c0;font-style:italic">' + esc(t.adminNotes||'') + '</td>' +
+      '<td style="padding:8px 10px;border-bottom:1px solid #eee">' +
+        '<button onclick="openCloseSanity(\'' + t.id + '\')" style="background:#2e7d32;color:#fff;border:none;border-radius:4px;padding:6px 14px;cursor:pointer;font-size:12px;font-weight:700;font-family:Arial">סגור ✓</button>' +
+      '</td>' +
+    '</tr>';
+  }).join('');
+}
+
+function openNewSanity() {
+  document.getElementById('sanityEditId').value = '';
+  document.getElementById('sanityName').value = '';
+  document.getElementById('sanityDesc').value = '';
+  document.getElementById('sanityModalTitle').textContent = 'בדיקה חדשה';
+  // Populate assignee dropdown from ALL users
+  populateSanityAssignee(document.getElementById('sanityAssignee'), '');
+  document.getElementById('sanityModal').style.display = 'flex';
+}
+
+function populateSanityAssignee(sel, selectedName) {
+  sel.innerHTML = '<option value="">-- בחר מבצע --</option>';
+  (DB.users||[]).forEach(function(u){
+    var o = document.createElement('option');
+    o.value = u.name; o.textContent = u.name + ' (' + (u.role||'') + ')';
+    if (u.name === selectedName) o.selected = true;
+    sel.appendChild(o);
+  });
+}
+
+function openEditSanity(id) {
+  var t = SANITY_TASKS[id];
+  if (!t) return;
+  document.getElementById('sanityEditId').value = id;
+  document.getElementById('sanityName').value = t.name || '';
+  document.getElementById('sanityDesc').value = t.desc || '';
+  document.getElementById('sanityModalTitle').textContent = 'עריכת בדיקה';
+  var sel = document.getElementById('sanityAssignee');
+  populateSanityAssignee(sel, t.assignee || '');
+  document.getElementById('sanityModal').style.display = 'flex';
+}
+
+function closeSanityModal() {
+  document.getElementById('sanityModal').style.display = 'none';
+}
+
+async function saveSanityTask() {
+  var name = document.getElementById('sanityName').value.trim();
+  if (!name) { alert('יש להזין שם בדיקה'); return; }
+  var editId = document.getElementById('sanityEditId').value;
+  var assignee = document.getElementById('sanityAssignee').value;
+  var desc = document.getElementById('sanityDesc').value.trim();
+  var isNew = !editId;
+  var prevAssignee = editId && SANITY_TASKS[editId] ? SANITY_TASKS[editId].assignee : '';
+
+  var id = editId || 'sanity_' + Date.now();
+  var existing = (editId && SANITY_TASKS[editId]) ? SANITY_TASKS[editId] : {};
+  var task = {
+    id: id,
+    name: name,
+    desc: desc,
+    assignee: assignee,
+    module: existing.module || '',
+    env: existing.env || '',
+    status: existing.status || 'פתוח',
+    notes: existing.notes || '',
+    closedBy: existing.closedBy || '',
+    closedAt: existing.closedAt || '',
+    adminNotes: existing.adminNotes || '',
+    createdAt: existing.createdAt || new Date().toISOString()
+  };
+
+  await fetch('https://malm-focus-default-rtdb.firebaseio.com/sanity/' + id + '.json', {
+    method: 'PUT',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(task)
+  });
+
+  SANITY_TASKS[id] = task;
+
+  // Send email only on NEW assignment or changed assignee
+  if (assignee && (isNew || assignee !== prevAssignee)) {
+    var assigneeUser = (DB.users||[]).find(function(u){ return u.name===assignee; });
+    if (assigneeUser && assigneeUser.email) {
+      sendSanityEmail(assigneeUser, task);
+    }
+  }
+
+  closeSanityModal();
+  renderSanityAdmin();
+}
+
+function sendSanityEmail(user, task) {
+  if (typeof emailjs === 'undefined') return;
+  emailjs.send('service_q2ekmcf', 'template_jylk5i7', {
+    to_email: user.email,
+    cc_email: 'ido.efrati@dhl.com',
+    to_name: user.name,
+    subject: 'בדיקת שפיות חדשה שויכה אליך: ' + task.name,
+    message: 'שלום ' + user.name + ',\n\nשויכה אליך בדיקת שפיות חדשה במערכת בקשות מלמ.\n\nשם הבדיקה: ' + task.name + '\nתיאור: ' + (task.desc||'—') + '\n\nאנא היכנס למערכת לביצוע הבדיקה.',
+    task_title: task.name,
+    status: 'בדיקת שפיות חדשה'
+  });
+}
+
+async function deleteSanityTask(id) {
+  if (!confirm('למחוק את הבדיקה?')) return;
+  await fetch('https://malm-focus-default-rtdb.firebaseio.com/sanity/' + id + '.json', { method: 'DELETE' });
+  delete SANITY_TASKS[id];
+  renderSanityAdmin();
+}
+
+function openCloseSanity(id) {
+  document.getElementById('sanityCloseId').value = id;
+  document.getElementById('sanityCloseNotes').value = '';
+  document.getElementById('sanityNotesModal').style.display = 'flex';
+}
+
+function closeSanityNotesModal() {
+  document.getElementById('sanityNotesModal').style.display = 'none';
+}
+
+async function confirmCloseSanity() {
+  var id = document.getElementById('sanityCloseId').value;
+  var notes = document.getElementById('sanityCloseNotes').value.trim();
+  var t = SANITY_TASKS[id];
+  if (!t) return;
+  var updates = {
+    status: 'בוצע',
+    closedBy: CU ? CU.name : '',
+    notes: notes,
+    closedAt: new Date().toISOString()
+  };
+  await fetch('https://malm-focus-default-rtdb.firebaseio.com/sanity/' + id + '.json', {
+    method: 'PATCH',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(updates)
+  });
+  Object.assign(SANITY_TASKS[id], updates);
+  closeSanityNotesModal();
+  renderSanityManager();
+  // Update badge
+  var myName = CU ? CU.name : '';
+  var stillOpen = Object.values(SANITY_TASKS).filter(function(t){ return t.assignee===myName && t.status==='פתוח'; });
+  var badge = document.getElementById('sanityBadge');
+  if (badge) { badge.textContent = stillOpen.length; badge.style.display = stillOpen.length>0?'inline':'none'; }
+}
+
+// Check on login for open sanity tasks
+async function checkSanityOnLogin() {
+  try {
+    var r = await fetch('https://malm-focus-default-rtdb.firebaseio.com/sanity.json?t=' + Date.now());
+    var tasks = await r.json();
+    if (!tasks) return;
+    var myName = CU ? CU.name : '';
+    console.log('checkSanityOnLogin: myName=', myName, 'tasks count=', Object.keys(tasks).length);
+    var open = Object.values(tasks).filter(function(t){ return t.assignee===myName && t.status==='פתוח'; });
+    console.log('open sanity tasks for me:', open.length, open.map(function(t){return t.assignee+'/'+t.name;}));
+    // Show badge
+    var badge = document.getElementById('sanityBadge');
+    if (badge) {
+      if (open.length > 0) {
+        badge.textContent = open.length;
+        badge.style.display = 'inline';
+      } else {
+        badge.style.display = 'none';
+      }
+    }
+    if (open.length > 0) {
+      setTimeout(function(){
+        alert('יש לך ' + open.length + ' בדיקת שפיות פתוחה' + (open.length>1?'ות':'') + ' הממתינה לך!\n\nכנס ללשונית "בדיקות שפיות" לביצוע.');
+      }, 800);
+    }
+  } catch(e) {}
+}
+
+async function resetSanityTasks() {
+  var pwd = prompt('הזן סיסמת אדמין לאיפוס:');
+  if (!pwd) return;
+  var adminUser = (DB.users||[]).find(function(u){ return u.role==='admin' && u.password===pwd; });
+  if (!adminUser) { alert('סיסמה שגויה'); return; }
+  if (!confirm('לאפס את כל הבדיקות לברירת המחדל?\nכל השיוכים והסטטוסים יימחקו.')) return;
+  await fetch('https://malm-focus-default-rtdb.firebaseio.com/sanity.json', {
+    method: 'PUT',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(SANITY_SEED)
+  });
+  SANITY_TASKS = Object.assign({}, SANITY_SEED);
+  renderSanityAdmin();
+  alert('✅ אופס בהצלחה!');
+}
+
+function toggleStatusDropdown(sfx) {
+  sfx = sfx || '2';
+  var dd = document.getElementById('st'+sfx+'dropdown');
+  dd.style.display = dd.style.display === 'none' ? 'block' : 'none';
+}
+function toggleAllStatuses(cb, sfx) {
+  sfx = sfx || '2';
+  document.querySelectorAll('.st'+sfx+'cb').forEach(function(c){ c.checked = cb.checked; });
+  updateStatusBtn(sfx);
+  if(sfx==='1') r1(); else r2();
+}
+function onStatusChange(sfx) {
+  sfx = sfx || '2';
+  var cbs = document.querySelectorAll('.st'+sfx+'cb');
+  var allCb = document.getElementById('st'+sfx+'_all');
+  if(allCb) allCb.checked = [...cbs].every(c=>c.checked);
+  updateStatusBtn(sfx);
+  if(sfx==='1') r1(); else r2();
+}
+function updateStatusBtn(sfx) {
+  sfx = sfx || '2';
+  var cbs = [...document.querySelectorAll('.st'+sfx+'cb')];
+  var checked = cbs.filter(c=>c.checked);
+  var btn = document.getElementById('st'+sfx+'btn');
+  if(!btn) return;
+  if(checked.length===0) btn.textContent = 'ללא סטטוס ▾';
+  else if(checked.length===cbs.length) btn.textContent = 'כל הסטטוסים ▾';
+  else if(checked.length===1) btn.textContent = checked[0].value + ' ▾';
+  else btn.textContent = checked.length + ' סטטוסים ▾';
+}
+// Close dropdown on outside click
+document.addEventListener('click', function(e){
+  ['1','2'].forEach(function(sfx){
+    var wrap = document.getElementById('st'+sfx+'wrap');
+    if(wrap && !wrap.contains(e.target)){
+      var dd = document.getElementById('st'+sfx+'dropdown');
+      if(dd) dd.style.display='none';
+    }
+  });
+});
+
+async function updateSanityAdminNotes(id, val) {
+  if (!SANITY_TASKS[id]) return;
+  SANITY_TASKS[id].adminNotes = val;
+  await fetch('https://malm-focus-default-rtdb.firebaseio.com/sanity/' + id + '.json', {
+    method: 'PATCH',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({adminNotes: val})
+  });
+}
+
+// פונקציה חד-פעמית להסרת רשומות כפולות (תוכן זהה לחלוטין למעט _id)
+// הופעלה ידנית ע"י מתן לניקוי כפילויות היסטוריות
+async function dedupRecords(sheet) {
+  if (!isAdmin()) { alert('רק אדמין יכול להריץ ניקוי'); return; }
+  const fresh = await fetch('https://malm-focus-default-rtdb.firebaseio.com/db/'+sheet+'.json?t='+Date.now());
+  let arr = await fresh.json() || [];
+  const seen = new Map();
+  const deduped = [];
+  let removedCount = 0;
+  arr.forEach(function(rec) {
+    // מפתח השוואה: כל השדות חוץ מ-_id ו-chat (כדי לא להתבלבל מהבדלי תכתובת)
+    const key = JSON.stringify(Object.keys(rec).filter(k=>k!=='_id').sort().reduce(function(o,k){o[k]=rec[k];return o;},{}));
+    if (seen.has(key)) {
+      removedCount++;
+    } else {
+      seen.set(key, true);
+      deduped.push(rec);
+    }
+  });
+  if (removedCount === 0) {
+    alert('לא נמצאו כפילויות ב-' + sheet);
+    return;
+  }
+  if (!confirm('נמצאו ' + removedCount + ' רשומות כפולות ב-' + sheet + '. למחוק אותן?')) return;
+  await fetch('https://malm-focus-default-rtdb.firebaseio.com/db/'+sheet+'.json', {
+    method: 'PUT',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(deduped)
+  });
+  DB[sheet] = deduped;
+  initFilters();
+  if (sheet==='malm') r1(); else r2();
+  alert('✅ הוסרו ' + removedCount + ' כפילויות מ-' + sheet);
+}
+</script>
+
+<div class="pane" id="pane3" style="padding:14px 20px">
+  <div style="font-size:16px;font-weight:700;color:#1a1a2e;margin-bottom:14px">&#128295; פיתוחים ותיקונים לבדיקה</div>
+  <div class="stats" id="s3"></div>
+  <div style="display:flex;gap:10px;margin-bottom:12px;flex-wrap:wrap;align-items:center">
+    <select id="devFilterTester" onchange="filterDevTable()" style="padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:12px;font-family:Arial;direction:rtl">
+      <option value="">כל הבודקים</option>
+    </select>
+    <select id="devFilterStatus" onchange="filterDevTable()" style="padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:12px;font-family:Arial;direction:rtl">
+      <option value="">כל הסטטוסים</option>
+      <option value="תקין">תקין</option>
+      <option value="לא תקין">לא תקין</option>
+    </select>
+    <button onclick="clearDevFilters()" style="padding:6px 12px;border:1px solid #aaa;border-radius:6px;font-size:12px;font-family:Arial;background:#fff;cursor:pointer">נקה סינון</button>
+    <button onclick="openNewDevTask()" style="padding:6px 14px;background:#D40511;color:#fff;border:none;border-radius:6px;font-size:12px;font-weight:700;font-family:Arial;cursor:pointer;margin-right:auto">+ משימה חדשה</button>
+  </div>
+  <div style="overflow-x:auto">
+  <table style="width:100%;border-collapse:collapse;font-size:12px;direction:rtl">
+    <thead><tr style="background:#1a1a2e;color:#fff" id="devThead">
+      <th style="padding:8px 10px;text-align:right;white-space:nowrap;cursor:pointer" onclick="sortDevTable('id')" title="מיון">משימה <span id="devSort_id"></span></th>
+      <th style="padding:8px 10px;text-align:right;white-space:nowrap;cursor:pointer" onclick="sortDevTable('dev')" title="מיון">מפתח <span id="devSort_dev"></span></th>
+      <th style="padding:8px 10px;text-align:right;white-space:nowrap;cursor:pointer" onclick="sortDevTable('status')" title="מיון">סטטוס <span id="devSort_status"></span></th>
+      <th style="padding:8px 10px;text-align:right;min-width:220px">תאור משימה</th>
+      <th style="padding:8px 10px;text-align:right;min-width:150px">הערות</th>
+      <th style="padding:8px 10px;text-align:right;white-space:nowrap;cursor:pointer" onclick="sortDevTable('comp')" title="מיון">רכיב <span id="devSort_comp"></span></th>
+      <th style="padding:8px 10px;text-align:right;white-space:nowrap;cursor:pointer" onclick="sortDevTable('ver')" title="מיון">גרסה <span id="devSort_ver"></span></th>
+      <th style="padding:8px 10px;text-align:right;white-space:nowrap;cursor:pointer" onclick="sortDevTable('iface')" title="מיון">ממשק <span id="devSort_iface"></span></th>
+      <th style="padding:8px 10px;text-align:right;white-space:nowrap;cursor:pointer" onclick="sortDevTable('tester')" title="מיון">בודק DHL <span id="devSort_tester"></span></th>
+      <th style="padding:8px 10px;text-align:right;min-width:130px">הערות בודק</th>
+      <th style="padding:8px 10px;text-align:right;white-space:nowrap;cursor:pointer" onclick="sortDevTable('tStatus')" title="מיון">סטטוס בדיקה <span id="devSort_tStatus"></span></th>
+    </tr></thead>
+    <tbody id="devBody"></tbody>
+  </table>
+  </div>
+</div>
+
+<div class="pane" id="pane4" style="padding:14px 20px;direction:rtl">
+
+  <!-- ADMIN VIEW -->
+  <div id="sanityAdminView">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+      <div style="font-size:16px;font-weight:700;color:#1a1a2e">✅ בדיקות שפיות <span id="sanityBadge" style="display:none;background:#D40511;color:#fff;border-radius:50%;padding:1px 6px;font-size:10px;font-weight:700;margin-right:4px"></span></div>
+      <button onclick="openNewSanity()" style="background:#D40511;color:#fff;border:none;border-radius:6px;padding:8px 16px;cursor:pointer;font-size:13px;font-weight:700;font-family:Arial">+ בדיקה חדשה</button>
+      <button onclick="resetSanityTasks()" style="background:#e65100;color:#fff;border:none;border-radius:6px;padding:8px 16px;cursor:pointer;font-size:13px;font-weight:700;font-family:Arial">🔄 אפס לברירת מחדל</button>
+    </div>
+    <table style="width:100%;border-collapse:collapse;font-size:12px">
+      <thead><tr style="background:#1a1a2e;color:#fff">
+        <th style="padding:8px 10px;text-align:right;white-space:nowrap">מסך/מודול</th>
+        <th style="padding:8px 10px;text-align:right;min-width:200px">בדיקה</th>
+        <th style="padding:8px 10px;text-align:right;white-space:nowrap">סביבה</th>
+        <th style="padding:8px 10px;text-align:right;white-space:nowrap">מבצע</th>
+        <th style="padding:8px 10px;text-align:right;white-space:nowrap">סטטוס</th>
+        <th style="padding:8px 10px;text-align:right">הערות בודק</th>
+        <th style="padding:8px 10px;text-align:right;min-width:120px">Admin Notes</th>
+        <th style="padding:8px 10px;text-align:right;white-space:nowrap">תאריך בדיקה</th>
+        <th style="padding:8px 10px;text-align:right;white-space:nowrap">פעולות</th>
+      </tr></thead>
+      <tbody id="sanityAdminBody"></tbody>
+    </table>
+  </div>
+
+  <!-- MANAGER VIEW -->
+  <div id="sanityManagerView" style="display:none">
+    <div style="font-size:16px;font-weight:700;color:#1a1a2e;margin-bottom:14px">✅ הבדיקות שלי</div>
+    <table style="width:100%;border-collapse:collapse;font-size:12px">
+      <thead><tr style="background:#1a1a2e;color:#fff">
+        <th style="padding:8px 10px;text-align:right;white-space:nowrap">מסך/מודול</th>
+        <th style="padding:8px 10px;text-align:right;min-width:200px">בדיקה</th>
+        <th style="padding:8px 10px;text-align:right;white-space:nowrap">סביבה</th>
+        <th style="padding:8px 10px;text-align:right">הערות בודק</th>
+        <th style="padding:8px 10px;text-align:right;min-width:120px">Admin Notes</th>
+        <th style="padding:8px 10px;text-align:right;white-space:nowrap">פעולות</th>
+      </tr></thead>
+      <tbody id="sanityManagerBody"></tbody>
+    </table>
+  </div>
+
+  <!-- SANITY FORM MODAL -->
+  <div id="sanityModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9000;align-items:center;justify-content:center">
+    <div style="background:#fff;border-radius:12px;padding:24px;width:90%;max-width:480px;direction:rtl">
+      <div style="font-size:15px;font-weight:700;margin-bottom:16px;color:#1a1a2e" id="sanityModalTitle">בדיקה חדשה</div>
+      <input type="hidden" id="sanityEditId">
+      <div style="margin-bottom:10px">
+        <label style="font-size:11px;color:#666;font-weight:700;display:block;margin-bottom:3px">שם בדיקה *</label>
+        <input id="sanityName" style="width:100%;padding:8px 10px;border:1.5px solid #ddd;border-radius:6px;font-size:13px;font-family:Arial;direction:rtl;box-sizing:border-box">
+      </div>
+      <div style="margin-bottom:10px">
+        <label style="font-size:11px;color:#666;font-weight:700;display:block;margin-bottom:3px">תיאור</label>
+        <textarea id="sanityDesc" rows="3" style="width:100%;padding:8px 10px;border:1.5px solid #ddd;border-radius:6px;font-size:13px;font-family:Arial;direction:rtl;resize:vertical;box-sizing:border-box"></textarea>
+      </div>
+      <div style="margin-bottom:10px">
+        <label style="font-size:11px;color:#666;font-weight:700;display:block;margin-bottom:3px">מבצע הבדיקה</label>
+        <select id="sanityAssignee" style="width:100%;padding:8px 10px;border:1.5px solid #ddd;border-radius:6px;font-size:13px;font-family:Arial;direction:rtl">
+          <option value="">-- בחר מנהל --</option>
+        </select>
+      </div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
+        <button onclick="closeSanityModal()" style="padding:8px 16px;border:1px solid #ddd;border-radius:6px;cursor:pointer;font-size:13px;font-family:Arial;background:#fff">ביטול</button>
+        <button onclick="saveSanityTask()" style="padding:8px 16px;background:#D40511;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px;font-weight:700;font-family:Arial">שמור</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- SANITY NOTES MODAL -->
+  <div id="sanityNotesModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9000;align-items:center;justify-content:center">
+    <div style="background:#fff;border-radius:12px;padding:24px;width:90%;max-width:420px;direction:rtl">
+      <div style="font-size:15px;font-weight:700;margin-bottom:16px;color:#1a1a2e">סגירת בדיקה</div>
+      <input type="hidden" id="sanityCloseId">
+      <div style="margin-bottom:12px">
+        <label style="font-size:11px;color:#666;font-weight:700;display:block;margin-bottom:3px">הערות (אופציונלי)</label>
+        <textarea id="sanityCloseNotes" rows="3" style="width:100%;padding:8px 10px;border:1.5px solid #ddd;border-radius:6px;font-size:13px;font-family:Arial;direction:rtl;resize:vertical;box-sizing:border-box"></textarea>
+      </div>
+      <div style="display:flex;gap:8px;justify-content:flex-end">
+        <button onclick="closeSanityNotesModal()" style="padding:8px 16px;border:1px solid #ddd;border-radius:6px;cursor:pointer;font-size:13px;font-family:Arial;background:#fff">ביטול</button>
+        <button onclick="confirmCloseSanity()" style="padding:8px 16px;background:#2e7d32;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px;font-weight:700;font-family:Arial">סגור בדיקה ✓</button>
+      </div>
+    </div>
+  </div>
+  <!-- NEW DEV TASK MODAL -->
+
+</div>
+
+<!-- NEW DEV TASK MODAL (top-level, so it's visible from any tab) -->
+<div id="newDevModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9000;align-items:center;justify-content:center">
+  <div style="background:#fff;border-radius:12px;padding:24px;width:90%;max-width:480px;direction:rtl">
+    <div style="font-size:15px;font-weight:700;margin-bottom:16px;color:#1a1a2e">משימה חדשה לבדיקה</div>
+    <div style="margin-bottom:10px">
+      <label style="font-size:11px;color:#666;font-weight:700;display:block;margin-bottom:3px">מספר משימה</label>
+      <input id="ndtId" style="width:100%;padding:8px 10px;border:1.5px solid #ddd;border-radius:6px;font-size:13px;font-family:Arial;direction:ltr;box-sizing:border-box">
+    </div>
+    <div style="margin-bottom:10px">
+      <label style="font-size:11px;color:#666;font-weight:700;display:block;margin-bottom:3px">מפתח</label>
+      <input id="ndtDev" style="width:100%;padding:8px 10px;border:1.5px solid #ddd;border-radius:6px;font-size:13px;font-family:Arial;direction:rtl;box-sizing:border-box">
+    </div>
+    <div style="margin-bottom:10px">
+      <label style="font-size:11px;color:#666;font-weight:700;display:block;margin-bottom:3px">תאור משימה *</label>
+      <textarea id="ndtDesc" rows="3" style="width:100%;padding:8px 10px;border:1.5px solid #ddd;border-radius:6px;font-size:13px;font-family:Arial;direction:rtl;resize:vertical;box-sizing:border-box"></textarea>
+    </div>
+    <div style="display:flex;gap:8px;margin-bottom:10px">
+      <div style="flex:1">
+        <label style="font-size:11px;color:#666;font-weight:700;display:block;margin-bottom:3px">רכיב</label>
+        <input id="ndtComp" style="width:100%;padding:8px 10px;border:1.5px solid #ddd;border-radius:6px;font-size:13px;font-family:Arial;direction:ltr;box-sizing:border-box">
+      </div>
+      <div style="flex:1">
+        <label style="font-size:11px;color:#666;font-weight:700;display:block;margin-bottom:3px">גרסה</label>
+        <input id="ndtVer" style="width:100%;padding:8px 10px;border:1.5px solid #ddd;border-radius:6px;font-size:13px;font-family:Arial;direction:ltr;box-sizing:border-box">
+      </div>
+    </div>
+    <div style="margin-bottom:10px">
+      <label style="font-size:11px;color:#666;font-weight:700;display:block;margin-bottom:3px">ממשק</label>
+      <input id="ndtIface" style="width:100%;padding:8px 10px;border:1.5px solid #ddd;border-radius:6px;font-size:13px;font-family:Arial;direction:ltr;box-sizing:border-box">
+    </div>
+    <div style="margin-bottom:10px">
+      <label style="font-size:11px;color:#666;font-weight:700;display:block;margin-bottom:3px">הערות</label>
+      <textarea id="ndtNotes" rows="2" style="width:100%;padding:8px 10px;border:1.5px solid #ddd;border-radius:6px;font-size:13px;font-family:Arial;direction:rtl;resize:vertical;box-sizing:border-box"></textarea>
+    </div>
+    <div id="newDevMsg" style="margin-bottom:6px;font-size:12px;font-weight:700"></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px">
+      <button onclick="closeNewDevModal()" style="padding:8px 16px;border:1px solid #ddd;border-radius:6px;cursor:pointer;font-size:13px;font-family:Arial;background:#fff">ביטול</button>
+      <button onclick="saveNewDevTask()" style="padding:8px 16px;background:#D40511;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px;font-weight:700;font-family:Arial">שמור</button>
+    </div>
+  </div>
+</div>
+</body>
+</html>
