@@ -79,7 +79,7 @@ tr:hover td{background:#fffbf0}
 .chat-last{color:#555}
 .chat-last span.ml{color:#1565c0;font-weight:600}
 .chat-last span.dh{color:#e65100;font-weight:600}
-.chat-tooltip{display:none;position:fixed;z-index:9999;background:#fff;border:1px solid #ddd;border-radius:10px;box-shadow:0 4px 20px rgba(0,0,0,0.15);padding:14px;width:320px;max-height:360px;overflow-y:auto;font-size:12px}
+.chat-tooltip{display:none;position:fixed;z-index:9999;background:#fff;border:1px solid #ddd;border-radius:10px;box-shadow:0 4px 20px rgba(0,0,0,0.15);padding:14px;width:320px;max-height:360px;overflow-y:auto;overscroll-behavior:contain;font-size:12px}
 .tt-msg{padding:6px 10px;border-radius:8px;margin-bottom:6px;line-height:1.5}
 .tt-msg.malm{background:#e3f2fd;text-align:right}
 .tt-msg.dhl{background:#fff3e0;text-align:left}
@@ -289,6 +289,10 @@ tr:hover td{background:#fffbf0}
       <!-- Chat -->
       <div class="chat-section" id="chatSection" style="display:none">
         <div style="font-size:13px;font-weight:700;color:#1a1a2e;margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid #f0f0f0">💬 הערות</div>
+        <div id="allAttachmentsWrap" style="display:none;margin-bottom:10px">
+          <div style="font-size:11px;font-weight:700;color:#666;margin-bottom:4px">📎 קבצים מצורפים</div>
+          <div id="allAttachments" class="attachments"></div>
+        </div>
         <div class="chat-input-row">
           <textarea id="chatInput" placeholder="כתוב הערה..."></textarea>
           <div class="chat-send-col">
@@ -315,6 +319,7 @@ tr:hover td{background:#fffbf0}
 <script>
 const OWNER=window.APP_CONFIG.owner,REPO=window.APP_CONFIG.repo,TOKEN=window.APP_CONFIG.token;
 let DB={malm:[],rivka:[]},currentTab=0,editIdx=-1,editSheet='',editRecId=null,sortCol2='ע',sortDir2=1,sortCol1='',sortDir1=1;
+let formSnapshot=null;
 const SM=['פתוח','בטיפול','בבדיקה','ממתין לבדיקה','מוקפא','הושהה','בוצע','טופל','בוטל'];
 const SR=['פתוח','בטיפול','בוצע'];
 const SR_ADMIN=['פתוח','בטיפול','בוצע','מוקפא','בבדיקה','בוטל'];
@@ -672,8 +677,11 @@ function openAdd(){
   document.querySelectorAll('.chat-tabs, .chat-input-row').forEach(function(el){ el.style.display='none'; });
   pendingFiles = [];
   renderAttachments();
+  document.getElementById('allAttachmentsWrap').style.display='none';
+  document.getElementById('chatInput').value='';
   setTimeout(initDropZone, 100);
   document.getElementById('modalBg').classList.add('open');
+  formSnapshot=getFormSnapshot();
 }
 
 function openEdit(sheet,idx){
@@ -686,14 +694,27 @@ function openEdit(sheet,idx){
   document.getElementById('chatMessages').style.display = 'flex';
   document.querySelectorAll('.chat-tabs, .chat-input-row').forEach(function(el){ el.style.display=''; });
   pendingFiles=[];
+  document.getElementById('chatInput').value='';
   setTimeout(function(){ var lbl=document.getElementById('chatSenderLabel'); if(lbl&&CU) lbl.textContent=CU.name; },50);
   renderChat();
   renderAttachments();
   setTimeout(initDropZone,100);
   document.getElementById('modalBg').classList.add('open');
+  formSnapshot=getFormSnapshot();
 }
 
-function closeModal(){document.getElementById('modalBg').classList.remove('open')}
+function getFormSnapshot(){
+  const fields=[...document.querySelectorAll('#modalFields input, #modalFields select, #modalFields textarea')].map(el=>el.value);
+  const chatEl=document.getElementById('chatInput');
+  return JSON.stringify(fields)+'|'+(chatEl?chatEl.value:'');
+}
+function closeModal(force){
+  if(!force && formSnapshot!==null && getFormSnapshot()!==formSnapshot){
+    if(!confirm('יש שינויים שלא נשמרו. לצאת בלי לשמור?'))return;
+  }
+  formSnapshot=null;
+  document.getElementById('modalBg').classList.remove('open');
+}
 function g(id){const el=document.getElementById(id);return el?el.value.trim():''}
 
 function saveModal(){
@@ -760,7 +781,7 @@ function saveModal(){
   }
   const savedIdx = editIdx; // שמור לפני closeModal מאפס
   const savedSheet = editSheet;
-  closeModal();
+  closeModal(true);
   initFilters();
   if(savedSheet==='malm')r1();else r2();
   saveRecord(savedSheet, savedIdx, rec);
@@ -1217,6 +1238,7 @@ function renderChat(){
     ...(chat.malm||[]).map(m=>({...m,side:'malm'})),
     ...(chat.dhl||[]).map(m=>({...m,side:'dhl'}))
   ].sort((a,b)=>msgSortKey(b)-msgSortKey(a));
+  renderAllFiles(all);
   const el=document.getElementById('chatMessages');
   if(!all.length){el.innerHTML='<div class="no-msgs">אין הערות עדיין</div>';return}
   el.innerHTML=all.map(m=>`
@@ -1227,6 +1249,18 @@ function renderChat(){
       <div class="msg-time">${m.time}</div>
     </div>`).join('');
   el.scrollTop=0;
+}
+
+function renderAllFiles(messages){
+  const wrap=document.getElementById('allAttachmentsWrap');
+  const el=document.getElementById('allAttachments');
+  if(!wrap||!el)return;
+  const files=[];
+  messages.forEach(m=>(m.files||[]).forEach(f=>files.push(f)));
+  if(!files.length){wrap.style.display='none';el.innerHTML='';return}
+  wrap.style.display='block';
+  el.innerHTML=files.map(f=>`
+    <div class="att-item"><a href="${f.url}" target="_blank">📎 ${f.name}</a><span class="att-size">${f.size}</span></div>`).join('');
 }
 
 function sendMsg(){
