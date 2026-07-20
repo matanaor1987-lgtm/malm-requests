@@ -57,8 +57,11 @@ tr:hover td{background:#fffbf0}
 .saving{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#1a1a2e;color:#fff;padding:10px 20px;border-radius:8px;font-size:13px;z-index:999;display:none}
 .modal-bg{position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1000;display:none;align-items:center;justify-content:center}
 .modal-bg.open{display:flex}
-.modal{background:#fff;border-radius:12px;padding:24px;width:92%;max-width:820px;max-height:90vh;overflow-y:auto}
+.modal{background:#fff;border-radius:12px;padding:24px;width:95%;max-width:1300px;max-height:90vh;overflow-y:auto}
 .modal h3{font-size:15px;margin-bottom:0;color:#1a1a2e}
+.modal-body{display:flex;gap:24px;align-items:flex-start}
+.modal-form-col{flex:1;min-width:0}
+@media (max-width:900px){.modal-body{flex-direction:column}.chat-section{border-right:none !important;padding-right:0 !important;border-top:2px solid #FECC02;padding-top:16px;margin-top:20px;width:100%}}
 .form-row{margin-bottom:11px}
 .form-row label{display:block;font-size:11px;color:#666;margin-bottom:3px;font-weight:700}
 .form-row input,.form-row select,.form-row textarea{width:100%;padding:7px 10px;border:1px solid #ddd;border-radius:6px;font-size:13px;font-family:Arial;direction:rtl}
@@ -98,14 +101,17 @@ tr:hover td{background:#fffbf0}
 .att-size{color:#999;font-size:10px}
 .uploading{color:#e65100;font-size:11px;padding:4px 0}
 /* Chat */
-.chat-section{margin-top:20px;border-top:2px solid #FECC02;padding-top:16px}
+.chat-section{flex:1;min-width:0;border-right:1px solid #eee;padding-right:24px}
 .chat-tabs{display:flex;gap:0;margin-bottom:12px;border-bottom:1px solid #e0e0e0}
 .chat-tab{padding:7px 16px;cursor:pointer;font-size:12px;font-weight:600;color:#666;border-bottom:2px solid transparent}
 .chat-tab.active{color:#D40511;border-bottom-color:#D40511}
 .chat-messages{height:320px;overflow-y:auto;border:1px solid #e8e8e8;border-radius:8px;padding:10px;background:#f9f9f9;margin-bottom:10px;display:flex;flex-direction:column;gap:8px}
-.msg{max-width:75%;padding:8px 12px;border-radius:10px;font-size:12px;line-height:1.5}
+.msg{max-width:75%;padding:8px 12px;border-radius:10px;font-size:12px;line-height:1.5;overflow-wrap:anywhere}
 .msg-malm{background:#e3f2fd;color:#1a1a2e;align-self:flex-end;border-bottom-left-radius:2px}
 .msg-dhl{background:#fff3e0;color:#1a1a2e;align-self:flex-start;border-bottom-right-radius:2px}
+.msg a{text-decoration:underline}
+.msg-malm a{color:#1565c0}
+.msg-dhl a{color:#e65100}
 .msg-time{font-size:10px;color:#999;margin-top:3px}
 .msg-sender{font-size:10px;font-weight:700;margin-bottom:2px}
 .msg-malm .msg-sender{color:#1565c0}
@@ -272,29 +278,33 @@ tr:hover td{background:#fffbf0}
       <h3 id="modalTitle" style="border:none;padding:0;margin:0">משימה חדשה</h3>
       <button onclick="closeModal()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#999;line-height:1;padding:0 4px">&times;</button>
     </div>
-    <div id="modalFields"></div>
-    <div class="form-actions">
-      <button class="btn btn-cancel" onclick="closeModal()">ביטול</button>
-      <button class="btn btn-save" onclick="saveModal()">💾 שמור</button>
-    </div>
-    <!-- Chat -->
-    <div class="chat-section" id="chatSection" style="display:none">
-      <div style="font-size:13px;font-weight:700;color:#1a1a2e;margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid #f0f0f0">💬 הערות</div>
-      <div class="chat-input-row">
-        <textarea id="chatInput" placeholder="כתוב הערה..."></textarea>
-        <div class="chat-send-col">
-          <div id="chatSenderLabel" style="font-size:11px;color:#555;text-align:center;padding:2px 6px;background:#f0f0f0;border-radius:5px;white-space:nowrap"></div>
-          <button class="btn-send" onclick="sendMsg()">שלח ↵</button>
+    <div class="modal-body">
+      <div class="modal-form-col">
+        <div id="modalFields"></div>
+        <div class="form-actions">
+          <button class="btn btn-cancel" onclick="closeModal()">ביטול</button>
+          <button class="btn btn-save" onclick="saveModal()">💾 שמור</button>
         </div>
       </div>
+      <!-- Chat -->
+      <div class="chat-section" id="chatSection" style="display:none">
+        <div style="font-size:13px;font-weight:700;color:#1a1a2e;margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid #f0f0f0">💬 הערות</div>
+        <div class="chat-input-row">
+          <textarea id="chatInput" placeholder="כתוב הערה..."></textarea>
+          <div class="chat-send-col">
+            <div id="chatSenderLabel" style="font-size:11px;color:#555;text-align:center;padding:2px 6px;background:#f0f0f0;border-radius:5px;white-space:nowrap"></div>
+            <button class="btn-send" onclick="sendMsg()">שלח ↵</button>
+          </div>
+        </div>
 
-      <div class="chat-messages" id="chatMessages"></div>
-      <div id="dropZone" class="drop-zone" onclick="document.getElementById('fileInput').click()">
-        📎 גרור קובץ לכאן או לחץ לבחירה (.msg, .pdf, .docx, .xlsx, תמונות)
+        <div class="chat-messages" id="chatMessages"></div>
+        <div id="dropZone" class="drop-zone" onclick="document.getElementById('fileInput').click()">
+          📎 גרור קובץ לכאן או לחץ לבחירה (.msg, .pdf, .docx, .xlsx, תמונות)
+        </div>
+        <input type="file" id="fileInput" style="display:none" multiple onchange="handleFiles(this.files)">
+        <div id="uploadStatus"></div>
+        <div id="attachments" class="attachments"></div>
       </div>
-      <input type="file" id="fileInput" style="display:none" multiple onchange="handleFiles(this.files)">
-      <div id="uploadStatus"></div>
-      <div id="attachments" class="attachments"></div>
     </div>
   </div>
 </div>
@@ -1193,6 +1203,11 @@ function getEditRec(){
   return DB[editSheet][editIdx]||null;
 }
 
+function escapeHtml(s){return String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+function linkify(text){
+  return escapeHtml(text).replace(/(https?:\/\/[^\s<]+)/g,url=>`<a href="${url}" target="_blank" rel="noopener">${url}</a>`);
+}
+
 function renderChat(){
   if(editIdx===-1)return;
   const rec=getEditRec();
@@ -1201,17 +1216,17 @@ function renderChat(){
   const all=[
     ...(chat.malm||[]).map(m=>({...m,side:'malm'})),
     ...(chat.dhl||[]).map(m=>({...m,side:'dhl'}))
-  ].sort((a,b)=>msgSortKey(a)-msgSortKey(b));
+  ].sort((a,b)=>msgSortKey(b)-msgSortKey(a));
   const el=document.getElementById('chatMessages');
   if(!all.length){el.innerHTML='<div class="no-msgs">אין הערות עדיין</div>';return}
   el.innerHTML=all.map(m=>`
     <div class="msg msg-${m.side==='malm'?'malm':'dhl'}">
       <div class="msg-sender">${m.sender}</div>
-      <div>${m.text}</div>
+      <div>${linkify(m.text)}</div>
       ${(m.files||[]).map(f=>`<div style="margin-top:4px"><a href="${f.url}" target="_blank" style="font-size:11px;color:#1565c0">📎 ${f.name} <span style="color:#999">${f.size}</span></a></div>`).join('')}
       <div class="msg-time">${m.time}</div>
     </div>`).join('');
-  el.scrollTop=el.scrollHeight;
+  el.scrollTop=0;
 }
 
 function sendMsg(){
