@@ -57,12 +57,16 @@ tr:hover td{background:#fffbf0}
 .saving{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#1a1a2e;color:#fff;padding:10px 20px;border-radius:8px;font-size:13px;z-index:999;display:none}
 .modal-bg{position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1000;display:none;align-items:center;justify-content:center}
 .modal-bg.open{display:flex}
-.modal{background:#fff;border-radius:12px;padding:24px;width:90%;max-width:540px;max-height:90vh;overflow-y:auto}
+.modal{background:#fff;border-radius:12px;padding:24px;width:92%;max-width:820px;max-height:90vh;overflow-y:auto}
 .modal h3{font-size:15px;margin-bottom:0;color:#1a1a2e}
 .form-row{margin-bottom:11px}
 .form-row label{display:block;font-size:11px;color:#666;margin-bottom:3px;font-weight:700}
 .form-row input,.form-row select,.form-row textarea{width:100%;padding:7px 10px;border:1px solid #ddd;border-radius:6px;font-size:13px;font-family:Arial;direction:rtl}
 .form-row textarea{height:75px;resize:vertical}
+.form-row textarea.tall{height:170px}
+.form-row-group{display:flex;gap:10px;margin-bottom:11px;flex-wrap:wrap}
+.form-row-group .form-row{flex:1;min-width:130px;margin-bottom:0}
+.form-row-group .form-row.narrow{flex:0 0 150px}
 .form-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:16px;padding-top:12px;border-top:1px solid #f0f0f0}
 .dtag{font-size:10px;background:#e3f2fd;color:#1565c0;padding:1px 6px;border-radius:3px;display:inline-block;margin-bottom:2px}
 .loading{text-align:center;padding:40px;color:#999;font-size:14px}
@@ -98,7 +102,7 @@ tr:hover td{background:#fffbf0}
 .chat-tabs{display:flex;gap:0;margin-bottom:12px;border-bottom:1px solid #e0e0e0}
 .chat-tab{padding:7px 16px;cursor:pointer;font-size:12px;font-weight:600;color:#666;border-bottom:2px solid transparent}
 .chat-tab.active{color:#D40511;border-bottom-color:#D40511}
-.chat-messages{height:200px;overflow-y:auto;border:1px solid #e8e8e8;border-radius:8px;padding:10px;background:#f9f9f9;margin-bottom:10px;display:flex;flex-direction:column;gap:8px}
+.chat-messages{height:320px;overflow-y:auto;border:1px solid #e8e8e8;border-radius:8px;padding:10px;background:#f9f9f9;margin-bottom:10px;display:flex;flex-direction:column;gap:8px}
 .msg{max-width:75%;padding:8px 12px;border-radius:10px;font-size:12px;line-height:1.5}
 .msg-malm{background:#e3f2fd;color:#1a1a2e;align-self:flex-end;border-bottom-left-radius:2px}
 .msg-dhl{background:#fff3e0;color:#1a1a2e;align-self:flex-start;border-bottom-right-radius:2px}
@@ -632,13 +636,17 @@ function malmFields(r={}){
 
 function rivkaFields(r={}, isEdit=false){
   return`
-    <div class="form-row"><label>נושא</label><input id="f_נ" value="${(r.נ||'').replace(/"/g,'&quot;')}" placeholder="נושא..."></div>
-    <div class="form-row"><label>תאריך</label><input id="f_ת" type="date" value="${r.ת||new Date().toISOString().slice(0,10)}"></div>
+    <div class="form-row-group">
+      <div class="form-row"><label>נושא</label><input id="f_נ" value="${(r.נ||'').replace(/"/g,'&quot;')}" placeholder="נושא..."></div>
+      <div class="form-row narrow"><label>תאריך</label><input id="f_ת" type="date" value="${r.ת||new Date().toISOString().slice(0,10)}"></div>
+    </div>
     <div class="form-row"><label>כותרת</label><input id="f_כ" value="${(r.כ||'').replace(/"/g,'&quot;')}" placeholder="כותרת..."></div>
-    <div class="form-row"><label>בקשה</label><textarea id="f_ב">${r.ב||''}</textarea></div>
-    <div class="form-row"><label>עדיפות <small style="color:#888;font-weight:normal">(1 = גבוהה, 5 = נמוכה)</small></label><select id="f_ע" onchange="checkCritical(this)"><option value="">—</option><option value="0" ${r.ע==0?'selected':''} style="color:#D40511;font-weight:bold">🚨 0 = קריטי</option>${[1,2,3,4,5].map(n=>`<option ${r.ע==n?'selected':''}>${n}</option>`).join('')}</select></div>
-    ${isEdit && isAdmin()?`<div class="form-row"><label>מטפל</label><input id="f_מט" value="${(r.מט||'').replace(/"/g,'&quot;')}" placeholder="שם מטפל..."></div>`:''}
-    ${isEdit?`<div class="form-row"><label>סטטוס</label><select id="f_ס">${(isAdmin()?SR_ADMIN:SR).map(s=>`<option ${(r.ס||'פתוח')===s?'selected':''}>${s}</option>`).join('')}</select></div>`:''}`;
+    <div class="form-row"><label>בקשה</label><textarea id="f_ב" class="tall">${r.ב||''}</textarea></div>
+    <div class="form-row-group">
+      <div class="form-row narrow"><label>עדיפות <small style="color:#888;font-weight:normal">(1=גבוהה,5=נמוכה)</small></label><select id="f_ע" onchange="checkCritical(this)"><option value="">—</option><option value="0" ${r.ע==0?'selected':''} style="color:#D40511;font-weight:bold">🚨 0 = קריטי</option>${[1,2,3,4,5].map(n=>`<option ${r.ע==n?'selected':''}>${n}</option>`).join('')}</select></div>
+      ${isEdit?`<div class="form-row narrow"><label>סטטוס</label><select id="f_ס">${(isAdmin()?SR_ADMIN:SR).map(s=>`<option ${(r.ס||'פתוח')===s?'selected':''}>${s}</option>`).join('')}</select></div>`:''}
+      ${isEdit && isAdmin()?`<div class="form-row"><label>מטפל</label><input id="f_מט" value="${(r.מט||'').replace(/"/g,'&quot;')}" placeholder="שם מטפל..."></div>`:''}
+    </div>`;
 }
 
 function openAdd(){
