@@ -35,6 +35,10 @@ body{font-family:Arial,sans-serif;background:#f4f6f9;color:#1a1a2e;direction:rtl
 .filters input,.filters select{padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:12px;font-family:Arial}
 .filters input{min-width:200px}
 .count{font-size:12px;color:#888;margin-bottom:8px}
+.pagination{display:flex;align-items:center;justify-content:center;gap:12px;margin-top:10px;font-size:12px;color:#555}
+.pagination button{padding:5px 12px;border:1px solid #ddd;border-radius:5px;background:#fff;cursor:pointer;font-size:12px;font-family:Arial}
+.pagination button:disabled{opacity:.4;cursor:default}
+.unread-dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:#D40511;margin-left:6px;vertical-align:middle}
 .tbl-wrap{overflow-x:auto;background:#fff;border-radius:8px;border:1px solid #e8e8e8}
 table{width:100%;border-collapse:collapse}
 th{background:#1a1a2e;color:#fff;padding:9px 10px;text-align:right;font-size:12px;white-space:nowrap;font-weight:600}
@@ -230,6 +234,7 @@ tr:hover td{background:#fffbf0}
       <th style="width:70px">DHL</th><th style="width:70px">אחראי</th><th>💬 הערות</th>
     </tr></thead><tbody id="b1"><tr><td colspan="8" class="loading">טוען נתונים...</td></tr></tbody></table>
   </div>
+  <div class="pagination" id="pg1"></div>
 </div>
 
 <div class="pane" id="pane1">
@@ -269,6 +274,7 @@ tr:hover td{background:#fffbf0}
       <th>💬 הערות</th>
     </tr></thead><tbody id="b2"><tr><td colspan="9" class="loading">טוען נתונים...</td></tr></tbody></table>
   </div>
+  <div class="pagination" id="pg2"></div>
 </div>
 
 <!-- Modal -->
@@ -320,6 +326,8 @@ tr:hover td{background:#fffbf0}
 const OWNER=window.APP_CONFIG.owner,REPO=window.APP_CONFIG.repo,TOKEN=window.APP_CONFIG.token;
 let DB={malm:[],rivka:[]},currentTab=0,editIdx=-1,editSheet='',editRecId=null,sortCol2='ע',sortDir2=1,sortCol1='',sortDir1=1;
 let formSnapshot=null;
+const PAGE_SIZE=100;
+let page1=1,page2=1,lastFilterKey1='',lastFilterKey2='';
 const SM=['פתוח','בטיפול','בבדיקה','ממתין לבדיקה','מוקפא','הושהה','בוצע','טופל','בוטל'];
 const SR=['פתוח','בטיפול','בוצע'];
 const SR_ADMIN=['פתוח','בטיפול','בוצע','מוקפא','בבדיקה','בוטל'];
@@ -583,8 +591,9 @@ function r1(){
   const allChecked=st1cbs.length===0||selectedStatuses.length===st1cbs.length;
   const dm=document.getElementById('dm1').value;
   const pr=document.getElementById('pr1').value;
-  buildStats(DB.malm,document.getElementById('s1'));
+  buildStats(DB.malm.filter(r=>!r.deleted),document.getElementById('s1'));
   let f=DB.malm.filter(r=>{
+    if(r.deleted)return false;
     if(!allChecked&&!selectedStatuses.includes(r.ס||'פתוח'))return false;
     if(dm&&r.ד!==dm)return false;
     if(pr&&String(r.ע)!==pr)return false;
@@ -592,8 +601,13 @@ function r1(){
     return true;
   });
   document.getElementById('c1').textContent=`מציג ${f.length} מתוך ${DB.malm.length}`;
-  document.getElementById('b1').innerHTML=f.length
-    ?f.map(r=>{const idx=DB.malm.indexOf(r);return`<tr>
+  const filterKey1=q+'|'+selectedStatuses.join(',')+'|'+dm+'|'+pr;
+  if(filterKey1!==lastFilterKey1){page1=1;lastFilterKey1=filterKey1;}
+  const totalPages1=Math.max(1,Math.ceil(f.length/PAGE_SIZE));
+  if(page1>totalPages1)page1=totalPages1;
+  const pageItems1=f.slice((page1-1)*PAGE_SIZE,page1*PAGE_SIZE);
+  document.getElementById('b1').innerHTML=pageItems1.length
+    ?pageItems1.map(r=>{const idx=DB.malm.indexOf(r);return`<tr>
       <td style="white-space:nowrap">
         <button class="act-btn" onclick="openEdit('malm',${idx})" title="עריכה">✏️</button>
         ${isAdmin()?`<button class="act-btn" onclick="deleteRec('malm',${idx})" title="מחק" style="color:#D40511">🗑️</button>`:''}
@@ -601,9 +615,14 @@ function r1(){
       <td style="color:#888;font-size:11px">${r.ת||''}</td>
       <td>${r.ד?`<div class="dtag">${r.ד}</div><br>`:''} ${r.מ||''}</td>
       <td>${pc(r.ע)}</td><td>${sc(r.ס)}</td><td>${m(r.dhl)}</td><td>${m(r.א)}</td>
-      <td>${chatPreviewHtml(r)}</td></tr>`}).join('')
+      <td>${hasUnread(r)?'<span class="unread-dot" title="הערה חדשה"></span>':''}${chatPreviewHtml(r)}</td></tr>`}).join('')
     :'<tr><td colspan="8" class="nores">לא נמצאו תוצאות</td></tr>';
+  document.getElementById('pg1').innerHTML=totalPages1>1?`
+    <button onclick="goToPage1(-1)" ${page1<=1?'disabled':''}>‹ הקודם</button>
+    <span>עמוד ${page1} מתוך ${totalPages1}</span>
+    <button onclick="goToPage1(1)" ${page1>=totalPages1?'disabled':''}>הבא ›</button>`:'';
 }
+function goToPage1(delta){page1+=delta;if(page1<1)page1=1;r1();}
 
 function r2(){
   updateStatusBtn();
@@ -614,9 +633,10 @@ function r2(){
   const selectedStatuses=[...st2cbs].filter(cb=>cb.checked).map(cb=>cb.value);
   const allChecked=st2cbs.length===0||selectedStatuses.length===st2cbs.length;
   const pr=document.getElementById('pr2').value;
-  const rivkaOwn = isAdmin() ? DB.rivka : DB.rivka.filter(r=>r.מב===(CU?CU.name:''));
+  const rivkaOwn = (isAdmin() ? DB.rivka : DB.rivka.filter(r=>r.מב===(CU?CU.name:''))).filter(r=>!r.deleted);
   buildStats(rivkaOwn,document.getElementById('s2'));
   let f=DB.rivka.filter(r=>{
+    if(r.deleted)return false;
     if(!isAdmin() && r.מב !== (CU?CU.name:'')) return false;
     if(!allChecked&&!selectedStatuses.includes(r.ס||'פתוח'))return false;
     if(pr&&String(r.ע)!==pr)return false;
@@ -625,8 +645,13 @@ function r2(){
   });
   if(sortCol2){f.sort((a,b)=>{let av=a[sortCol2]??'',bv=b[sortCol2]??'';if(sortCol2==='ת'){return sortDir2*(av<bv?-1:av>bv?1:0);}if(sortCol2==='ע'){return sortDir2*((av===''?99:Number(av))-(bv===''?99:Number(bv)));}return sortDir2*String(av).localeCompare(String(bv),'he');});}
   document.getElementById('c2').textContent=`מציג ${f.length} מתוך ${DB.rivka.length}`;
-  document.getElementById('b2').innerHTML=f.length
-    ?f.map(r=>{const idx=DB.rivka.indexOf(r);const eb=canEditRow(r)?'<button class="act-btn" onclick="openEdit(\'rivka\','+idx+')" title="עריכה">✏️</button>':'';
+  const filterKey2=q+'|'+selectedStatuses.join(',')+'|'+pr;
+  if(filterKey2!==lastFilterKey2){page2=1;lastFilterKey2=filterKey2;}
+  const totalPages2=Math.max(1,Math.ceil(f.length/PAGE_SIZE));
+  if(page2>totalPages2)page2=totalPages2;
+  const pageItems2=f.slice((page2-1)*PAGE_SIZE,page2*PAGE_SIZE);
+  document.getElementById('b2').innerHTML=pageItems2.length
+    ?pageItems2.map(r=>{const idx=DB.rivka.indexOf(r);const eb=canEditRow(r)?'<button class="act-btn" onclick="openEdit(\'rivka\','+idx+')" title="עריכה">✏️</button>':'';
         const db2=isAdmin()?'<button class="act-btn" onclick="deleteRec(\'rivka\','+idx+')" title="מחק" style="color:#D40511">🗑️</button>':'';
         return`<tr>
       <td style="white-space:nowrap">${eb}${db2}</td>
@@ -634,9 +659,14 @@ function r2(){
       <td style="color:#888;font-size:11px">${r.ת||''}</td>
       <td>${r.כ?`<strong>${r.כ}</strong><br>`:''} ${r.ב||''}</td>
       <td>${m(r.מט)}</td><td>${pc(r.ע)}</td><td>${sc(r.ס)}</td>
-      <td>${chatPreviewHtml(r)}</td></tr>`}).join('')
+      <td>${hasUnread(r)?'<span class="unread-dot" title="הערה חדשה"></span>':''}${chatPreviewHtml(r)}</td></tr>`}).join('')
     :'<tr><td colspan="9" class="nores">לא נמצאו תוצאות</td></tr>';
+  document.getElementById('pg2').innerHTML=totalPages2>1?`
+    <button onclick="goToPage2(-1)" ${page2<=1?'disabled':''}>‹ הקודם</button>
+    <span>עמוד ${page2} מתוך ${totalPages2}</span>
+    <button onclick="goToPage2(1)" ${page2>=totalPages2?'disabled':''}>הבא ›</button>`:'';
 }
+function goToPage2(delta){page2+=delta;if(page2<1)page2=1;r2();}
 
 function malmFields(r={}){
   return`
@@ -688,6 +718,7 @@ function openEdit(sheet,idx){
   const r=DB[sheet][idx];
   if(sheet==='rivka' && !isAdmin() && (!r || (r.מב !== (CU?CU.name:'') && r.מב !== (CU?CU.username:'')))) return;
   editIdx=idx;editSheet=sheet;editRecId=r?r._id:null;
+  if(editRecId) markRead(sheet, editRecId);
   document.getElementById('modalTitle').textContent='✏️ עריכת משימה';
   document.getElementById('modalFields').innerHTML=sheet==='malm'?malmFields(r):rivkaFields(r, true);
   document.getElementById('chatSection').style.display='block';
@@ -910,6 +941,7 @@ async function delUser(username) {
   renderUsers();
 }
 
+// מחיקה רכה — מסמן deleted:true במקום למחוק בפועל, כדי לאפשר ביטול
 function deleteRec(sheet, idx) {
   if (!isAdmin()) return;
   var rec = DB[sheet][idx];
@@ -917,29 +949,48 @@ function deleteRec(sheet, idx) {
   var name = rec.נ || rec.מ || 'משימה זו';
   var recId = rec._id;
   if (!confirm('למחוק את "' + name + '"?')) return;
-  DB[sheet].splice(idx, 1);
+  rec.deleted = true;
   initFilters();
   if(sheet==='malm') r1(); else r2();
-  // מחיקה אטומית — טוען טרי, מוחק לפי _id, שומר בחזרה
-  (async()=>{
-    const el=document.getElementById('savingMsg');
-    el.style.display='block'; el.style.background='#1a1a2e'; el.textContent='⏳ שומר...';
-    try{
-      const fresh = await fetch('https://malm-focus-default-rtdb.firebaseio.com/db/'+sheet+'.json?t='+Date.now());
-      let arr = await fresh.json() || [];
-      arr = recId ? arr.filter(function(x){ return x._id!==recId; }) : arr;
-      const r=await fetch('https://malm-focus-default-rtdb.firebaseio.com/db/'+sheet+'.json',{
-        method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(arr)
-      });
-      if(!r.ok)throw new Error('Firebase error: '+r.status);
-      DB[sheet] = arr;
-      el.textContent='✓ נמחק!';
-      setTimeout(()=>{el.style.display='none';},1500);
-    }catch(e){
-      el.textContent='❌ שגיאה: '+e.message; el.style.background='#c62828';
-      setTimeout(()=>{el.style.display='none';el.style.background='#1a1a2e';},3000);
+  showUndoToast(sheet, recId, name);
+  saveDeletedFlag(sheet, recId, true);
+}
+
+function undoDelete(sheet, recId){
+  var rec = DB[sheet].find(function(x){ return x._id===recId; });
+  if(rec) rec.deleted = false;
+  initFilters();
+  if(sheet==='malm') r1(); else r2();
+  saveDeletedFlag(sheet, recId, false);
+  var el=document.getElementById('savingMsg');
+  el.style.display='none'; el.innerHTML='';
+}
+
+function showUndoToast(sheet, recId, name){
+  var el=document.getElementById('savingMsg');
+  el.style.display='block'; el.style.background='#1a1a2e';
+  el.innerHTML='🗑️ "'+escapeHtml(name)+'" נמחקה. <a href="#" onclick="undoDelete(\''+sheet+'\',\''+recId+'\');return false" style="color:#FECC02;text-decoration:underline;font-weight:700;margin-right:6px">ביטול</a>';
+  clearTimeout(window._undoTimer);
+  window._undoTimer=setTimeout(function(){ el.style.display='none'; el.innerHTML=''; },6000);
+}
+
+// עדכון אטומי של דגל deleted בלבד — טוען טרי, מעדכן לפי _id, שומר בחזרה
+async function saveDeletedFlag(sheet, recId, deletedFlag){
+  try{
+    const fresh = await fetch('https://malm-focus-default-rtdb.firebaseio.com/db/'+sheet+'.json?t='+Date.now());
+    let arr = await fresh.json() || [];
+    const fi = arr.findIndex(function(x){ return x._id===recId; });
+    if(fi>=0){
+      if(deletedFlag) arr[fi].deleted=true; else delete arr[fi].deleted;
     }
-  })();
+    const r=await fetch('https://malm-focus-default-rtdb.firebaseio.com/db/'+sheet+'.json',{
+      method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(arr)
+    });
+    if(!r.ok)throw new Error('Firebase error: '+r.status);
+    DB[sheet] = arr;
+  }catch(e){
+    console.warn('saveDeletedFlag failed:', e);
+  }
 }
 
 function switchTab(i) {
@@ -1222,6 +1273,33 @@ function getEditRec(){
     if(found) return found;
   }
   return DB[editSheet][editIdx]||null;
+}
+
+function hasUnread(r){
+  if(!CU)return false;
+  const lastRead=(r.reads&&r.reads[CU.username])||0;
+  const chat=r.chat||{};
+  const all=[...(chat.malm||[]),...(chat.dhl||[])];
+  return all.some(m=>(m.ts||0)>lastRead && m.sender!==CU.name);
+}
+
+// מסמן רשומה כ"נקראה" עבור המשתמש הנוכחי — עדכון שקט ברקע, לא חוסם UI
+async function markRead(sheet, recId){
+  if(!CU||!recId)return;
+  try{
+    const fresh=await fetch('https://malm-focus-default-rtdb.firebaseio.com/db/'+sheet+'.json?t='+Date.now());
+    let arr=await fresh.json()||[];
+    const fi=arr.findIndex(function(x){ return x._id===recId; });
+    if(fi>=0){
+      if(!arr[fi].reads)arr[fi].reads={};
+      arr[fi].reads[CU.username]=Date.now();
+      await fetch('https://malm-focus-default-rtdb.firebaseio.com/db/'+sheet+'.json',{
+        method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(arr)
+      });
+      DB[sheet]=arr;
+      if(sheet==='malm')r1();else r2();
+    }
+  }catch(e){ console.warn('markRead failed:', e); }
 }
 
 function escapeHtml(s){return String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
