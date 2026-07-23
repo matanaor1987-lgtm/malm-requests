@@ -674,7 +674,7 @@ function malmFields(r={}){
       <div class="form-row narrow"><label>תאריך</label><input id="f_ת" type="date" value="${r.ת||new Date().toISOString().slice(0,10)}"></div>
       <div class="form-row"><label>תחום</label><input id="f_ד" value="${(r.ד||'').replace(/"/g,'&quot;')}" placeholder="תחום..."></div>
     </div>
-    <div class="form-row"><label>משימה</label><textarea id="f_מ">${r.מ||''}</textarea></div>
+    <div class="form-row"><label>משימה</label><textarea id="f_מ" class="tall">${r.מ||''}</textarea></div>
     <div class="form-row-group">
       <div class="form-row narrow"><label>עדיפות <small style="color:#888;font-weight:normal">(1=גבוהה,5=נמוכה)</small></label><select id="f_ע" onchange="checkCritical(this)"><option value="">—</option><option value="0" ${r.ע==0?'selected':''} style="color:#D40511;font-weight:bold">🚨 0 = קריטי</option>${[1,2,3,4,5].map(n=>`<option ${r.ע==n?'selected':''}>${n}</option>`).join('')}</select></div>
       <div class="form-row narrow"><label>סטטוס</label><select id="f_ס">${SM.map(s=>`<option ${(r.ס||'פתוח')===s?'selected':''}>${s}</option>`).join('')}</select></div>
