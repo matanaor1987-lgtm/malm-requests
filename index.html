@@ -61,16 +61,16 @@ tr:hover td{background:#fffbf0}
 .saving{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#1a1a2e;color:#fff;padding:10px 20px;border-radius:8px;font-size:13px;z-index:999;display:none}
 .modal-bg{position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1000;display:none;align-items:center;justify-content:center}
 .modal-bg.open{display:flex}
-.modal{background:#fff;border-radius:12px;padding:24px;width:95%;max-width:1300px;max-height:90vh;overflow-y:auto}
+.modal{background:#fff;border-radius:12px;padding:24px;width:95%;max-width:1300px;max-height:92vh;overflow-y:auto;--big-h:clamp(190px,44vh,600px)}
 .modal h3{font-size:15px;margin-bottom:0;color:#1a1a2e}
-.modal-body{display:flex;gap:24px;align-items:flex-start}
-.modal-form-col{flex:1;min-width:0}
-@media (max-width:900px){.modal-body{flex-direction:column}.chat-section{border-right:none !important;padding-right:0 !important;border-top:2px solid #FECC02;padding-top:16px;margin-top:20px;width:100%}}
+.modal-body{display:flex;gap:24px;align-items:stretch}
+.modal-form-col{flex:1;min-width:0;display:flex;flex-direction:column}
+@media (max-width:900px){.modal{--big-h:clamp(160px,30vh,340px)}.modal-body{flex-direction:column}.chat-section{border-right:none !important;padding-right:0 !important;border-top:2px solid #FECC02;padding-top:16px;margin-top:20px;width:100%}}
 .form-row{margin-bottom:11px}
 .form-row label{display:block;font-size:11px;color:#666;margin-bottom:3px;font-weight:700}
 .form-row input,.form-row select,.form-row textarea{width:100%;padding:7px 10px;border:1px solid #ddd;border-radius:6px;font-size:13px;font-family:Arial;direction:rtl}
 .form-row textarea{height:75px;resize:vertical}
-.form-row textarea.tall{height:220px}
+.form-row textarea.tall{height:var(--big-h)}
 .form-row-group{display:flex;gap:10px;margin-bottom:11px;flex-wrap:wrap}
 .form-row-group .form-row{flex:1;min-width:130px;margin-bottom:0}
 .form-row-group .form-row.narrow{flex:0 0 150px}
@@ -109,7 +109,7 @@ tr:hover td{background:#fffbf0}
 .chat-tabs{display:flex;gap:0;margin-bottom:12px;border-bottom:1px solid #e0e0e0}
 .chat-tab{padding:7px 16px;cursor:pointer;font-size:12px;font-weight:600;color:#666;border-bottom:2px solid transparent}
 .chat-tab.active{color:#D40511;border-bottom-color:#D40511}
-.chat-messages{height:400px;overflow-y:auto;border:1px solid #e8e8e8;border-radius:8px;padding:10px;background:#f9f9f9;margin-bottom:10px;display:flex;flex-direction:column;gap:8px}
+.chat-messages{height:var(--big-h);overflow-y:auto;border:1px solid #e8e8e8;border-radius:8px;padding:10px;background:#f9f9f9;margin-bottom:10px;display:flex;flex-direction:column;gap:8px}
 .msg{max-width:75%;padding:8px 12px;border-radius:10px;font-size:12px;line-height:1.5;overflow-wrap:anywhere}
 .msg-malm{background:#e3f2fd;color:#1a1a2e;align-self:flex-end;border-bottom-left-radius:2px}
 .msg-dhl{background:#fff3e0;color:#1a1a2e;align-self:flex-start;border-bottom-right-radius:2px}
@@ -674,7 +674,6 @@ function malmFields(r={}){
       <div class="form-row narrow"><label>תאריך</label><input id="f_ת" type="date" value="${r.ת||new Date().toISOString().slice(0,10)}"></div>
       <div class="form-row"><label>תחום</label><input id="f_ד" value="${(r.ד||'').replace(/"/g,'&quot;')}" placeholder="תחום..."></div>
     </div>
-    <div class="form-row"><label>משימה</label><textarea id="f_מ" class="tall">${r.מ||''}</textarea></div>
     <div class="form-row-group">
       <div class="form-row narrow"><label>עדיפות <small style="color:#888;font-weight:normal">(1=גבוהה,5=נמוכה)</small></label><select id="f_ע" onchange="checkCritical(this)"><option value="">—</option><option value="0" ${r.ע==0?'selected':''} style="color:#D40511;font-weight:bold">🚨 0 = קריטי</option>${[1,2,3,4,5].map(n=>`<option ${r.ע==n?'selected':''}>${n}</option>`).join('')}</select></div>
       <div class="form-row narrow"><label>סטטוס</label><select id="f_ס">${SM.map(s=>`<option ${(r.ס||'פתוח')===s?'selected':''}>${s}</option>`).join('')}</select></div>
@@ -682,7 +681,8 @@ function malmFields(r={}){
     <div class="form-row-group">
       <div class="form-row"><label>DHL</label><input id="f_dhl" value="${(r.dhl||'').replace(/"/g,'&quot;')}" placeholder="שם..."></div>
       <div class="form-row"><label>אחראי מלמ</label><input id="f_א" value="${(r.א||'').replace(/"/g,'&quot;')}" placeholder="שם..."></div>
-    </div>`;
+    </div>
+    <div class="form-row"><label>משימה</label><textarea id="f_מ" class="tall">${r.מ||''}</textarea></div>`;
 }
 
 function rivkaFields(r={}, isEdit=false){
@@ -692,12 +692,12 @@ function rivkaFields(r={}, isEdit=false){
       <div class="form-row narrow"><label>תאריך</label><input id="f_ת" type="date" value="${r.ת||new Date().toISOString().slice(0,10)}"></div>
     </div>
     <div class="form-row"><label>כותרת</label><input id="f_כ" value="${(r.כ||'').replace(/"/g,'&quot;')}" placeholder="כותרת..."></div>
-    <div class="form-row"><label>בקשה</label><textarea id="f_ב" class="tall">${r.ב||''}</textarea></div>
     <div class="form-row-group">
       <div class="form-row narrow"><label>עדיפות <small style="color:#888;font-weight:normal">(1=גבוהה,5=נמוכה)</small></label><select id="f_ע" onchange="checkCritical(this)"><option value="">—</option><option value="0" ${r.ע==0?'selected':''} style="color:#D40511;font-weight:bold">🚨 0 = קריטי</option>${[1,2,3,4,5].map(n=>`<option ${r.ע==n?'selected':''}>${n}</option>`).join('')}</select></div>
       ${isEdit?`<div class="form-row narrow"><label>סטטוס</label><select id="f_ס">${(isAdmin()?SR_ADMIN:SR).map(s=>`<option ${(r.ס||'פתוח')===s?'selected':''}>${s}</option>`).join('')}</select></div>`:''}
       ${isEdit && isAdmin()?`<div class="form-row"><label>מטפל</label><input id="f_מט" value="${(r.מט||'').replace(/"/g,'&quot;')}" placeholder="שם מטפל..."></div>`:''}
-    </div>`;
+    </div>
+    <div class="form-row"><label>בקשה</label><textarea id="f_ב" class="tall">${r.ב||''}</textarea></div>`;
 }
 
 function openAdd(){
