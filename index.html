@@ -1258,8 +1258,8 @@ function renderAttachments(){
   if(!pendingFiles.length){el.innerHTML='';return;}
   el.innerHTML=pendingFiles.map((f,i)=>`
     <div class="att-item">
-      📎 <a href="${f.url}" target="_blank">${f.name}</a>
-      <span class="att-size">${f.size}</span>
+      ${attachLink(f.url,f.name)}
+      <span class="att-size">${escapeHtml(f.size||'')}</span>
       <span style="cursor:pointer;color:#999" onclick="pendingFiles.splice(${i},1);renderAttachments()">✕</span>
     </div>`).join('');
 }
@@ -1309,8 +1309,54 @@ async function markRead(sheet, recId){
 }
 
 function escapeHtml(s){return String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+
+// מחזיר את הסיומת של שם קובץ / URL (בלי query string), באותיות קטנות
+function fileExt(s){
+  s = String(s||'').split(/[?#]/)[0];
+  const m = s.match(/\.([a-z0-9]{1,8})$/i);
+  return m ? m[1].toLowerCase() : '';
+}
+// קובעים אילו קישורים נפתחים (במקום להוריד): PDF, דפי אינטרנט, וכל דבר ללא סיומת קובץ
+function shouldOpenLink(nameOrUrl){
+  const ext = fileExt(nameOrUrl);
+  return ext===''||ext==='pdf'||ext==='htm'||ext==='html'||ext==='aspx'||ext==='php';
+}
+// הורדה כפויה של קובץ — מוריד ל-blob ומפעיל הורדה עם שם הקובץ המקורי.
+// נדרש כי קישורי GitHub הם cross-origin ותכונת download מתעלמת מהם. אם ההורדה נכשלת — נופל לפתיחה.
+async function downloadFile(url, name, ev){
+  if(ev){ ev.preventDefault(); ev.stopPropagation(); }
+  if(!name){ try{ name=decodeURIComponent(new URL(url).pathname.split('/').pop())||'download'; }catch(e){ name='download'; } }
+  try{
+    const resp=await fetch(url);
+    if(!resp.ok)throw new Error('HTTP '+resp.status);
+    const blob=await resp.blob();
+    const objUrl=URL.createObjectURL(blob);
+    const a=document.createElement('a');
+    a.href=objUrl; a.download=name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=>URL.revokeObjectURL(objUrl),2000);
+  }catch(e){
+    window.open(url,'_blank','noopener');
+  }
+  return false;
+}
+// בונה קישור לקובץ: PDF נפתח בכרטיסייה חדשה, כל השאר יורד
+function attachLink(url, name, size, style){
+  const safeName=escapeHtml(name||'קובץ');
+  const sizePart=size?` <span style="color:#999">${escapeHtml(size)}</span>`:'';
+  const label=`📎 ${safeName}${sizePart}`;
+  const st=style?` style="${style}"`:'';
+  if(shouldOpenLink(name)){
+    return `<a href="${url}" target="_blank" rel="noopener"${st}>${label}</a>`;
+  }
+  return `<a href="${url}" data-name="${safeName}" onclick="downloadFile(this.href,this.dataset.name,event);return false"${st}>${label}</a>`;
+}
+
 function linkify(text){
-  return escapeHtml(text).replace(/(https?:\/\/[^\s<]+)/g,url=>`<a href="${url}" target="_blank" rel="noopener">${url}</a>`);
+  return escapeHtml(text).replace(/(https?:\/\/[^\s<]+)/g,url=>{
+    if(shouldOpenLink(url)) return `<a href="${url}" target="_blank" rel="noopener">${url}</a>`;
+    return `<a href="${url}" onclick="downloadFile(this.href,'',event);return false">${url}</a>`;
+  });
 }
 
 function renderChat(){
@@ -1329,7 +1375,7 @@ function renderChat(){
     <div class="msg msg-${m.side==='malm'?'malm':'dhl'}">
       <div class="msg-sender">${m.sender}</div>
       <div>${linkify(m.text)}</div>
-      ${(m.files||[]).map(f=>`<div style="margin-top:4px"><a href="${f.url}" target="_blank" style="font-size:11px;color:#1565c0">📎 ${f.name} <span style="color:#999">${f.size}</span></a></div>`).join('')}
+      ${(m.files||[]).map(f=>`<div style="margin-top:4px">${attachLink(f.url,f.name,f.size,'font-size:11px;color:#1565c0')}</div>`).join('')}
       <div class="msg-time">${m.time}</div>
     </div>`).join('');
   el.scrollTop=0;
@@ -1344,7 +1390,7 @@ function renderAllFiles(messages){
   if(!files.length){wrap.style.display='none';el.innerHTML='';return}
   wrap.style.display='block';
   el.innerHTML=files.map(f=>`
-    <div class="att-item"><a href="${f.url}" target="_blank">📎 ${f.name}</a><span class="att-size">${f.size}</span></div>`).join('');
+    <div class="att-item">${attachLink(f.url,f.name)}<span class="att-size">${escapeHtml(f.size||'')}</span></div>`).join('');
 }
 
 function sendMsg(){
