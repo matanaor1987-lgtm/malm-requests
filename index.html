@@ -225,6 +225,7 @@ tr:hover td{background:#fffbf0}
       <option value="1">1</option><option value="2">2</option><option value="3">3</option>
       <option value="4">4</option><option value="5">5</option>
     </select>
+    <button onclick="openStatusReport('malm')" style="background:#1a1a2e;color:#fff;padding:5px 12px;border-radius:5px;border:none;cursor:pointer;font-size:12px;font-family:Arial">📊 דוח שינויי סטטוס</button>
   </div>
   <div class="count" id="c1"></div>
   <div class="tbl-wrap">
@@ -259,7 +260,7 @@ tr:hover td{background:#fffbf0}
       <option value="1">1</option><option value="2">2</option><option value="3">3</option>
       <option value="4">4</option><option value="5">5</option>
     </select>
-    <button onclick="openStatusReport()" style="background:#1a1a2e;color:#fff;padding:5px 12px;border-radius:5px;border:none;cursor:pointer;font-size:12px;font-family:Arial">📊 דוח שינויי סטטוס</button>
+    <button onclick="openStatusReport('rivka')" style="background:#1a1a2e;color:#fff;padding:5px 12px;border-radius:5px;border:none;cursor:pointer;font-size:12px;font-family:Arial">📊 דוח שינויי סטטוס</button>
   </div>
   <div class="count" id="c2"></div>
   <div class="tbl-wrap">
@@ -324,7 +325,7 @@ tr:hover td{background:#fffbf0}
 <div class="modal-bg" id="statusReportBg">
   <div class="modal" style="max-width:900px">
     <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:2px solid #FECC02;padding-bottom:8px;margin-bottom:16px">
-      <h3 style="border:none;padding:0;margin:0">📊 דוח שינויי סטטוס — משימות לרבקה</h3>
+      <h3 id="statusReportTitle" style="border:none;padding:0;margin:0">📊 דוח שינויי סטטוס</h3>
       <button onclick="closeStatusReport()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#999;line-height:1;padding:0 4px">&times;</button>
     </div>
     <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:14px">
@@ -686,18 +687,26 @@ function r2(){
 }
 function goToPage2(delta){page2+=delta;if(page2<1)page2=1;r2();}
 
-function openStatusReport(){
+let srMode='rivka';
+const SR_REPORT_CONFIG={
+  rivka:{title:'📊 דוח שינויי סטטוס — משימות לרבקה', opts:()=>SR_ADMIN, def:'בוצע', cols:['נושא','מבקש']},
+  malm:{title:'📊 דוח שינויי סטטוס — משימות מלמ כולל', opts:()=>SM, def:'טופל', cols:['משימה','תחום']},
+  dev:{title:'📊 דוח שינויי סטטוס — פיתוחים ותיקונים', opts:()=>['פתוח','בפיתוח','בבדיקה','נבדק','נסגר','תקין','לא תקין'], def:'', cols:['משימה','שדה']},
+  sanity:{title:'📊 דוח בדיקות שהושלמו — בדיקות שפיות', opts:()=>['בוצע'], def:'בוצע', cols:['בדיקה','מסך/מודול']}
+};
+
+function openStatusReport(mode){
   if(!CU)return;
+  srMode = mode||'rivka';
+  const cfg=SR_REPORT_CONFIG[srMode];
   const fromEl=document.getElementById('sr_from'), toEl=document.getElementById('sr_to'), selEl=document.getElementById('sr_status');
   if(!fromEl.value){
     const to=new Date(); const from=new Date(); from.setDate(from.getDate()-7);
     fromEl.value=from.toISOString().slice(0,10);
     toEl.value=to.toISOString().slice(0,10);
   }
-  if(!selEl.dataset.built){
-    selEl.innerHTML='<option value="">כל הסטטוסים</option>'+SR_ADMIN.map(s=>`<option value="${s}" ${s==='בוצע'?'selected':''}>${s}</option>`).join('');
-    selEl.dataset.built='1';
-  }
+  document.getElementById('statusReportTitle').textContent=cfg.title;
+  selEl.innerHTML='<option value="">כל הסטטוסים</option>'+cfg.opts().map(s=>`<option value="${s}" ${s===cfg.def?'selected':''}>${s}</option>`).join('');
   document.getElementById('statusReportBg').classList.add('open');
   renderStatusReport();
 }
@@ -709,28 +718,57 @@ function renderStatusReport(){
   const status=document.getElementById('sr_status').value;
   const fromTs = from ? new Date(from+'T00:00:00').getTime() : -Infinity;
   const toTs = to ? new Date(to+'T23:59:59').getTime() : Infinity;
-  const scope = (isAdmin() ? DB.rivka : DB.rivka.filter(r=>r.מב===(CU?CU.name:''))).filter(r=>!r.deleted);
-  const rows=[];
-  scope.forEach(r=>{
-    (r.statusLog||[]).forEach(e=>{
-      if(status && e.s!==status) return;
-      if(e.t<fromTs || e.t>toTs) return;
-      rows.push({rec:r, entry:e});
+  const cfg=SR_REPORT_CONFIG[srMode];
+  let rows=[]; // {t, c1, c2, s, by}
+
+  if(srMode==='rivka'||srMode==='malm'){
+    const source = srMode==='rivka'
+      ? (isAdmin() ? DB.rivka : DB.rivka.filter(r=>r.מב===(CU?CU.name:'')))
+      : DB.malm;
+    source.filter(r=>!r.deleted).forEach(r=>{
+      (r.statusLog||[]).forEach(e=>{
+        if(status && e.s!==status) return;
+        if(e.t<fromTs || e.t>toTs) return;
+        rows.push({
+          t:e.t,
+          c1: srMode==='rivka' ? (r.נ||r.כ||'') : (r.מ||''),
+          c2: srMode==='rivka' ? (r.מב||'') : (r.ד||''),
+          s:e.s, by:e.by
+        });
+      });
     });
-  });
-  rows.sort((a,b)=>b.entry.t-a.entry.t);
+  } else if(srMode==='dev'){
+    (DEV_TASKS||[]).forEach(t=>{
+      (t.sLog||[]).forEach(e=>{
+        if(status && e.s!==status) return;
+        if(e.t<fromTs || e.t>toTs) return;
+        rows.push({t:e.t, c1:(t.id||'')+(t.desc?' — '+t.desc.slice(0,60):''), c2:e.field||'', s:e.s, by:e.by});
+      });
+    });
+  } else if(srMode==='sanity'){
+    Object.keys(SANITY_TASKS||{}).forEach(id=>{
+      const t=SANITY_TASKS[id];
+      if(!t||t.status!=='בוצע'||!t.closedAt)return;
+      const ts=new Date(t.closedAt).getTime();
+      if(ts<fromTs||ts>toTs)return;
+      rows.push({t:ts, c1:t.name||'', c2:t.module||'', s:'בוצע', by:t.closedBy||''});
+    });
+  }
+
+  rows.sort((a,b)=>b.t-a.t);
   const el=document.getElementById('statusReportResults');
   if(!rows.length){
     el.innerHTML='<div class="nores">אין תוצאות בטווח שנבחר</div>';
     return;
   }
-  el.innerHTML=`<div class="count">נמצאו ${rows.length} שינויי סטטוס</div>
+  el.innerHTML=`<div class="count">נמצאו ${rows.length} שינויים</div>
   <div class="tbl-wrap"><table><thead><tr>
-    <th>תאריך ושעה</th><th>נושא</th><th>מבקש</th><th>סטטוס חדש</th><th>עודכן ע"י</th>
-  </tr></thead><tbody>${rows.map(({rec,entry})=>{
-    const d=new Date(entry.t);
+    <th>תאריך ושעה</th><th>${cfg.cols[0]}</th><th>${cfg.cols[1]}</th><th>סטטוס</th><th>עודכן ע"י</th>
+  </tr></thead><tbody>${rows.map(row=>{
+    const d=new Date(row.t);
     const dateStr=d.toLocaleDateString('he-IL')+' '+d.toLocaleTimeString('he-IL',{hour:'2-digit',minute:'2-digit'});
-    return `<tr><td style="white-space:nowrap;color:#888;font-size:11px">${dateStr}</td><td>${m(rec.נ)}</td><td>${m(rec.מב)}</td><td>${sc(entry.s)}</td><td>${m(entry.by)}</td></tr>`;
+    const statusCell = srMode==='dev' ? m(row.s) : sc(row.s);
+    return `<tr><td style="white-space:nowrap;color:#888;font-size:11px">${dateStr}</td><td>${m(row.c1)}</td><td>${m(row.c2)}</td><td>${statusCell}</td><td>${m(row.by)}</td></tr>`;
   }).join('')}</tbody></table></div>`;
 }
 
@@ -1534,7 +1572,7 @@ function renderDevTable(){
     return '<tr style="background:'+bg+';vertical-align:top" data-tester="'+esc(t.tester)+'" data-tstatus="'+esc(t.tStatus)+'">'+
       '<td style="padding:7px 10px;border-bottom:1px solid #eee;white-space:nowrap;font-weight:700;color:#D40511">'+esc(t.id)+'</td>'+
       '<td style="padding:7px 10px;border-bottom:1px solid #eee;white-space:nowrap">'+esc(t.dev)+'</td>'+
-      '<td style="padding:7px 10px;border-bottom:1px solid #eee"><select onchange="DEV_TASKS['+i+'].status=this.value;saveDevTask('+i+');buildDevStats()" style="border:1px solid #ddd;border-radius:4px;padding:3px 5px;font-size:11px;font-family:Arial;direction:rtl">'+sOpts+'</select></td>'+
+      '<td style="padding:7px 10px;border-bottom:1px solid #eee"><select onchange="logDevChange('+i+',&quot;סטטוס פיתוח&quot;,this.value);DEV_TASKS['+i+'].status=this.value;saveDevTask('+i+');buildDevStats()" style="border:1px solid #ddd;border-radius:4px;padding:3px 5px;font-size:11px;font-family:Arial;direction:rtl">'+sOpts+'</select></td>'+
       '<td style="padding:7px 10px;border-bottom:1px solid #eee;font-size:11px;line-height:1.5">'+esc(t.desc)+'</td>'+
       '<td style="padding:7px 10px;border-bottom:1px solid #eee;font-size:11px;color:#555;line-height:1.5">'+esc(t.notes)+'</td>'+
       '<td style="padding:7px 10px;border-bottom:1px solid #eee;white-space:nowrap;font-size:11px">'+esc(t.comp)+'</td>'+
@@ -1544,7 +1582,7 @@ function renderDevTable(){
       ['','מתן','עידו','ניר','רבקה'].map(function(n){return'<option value="'+n+'"'+(t.tester===n?' selected':'')+'>'+n+'</option>';}).join('')+
     '</select></td>'+
       '<td style="padding:7px 10px;border-bottom:1px solid #eee"><textarea onchange="DEV_TASKS['+i+'].tNotes=this.value" rows="2" style="width:120px;border:1px solid #ddd;border-radius:4px;padding:3px 5px;font-size:11px;font-family:Arial;direction:rtl;resize:vertical">'+esc(t.tNotes)+'</textarea></td>'+
-      '<td style="padding:7px 10px;border-bottom:1px solid #eee"><select onchange="DEV_TASKS['+i+'].tStatus=this.value;this.parentElement.parentElement.setAttribute(&quot;data-tstatus&quot;,this.value);saveDevTask('+i+')" style="border:1px solid #ddd;border-radius:4px;padding:3px 5px;font-size:11px;font-family:Arial">'+tsOpts+'</select></td>'+
+      '<td style="padding:7px 10px;border-bottom:1px solid #eee"><select onchange="logDevChange('+i+',&quot;סטטוס בדיקה&quot;,this.value);DEV_TASKS['+i+'].tStatus=this.value;this.parentElement.parentElement.setAttribute(&quot;data-tstatus&quot;,this.value);saveDevTask('+i+')" style="border:1px solid #ddd;border-radius:4px;padding:3px 5px;font-size:11px;font-family:Arial">'+tsOpts+'</select></td>'+
     '</tr>';
   }).join('');
 }
@@ -1633,13 +1671,22 @@ async function saveNewDevTask(){
   }
 }
 
+function logDevChange(idx, fieldLabel, newVal){
+  var t=DEV_TASKS[idx];
+  if(!t)return;
+  var oldVal = fieldLabel==='סטטוס פיתוח' ? t.status : t.tStatus;
+  if(oldVal===newVal)return;
+  if(!t.sLog)t.sLog=[];
+  t.sLog.push({field:fieldLabel, s:newVal, t:Date.now(), by:CU?CU.name:''});
+}
+
 async function saveDevTask(idx) {
   var task = DEV_TASKS[idx];
   try {
     await fetch('https://malm-focus-default-rtdb.firebaseio.com/devTasks/' + idx + '.json', {
       method: 'PATCH',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({tester: task.tester, tStatus: task.tStatus, tNotes: task.tNotes, status: task.status})
+      body: JSON.stringify({tester: task.tester, tStatus: task.tStatus, tNotes: task.tNotes, status: task.status, sLog: task.sLog||[]})
     });
   } catch(e) { console.warn('saveDevTask error:', e); }
 }
@@ -1656,6 +1703,7 @@ async function loadDevTasks() {
           if (saved[idx].tStatus !== undefined) DEV_TASKS[i].tStatus = saved[idx].tStatus;
           if (saved[idx].tNotes !== undefined) DEV_TASKS[i].tNotes = saved[idx].tNotes;
           if (saved[idx].status !== undefined) DEV_TASKS[i].status = saved[idx].status;
+          if (saved[idx].sLog !== undefined) DEV_TASKS[i].sLog = saved[idx].sLog;
         } else if (saved[idx] && saved[idx].desc) {
           // Manually added task beyond the hardcoded array — store the full record
           DEV_TASKS[i] = saved[idx];
@@ -2059,6 +2107,7 @@ async function dedupRecords(sheet) {
       <option value="לא תקין">לא תקין</option>
     </select>
     <button onclick="clearDevFilters()" style="padding:6px 12px;border:1px solid #aaa;border-radius:6px;font-size:12px;font-family:Arial;background:#fff;cursor:pointer">נקה סינון</button>
+    <button onclick="openStatusReport('dev')" style="padding:6px 12px;background:#1a1a2e;color:#fff;border:none;border-radius:6px;font-size:12px;font-family:Arial;cursor:pointer">📊 דוח שינויי סטטוס</button>
     <button onclick="openNewDevTask()" style="padding:6px 14px;background:#D40511;color:#fff;border:none;border-radius:6px;font-size:12px;font-weight:700;font-family:Arial;cursor:pointer;margin-right:auto">+ משימה חדשה</button>
   </div>
   <div style="overflow-x:auto">
@@ -2087,6 +2136,7 @@ async function dedupRecords(sheet) {
   <div id="sanityAdminView">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
       <div style="font-size:16px;font-weight:700;color:#1a1a2e">✅ בדיקות שפיות <span id="sanityBadge" style="display:none;background:#D40511;color:#fff;border-radius:50%;padding:1px 6px;font-size:10px;font-weight:700;margin-right:4px"></span></div>
+      <button onclick="openStatusReport('sanity')" style="background:#1a1a2e;color:#fff;border:none;border-radius:6px;padding:8px 16px;cursor:pointer;font-size:13px;font-weight:700;font-family:Arial">📊 דוח בדיקות שהושלמו</button>
       <button onclick="openNewSanity()" style="background:#D40511;color:#fff;border:none;border-radius:6px;padding:8px 16px;cursor:pointer;font-size:13px;font-weight:700;font-family:Arial">+ בדיקה חדשה</button>
       <button onclick="resetSanityTasks()" style="background:#e65100;color:#fff;border:none;border-radius:6px;padding:8px 16px;cursor:pointer;font-size:13px;font-weight:700;font-family:Arial">🔄 אפס לברירת מחדל</button>
     </div>
