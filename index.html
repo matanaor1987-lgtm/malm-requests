@@ -259,6 +259,7 @@ tr:hover td{background:#fffbf0}
       <option value="1">1</option><option value="2">2</option><option value="3">3</option>
       <option value="4">4</option><option value="5">5</option>
     </select>
+    <button onclick="openStatusReport()" style="background:#1a1a2e;color:#fff;padding:5px 12px;border-radius:5px;border:none;cursor:pointer;font-size:12px;font-family:Arial">📊 דוח שינויי סטטוס</button>
   </div>
   <div class="count" id="c2"></div>
   <div class="tbl-wrap">
@@ -316,6 +317,23 @@ tr:hover td{background:#fffbf0}
         <div id="attachments" class="attachments"></div>
       </div>
     </div>
+  </div>
+</div>
+
+<!-- Status report modal -->
+<div class="modal-bg" id="statusReportBg">
+  <div class="modal" style="max-width:900px">
+    <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:2px solid #FECC02;padding-bottom:8px;margin-bottom:16px">
+      <h3 style="border:none;padding:0;margin:0">📊 דוח שינויי סטטוס — משימות לרבקה</h3>
+      <button onclick="closeStatusReport()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#999;line-height:1;padding:0 4px">&times;</button>
+    </div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:14px">
+      <div class="form-row" style="margin-bottom:0;min-width:140px"><label>מתאריך</label><input type="date" id="sr_from" onchange="renderStatusReport()"></div>
+      <div class="form-row" style="margin-bottom:0;min-width:140px"><label>עד תאריך</label><input type="date" id="sr_to" onchange="renderStatusReport()"></div>
+      <div class="form-row" style="margin-bottom:0;min-width:140px"><label>סטטוס</label><select id="sr_status" onchange="renderStatusReport()"></select></div>
+    </div>
+    <div id="statusReportResults"></div>
+    <div style="font-size:11px;color:#999;margin-top:12px">* הדוח מציג רק שינויי סטטוס שבוצעו החל מהפעלת התכונה הזו — שינויים היסטוריים מלפני כן לא נרשמו.</div>
   </div>
 </div>
 
@@ -668,6 +686,54 @@ function r2(){
 }
 function goToPage2(delta){page2+=delta;if(page2<1)page2=1;r2();}
 
+function openStatusReport(){
+  if(!CU)return;
+  const fromEl=document.getElementById('sr_from'), toEl=document.getElementById('sr_to'), selEl=document.getElementById('sr_status');
+  if(!fromEl.value){
+    const to=new Date(); const from=new Date(); from.setDate(from.getDate()-7);
+    fromEl.value=from.toISOString().slice(0,10);
+    toEl.value=to.toISOString().slice(0,10);
+  }
+  if(!selEl.dataset.built){
+    selEl.innerHTML='<option value="">כל הסטטוסים</option>'+SR_ADMIN.map(s=>`<option value="${s}" ${s==='בוצע'?'selected':''}>${s}</option>`).join('');
+    selEl.dataset.built='1';
+  }
+  document.getElementById('statusReportBg').classList.add('open');
+  renderStatusReport();
+}
+function closeStatusReport(){ document.getElementById('statusReportBg').classList.remove('open'); }
+
+function renderStatusReport(){
+  const from=document.getElementById('sr_from').value;
+  const to=document.getElementById('sr_to').value;
+  const status=document.getElementById('sr_status').value;
+  const fromTs = from ? new Date(from+'T00:00:00').getTime() : -Infinity;
+  const toTs = to ? new Date(to+'T23:59:59').getTime() : Infinity;
+  const scope = (isAdmin() ? DB.rivka : DB.rivka.filter(r=>r.מב===(CU?CU.name:''))).filter(r=>!r.deleted);
+  const rows=[];
+  scope.forEach(r=>{
+    (r.statusLog||[]).forEach(e=>{
+      if(status && e.s!==status) return;
+      if(e.t<fromTs || e.t>toTs) return;
+      rows.push({rec:r, entry:e});
+    });
+  });
+  rows.sort((a,b)=>b.entry.t-a.entry.t);
+  const el=document.getElementById('statusReportResults');
+  if(!rows.length){
+    el.innerHTML='<div class="nores">אין תוצאות בטווח שנבחר</div>';
+    return;
+  }
+  el.innerHTML=`<div class="count">נמצאו ${rows.length} שינויי סטטוס</div>
+  <div class="tbl-wrap"><table><thead><tr>
+    <th>תאריך ושעה</th><th>נושא</th><th>מבקש</th><th>סטטוס חדש</th><th>עודכן ע"י</th>
+  </tr></thead><tbody>${rows.map(({rec,entry})=>{
+    const d=new Date(entry.t);
+    const dateStr=d.toLocaleDateString('he-IL')+' '+d.toLocaleTimeString('he-IL',{hour:'2-digit',minute:'2-digit'});
+    return `<tr><td style="white-space:nowrap;color:#888;font-size:11px">${dateStr}</td><td>${m(rec.נ)}</td><td>${m(rec.מב)}</td><td>${sc(entry.s)}</td><td>${m(entry.by)}</td></tr>`;
+  }).join('')}</tbody></table></div>`;
+}
+
 function malmFields(r={}){
   return`
     <div class="form-row-group">
@@ -764,7 +830,8 @@ function saveModal(){
       ס:g('f_ס')||(r?r.ס:'פתוח'),
       dhl:g('f_dhl'), א:g('f_א'),
       ה:r?r.ה||'':'',
-      chat:r?r.chat||{}:{}
+      chat:r?r.chat||{}:{},
+      reads:r?r.reads||{}:{}
     };
   }else{
     rec={
@@ -772,10 +839,16 @@ function saveModal(){
       מט:g('f_מט'), ע:g('f_ע'),
       ס:r?(g('f_ס')||r.ס):'פתוח',
       ה:r?r.ה||'':'',
-      chat:r?r.chat||{}:{}
+      chat:r?r.chat||{}:{},
+      reads:r?r.reads||{}:{}
     };
   }
   const wasStatus = r ? r.ס : null;
+  // מעקב שינויי סטטוס — נשמר לצורך דוח "אילו משימות עברו לסטטוס X בטווח תאריכים"
+  rec.statusLog = r ? (r.statusLog||[]) : [];
+  if(r && wasStatus !== rec.ס){
+    rec.statusLog = rec.statusLog.concat([{s:rec.ס, t:Date.now(), by:CU?CU.name:''}]);
+  }
   // Attach pending files to new record
   if(pendingFiles.length && editIdx===-1){
     if(!rec.chat)rec.chat={malm:[],dhl:[]};
