@@ -859,8 +859,10 @@ function closeModal(force){
 function g(id){const el=document.getElementById(id);return el?el.value.trim():''}
 
 function saveModal(){
-  // FIX: define r to preserve status and chat on edit
-  const r = editIdx >= 0 ? DB[editSheet][editIdx] : null;
+  // שולפים לפי _id יציב (לא לפי מיקום במערך) — המערך עלול להתחלף/להתסדר מחדש
+  // בזמן שהחלון פתוח (למשל בעקבות markRead של משימה אחרת), ומיקום ישן יכול
+  // להצביע בטעות על רשומה אחרת ולגרום לדליפת chat/reads בין משימות.
+  const r = getEditRec();
   let rec;
   if(editSheet==='malm'){
     rec={
