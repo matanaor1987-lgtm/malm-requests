@@ -290,3 +290,32 @@ test.describe('בדיקות שפיות - הערות לכולם', () => {
     expect(task.closedBy).toBe('מנהל בדיקה');
   });
 });
+
+test.describe('רגרסיה: דריסת שדות בעריכת בדיקת שפיות (staleness, לא בעיית זהות)', () => {
+  test('שמירה במודל העריכה של אדמין לא דורסת הערה שעודכנה ע"י יוזר/מסך אחר בזמן שהמודל היה פתוח', async ({ page }) => {
+    const sanity = {
+      s1: { id: 's1', name: 'בדיקת מסך א', module: 'מסך א', env: 'טסט', status: 'פתוח', assignee: '', notes: 'הערה מקורית', adminNotes: '' },
+    };
+    const { sanity: liveSanity } = await mockFirebase(page, { sanity: JSON.parse(JSON.stringify(sanity)) });
+    await page.goto('/index.html');
+    await login(page, 'testadmin', 'pw');
+    await page.click('.tab[data-tab="4"]');
+    await expect(page.locator('#sanityAdminBody')).toContainText('בדיקת מסך א');
+
+    // פותחים את מודל העריכה - טוען סנאפשוט מקומי שכולל notes='הערה מקורית'
+    await page.click('button[onclick="openEditSanity(\'s1\')"]');
+    await expect(page.locator('#sanityModal')).toBeVisible();
+
+    // מדמים עדכון מקביל ישירות בשרת (כאילו יוזר אחר, או מסך אחר של אותו אדמין, עדכן
+    // את ההערה דרך updateSanityField בזמן שמודל העריכה הזה כבר היה פתוח)
+    liveSanity.s1.notes = 'הערה שעודכנה במקביל ע"י יוזר אחר';
+
+    // האדמין משנה שדה אחר בלבד (מודול) ושומר
+    await page.fill('#sanityModule', 'מודול עודכן');
+    await page.click('button[onclick="saveSanityTask()"]');
+    await page.waitForTimeout(150);
+
+    expect(liveSanity.s1.notes).toBe('הערה שעודכנה במקביל ע"י יוזר אחר');
+    expect(liveSanity.s1.module).toBe('מודול עודכן');
+  });
+});

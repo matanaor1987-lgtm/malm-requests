@@ -35,6 +35,10 @@ async function mockFirebase(page, initial) {
       if (path === '/sanity.json') {
         return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(sanity) });
       }
+      const sm = path.match(/^\/sanity\/([^/]+)\.json$/);
+      if (sm) {
+        return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(sanity[sm[1]] || null) });
+      }
       // devTasks.json / כל השאר - אין לנו נתונים, מחזירים ריק
       return route.fulfill({ status: 200, contentType: 'application/json', body: 'null' });
     }
@@ -43,9 +47,11 @@ async function mockFirebase(page, initial) {
       let body;
       try { body = req.postDataJSON(); } catch (e) { body = null; }
       const m = path.match(/^\/db\/(malm|rivka|users)\.json$/);
+      const sm = path.match(/^\/sanity\/([^/]+)\.json$/);
       if (m) db[m[1]] = body;
       else if (path === '/db.json' && body) Object.assign(db, body);
       else if (path === '/sanity.json') { Object.keys(sanity).forEach(k => delete sanity[k]); Object.assign(sanity, body); }
+      else if (sm) sanity[sm[1]] = body;
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
     }
 

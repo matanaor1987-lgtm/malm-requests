@@ -1885,7 +1885,15 @@ async function saveSanityTask() {
   var prevAssignee = editId && SANITY_TASKS[editId] ? SANITY_TASKS[editId].assignee : '';
 
   var id = editId || 'sanity_' + Date.now();
-  var existing = (editId && SANITY_TASKS[editId]) ? SANITY_TASKS[editId] : {};
+  // טוען טרי מהשרת (לא מהזיכרון המקומי) - כדי לא לדרוס notes/adminNotes/closedBy
+  // שעודכנו ע"י יוזר אחר או מסך אחר בזמן שמודל העריכה הזה היה פתוח.
+  var existing = {};
+  if (editId) {
+    try {
+      var freshRes = await fetch('https://malm-focus-default-rtdb.firebaseio.com/sanity/' + editId + '.json?t=' + Date.now());
+      existing = (await freshRes.json()) || {};
+    } catch (e) { existing = SANITY_TASKS[editId] || {}; }
+  }
   var statusChangedToClosed = status !== existing.status && (status === 'בוצע' || status === 'נכשל');
   var task = {
     id: id,
