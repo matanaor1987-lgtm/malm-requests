@@ -1788,8 +1788,8 @@ function renderSanityAdmin() {
       '<td style="padding:8px 10px;border-bottom:1px solid #eee;text-align:center"><span style="background:' + envBg + ';color:' + envColor + ';padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700">' + esc(t.env||'') + '</span></td>' +
       '<td style="padding:8px 10px;border-bottom:1px solid #eee;white-space:nowrap">' + esc(t.assignee||'—') + '</td>' +
       '<td style="padding:8px 10px;border-bottom:1px solid #eee;white-space:nowrap"><span style="color:' + statusColor + ';font-weight:700">' + esc(t.status||'פתוח') + '</span>' + closedInfo + '</td>' +
-      '<td style="padding:8px 10px;border-bottom:1px solid #eee;font-size:11px">' + esc(t.notes||'') + '</td>' +
-      '<td style="padding:7px 10px;border-bottom:1px solid #eee"><textarea data-sid="' + t.id + '" onchange="updateSanityAdminNotes(this.dataset.sid,this.value)" rows="2" style="width:120px;border:1px solid #ddd;border-radius:4px;padding:3px 5px;font-size:11px;font-family:Arial;direction:rtl;resize:vertical">' + esc(t.adminNotes||'') + '</textarea></td>' +
+      '<td style="padding:7px 10px;border-bottom:1px solid #eee"><textarea data-sid="' + t.id + '" onchange="updateSanityField(this.dataset.sid,\'notes\',this.value)" rows="2" style="width:120px;border:1px solid #ddd;border-radius:4px;padding:3px 5px;font-size:11px;font-family:Arial;direction:rtl;resize:vertical">' + esc(t.notes||'') + '</textarea></td>' +
+      '<td style="padding:7px 10px;border-bottom:1px solid #eee"><textarea data-sid="' + t.id + '" onchange="updateSanityField(this.dataset.sid,\'adminNotes\',this.value)" rows="2" style="width:120px;border:1px solid #ddd;border-radius:4px;padding:3px 5px;font-size:11px;font-family:Arial;direction:rtl;resize:vertical">' + esc(t.adminNotes||'') + '</textarea></td>' +
       '<td style="padding:8px 10px;border-bottom:1px solid #eee;font-size:11px;white-space:nowrap">' + esc(t.closedAt ? t.closedAt.slice(0,10) : '') + '</td>' +
       '<td style="padding:8px 10px;border-bottom:1px solid #eee;white-space:nowrap">' +
         '<button onclick="openEditSanity(\'' + t.id + '\')" style="background:#1565c0;color:#fff;border:none;border-radius:4px;padding:4px 10px;cursor:pointer;font-size:11px;font-family:Arial;margin-left:4px">עריכה</button>' +
@@ -1818,8 +1818,8 @@ function renderSanityManager() {
       '<td style="padding:8px 10px;border-bottom:1px solid #eee;font-size:11px;font-weight:700;white-space:nowrap">' + esc(t.module||'') + '</td>' +
       '<td style="padding:8px 10px;border-bottom:1px solid #eee;font-size:11px;line-height:1.5">' + esc(t.name) + '</td>' +
       '<td style="padding:8px 10px;border-bottom:1px solid #eee;text-align:center"><span style="background:' + envBg2 + ';color:' + envColor2 + ';padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700">' + esc(t.env||'') + '</span></td>' +
-      '<td style="padding:8px 10px;border-bottom:1px solid #eee;font-size:11px">' + esc(t.notes||'') + '</td>' +
-      '<td style="padding:8px 10px;border-bottom:1px solid #eee;font-size:11px;color:#1565c0;font-style:italic">' + esc(t.adminNotes||'') + '</td>' +
+      '<td style="padding:7px 10px;border-bottom:1px solid #eee"><textarea data-sid="' + t.id + '" onchange="updateSanityField(this.dataset.sid,\'notes\',this.value)" rows="2" style="width:120px;border:1px solid #ddd;border-radius:4px;padding:3px 5px;font-size:11px;font-family:Arial;direction:rtl;resize:vertical">' + esc(t.notes||'') + '</textarea></td>' +
+      '<td style="padding:7px 10px;border-bottom:1px solid #eee"><textarea data-sid="' + t.id + '" onchange="updateSanityField(this.dataset.sid,\'adminNotes\',this.value)" rows="2" style="width:120px;border:1px solid #ddd;border-radius:4px;padding:3px 5px;font-size:11px;font-family:Arial;direction:rtl;resize:vertical">' + esc(t.adminNotes||'') + '</textarea></td>' +
       '<td style="padding:8px 10px;border-bottom:1px solid #eee">' +
         '<button onclick="openCloseSanity(\'' + t.id + '\')" style="background:#2e7d32;color:#fff;border:none;border-radius:4px;padding:6px 14px;cursor:pointer;font-size:12px;font-weight:700;font-family:Arial">סגור ✓</button>' +
       '</td>' +
@@ -2050,13 +2050,77 @@ document.addEventListener('click', function(e){
   });
 });
 
-async function updateSanityAdminNotes(id, val) {
+function openSanityBulkModal(){
+  document.getElementById('sanityBulkInput').value='';
+  document.getElementById('sanityBulkResult').innerHTML='';
+  document.getElementById('sanityBulkModal').style.display='flex';
+}
+function closeSanityBulkModal(){
+  document.getElementById('sanityBulkModal').style.display='none';
+}
+
+// שיוך מרוכז: מפרסר רשימת "שם בדיקה -> מבצע" ומעדכן את כולם בפעולה אטומית אחת.
+// מוצא בדיקות לפי שם מדויק (אחרי טרים); שורות שלא נמצאה להן התאמה מדווחות בנפרד ולא נוגעות בכלום.
+async function applySanityBulkAssign(){
+  const raw = document.getElementById('sanityBulkInput').value;
+  const resultEl = document.getElementById('sanityBulkResult');
+  const lines = raw.split('\n').map(l=>l.trim()).filter(Boolean);
+  if(!lines.length){ resultEl.innerHTML = '<span style="color:#c62828">לא הוזן כלום</span>'; return; }
+
+  const byName = {};
+  Object.values(SANITY_TASKS).forEach(t => { byName[(t.name||'').trim()] = t; });
+
+  const matched = [];
+  const unmatched = [];
+  lines.forEach(line => {
+    let parts;
+    if(line.includes('\t')) parts = line.split('\t');
+    else if(line.includes(' - ')) parts = line.split(' - ');
+    else if(line.includes(':')) parts = line.split(':');
+    else { unmatched.push(line + ' — לא נמצא מפריד (Tab / " - " / ":")'); return; }
+    const testName = (parts[0]||'').trim();
+    const assignee = parts.slice(1).join(' ').trim();
+    const t = byName[testName];
+    if(!t){ unmatched.push(line + ' — לא נמצאה בדיקה בשם "' + testName + '"'); return; }
+    if(!assignee){ unmatched.push(line + ' — לא צוין שם מבצע'); return; }
+    matched.push({ id: t.id, assignee });
+  });
+
+  if(!matched.length){
+    resultEl.innerHTML = '<span style="color:#c62828">לא נמצאה אף התאמה:</span><br>' + unmatched.map(u=>esc(u)).join('<br>');
+    return;
+  }
+
+  resultEl.textContent = 'משייך...';
+  try{
+    const fresh = await fetch('https://malm-focus-default-rtdb.firebaseio.com/sanity.json?t=' + Date.now());
+    const serverData = await fresh.json() || {};
+    matched.forEach(({id, assignee}) => { if(serverData[id]) serverData[id].assignee = assignee; });
+    await fetch('https://malm-focus-default-rtdb.firebaseio.com/sanity.json', {
+      method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(serverData)
+    });
+    SANITY_TASKS = serverData;
+    renderSanityAdmin();
+    let msg = '✅ שויכו ' + matched.length + ' בדיקות בהצלחה.';
+    if(unmatched.length){
+      msg += '<br><span style="color:#e65100">⚠️ ' + unmatched.length + ' שורות לא זוהו:</span><br>' + unmatched.map(u=>esc(u)).join('<br>');
+    }
+    resultEl.innerHTML = msg;
+    if(!unmatched.length){ setTimeout(closeSanityBulkModal, 1800); }
+  }catch(e){
+    resultEl.innerHTML = '<span style="color:#c62828">שגיאה בשמירה: ' + esc(e.message) + '</span>';
+  }
+}
+
+// עדכון שדה הערות בודדת (notes או adminNotes) - כל מי שרואה את מסך הבדיקה יכול לעדכן,
+// לא רק אדמין. עדכון ישיר לפי id (הבדיקות שמורות כאובייקט לפי id, אז זה בטוח מטבעו).
+async function updateSanityField(id, field, val) {
   if (!SANITY_TASKS[id]) return;
-  SANITY_TASKS[id].adminNotes = val;
+  SANITY_TASKS[id][field] = val;
   await fetch('https://malm-focus-default-rtdb.firebaseio.com/sanity/' + id + '.json', {
     method: 'PATCH',
     headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({adminNotes: val})
+    body: JSON.stringify({ [field]: val })
   });
 }
 
@@ -2139,6 +2203,7 @@ async function dedupRecords(sheet) {
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
       <div style="font-size:16px;font-weight:700;color:#1a1a2e">✅ בדיקות שפיות <span id="sanityBadge" style="display:none;background:#D40511;color:#fff;border-radius:50%;padding:1px 6px;font-size:10px;font-weight:700;margin-right:4px"></span></div>
       <button onclick="openStatusReport('sanity')" style="background:#1a1a2e;color:#fff;border:none;border-radius:6px;padding:8px 16px;cursor:pointer;font-size:13px;font-weight:700;font-family:Arial">📊 דוח בדיקות שהושלמו</button>
+      <button onclick="openSanityBulkModal()" style="background:#1565c0;color:#fff;border:none;border-radius:6px;padding:8px 16px;cursor:pointer;font-size:13px;font-weight:700;font-family:Arial">🗂️ שיוך מרוכז</button>
       <button onclick="openNewSanity()" style="background:#D40511;color:#fff;border:none;border-radius:6px;padding:8px 16px;cursor:pointer;font-size:13px;font-weight:700;font-family:Arial">+ בדיקה חדשה</button>
       <button onclick="resetSanityTasks()" style="background:#e65100;color:#fff;border:none;border-radius:6px;padding:8px 16px;cursor:pointer;font-size:13px;font-weight:700;font-family:Arial">🔄 אפס לברירת מחדל</button>
     </div>
@@ -2196,6 +2261,20 @@ async function dedupRecords(sheet) {
       <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
         <button onclick="closeSanityModal()" style="padding:8px 16px;border:1px solid #ddd;border-radius:6px;cursor:pointer;font-size:13px;font-family:Arial;background:#fff">ביטול</button>
         <button onclick="saveSanityTask()" style="padding:8px 16px;background:#D40511;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px;font-weight:700;font-family:Arial">שמור</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- SANITY BULK ASSIGN MODAL -->
+  <div id="sanityBulkModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9000;align-items:center;justify-content:center">
+    <div style="background:#fff;border-radius:12px;padding:24px;width:90%;max-width:600px;direction:rtl">
+      <div style="font-size:15px;font-weight:700;margin-bottom:8px;color:#1a1a2e">🗂️ שיוך מרוכז - מי בודק מה</div>
+      <div style="font-size:11px;color:#666;margin-bottom:8px">כל שורה: <b>שם הבדיקה</b> ואז <b>שם המבצע</b>, מופרדים ב-Tab (אפשר להדביק ישירות מטבלה/אקסל) או ב-" - ". שם הבדיקה חייב להתאים בדיוק לשם הקיים במערכת.</div>
+      <textarea id="sanityBulkInput" rows="12" placeholder="דוגמה:&#10;בדיקת מסך א - מתן&#10;בדיקת מסך ב - עידו" style="width:100%;padding:8px 10px;border:1.5px solid #ddd;border-radius:6px;font-size:12px;font-family:Arial;direction:rtl;resize:vertical;box-sizing:border-box"></textarea>
+      <div id="sanityBulkResult" style="font-size:12px;margin-top:10px;line-height:1.6"></div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
+        <button onclick="closeSanityBulkModal()" style="padding:8px 16px;border:1px solid #ddd;border-radius:6px;cursor:pointer;font-size:13px;font-family:Arial;background:#fff">סגור</button>
+        <button onclick="applySanityBulkAssign()" style="padding:8px 16px;background:#1565c0;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px;font-weight:700;font-family:Arial">שייך</button>
       </div>
     </div>
   </div>

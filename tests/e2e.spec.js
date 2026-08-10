@@ -207,3 +207,58 @@ test.describe('דוח שינויי סטטוס', () => {
     await expect(page.locator('#statusReportResults')).not.toContainText('מחוץ לטווח');
   });
 });
+
+test.describe('בדיקות שפיות - הערות לכולם ושיוך מרוכז', () => {
+  const sanity = {
+    s1: { id: 's1', name: 'בדיקת מסך א', module: 'מסך א', env: 'טסט', status: 'פתוח', assignee: 'מנהלת בדיקה', notes: '', adminNotes: '' },
+    s2: { id: 's2', name: 'בדיקת מסך ב', module: 'מסך ב', env: 'RDP', status: 'פתוח', assignee: '', notes: '', adminNotes: '' },
+  };
+
+  test('אדמין יכול לערוך גם "הערות בודק" וגם "Admin Notes" ישירות בטבלה', async ({ page }) => {
+    await mockFirebase(page, { sanity: JSON.parse(JSON.stringify(sanity)) });
+    await page.goto('/index.html');
+    await login(page, 'testadmin', 'pw');
+    await page.click('.tab[data-tab="4"]');
+    await expect(page.locator('#sanityAdminBody')).toContainText('בדיקת מסך א');
+
+    const row = page.locator('#sanityAdminBody tr', { hasText: 'בדיקת מסך א' });
+    await row.locator('textarea').nth(0).fill('הערת בודק חדשה');
+    await row.locator('textarea').nth(0).dispatchEvent('change');
+    await row.locator('textarea').nth(1).fill('הערת אדמין חדשה');
+    await row.locator('textarea').nth(1).dispatchEvent('change');
+    await page.waitForTimeout(150);
+
+    const updated = await page.evaluate(() => ({ notes: SANITY_TASKS.s1.notes, adminNotes: SANITY_TASKS.s1.adminNotes }));
+    expect(updated).toEqual({ notes: 'הערת בודק חדשה', adminNotes: 'הערת אדמין חדשה' });
+  });
+
+  test('מנהל (לא אדמין) רואה ויכול לערוך את שתי שדות ההערות של בדיקה משויכת לו', async ({ page }) => {
+    await mockFirebase(page, { sanity: JSON.parse(JSON.stringify(sanity)) });
+    await page.goto('/index.html');
+    await login(page, 'testmgr', 'pw');
+    await page.click('.tab[data-tab="4"]');
+    await expect(page.locator('#sanityManagerBody')).toContainText('בדיקת מסך א');
+
+    const textareas = page.locator('#sanityManagerBody tr', { hasText: 'בדיקת מסך א' }).locator('textarea');
+    await expect(textareas).toHaveCount(2);
+    await textareas.nth(0).fill('עדכון מהמנהל');
+    await textareas.nth(0).dispatchEvent('change');
+    await page.waitForTimeout(150);
+    expect(await page.evaluate(() => SANITY_TASKS.s1.notes)).toBe('עדכון מהמנהל');
+  });
+
+  test('שיוך מרוכז משייך לפי שם בדיקה מדויק, ומדווח על שורות שלא זוהו', async ({ page }) => {
+    await mockFirebase(page, { sanity: JSON.parse(JSON.stringify(sanity)) });
+    await page.goto('/index.html');
+    await login(page, 'testadmin', 'pw');
+    await page.click('.tab[data-tab="4"]');
+    await page.click('button[onclick="openSanityBulkModal()"]');
+    await page.fill('#sanityBulkInput', 'בדיקת מסך א\tרבקה\nבדיקת מסך ב\tעדו\nבדיקה שלא קיימת\tמישהו');
+    await page.click('button[onclick="applySanityBulkAssign()"]');
+    await expect(page.locator('#sanityBulkResult')).toContainText('שויכו 2 בדיקות בהצלחה');
+    await expect(page.locator('#sanityBulkResult')).toContainText('לא נמצאה בדיקה בשם "בדיקה שלא קיימת"');
+
+    const assignees = await page.evaluate(() => ({ s1: SANITY_TASKS.s1.assignee, s2: SANITY_TASKS.s2.assignee }));
+    expect(assignees).toEqual({ s1: 'רבקה', s2: 'עדו' });
+  });
+});
