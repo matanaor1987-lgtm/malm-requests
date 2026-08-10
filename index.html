@@ -1687,6 +1687,18 @@ function logDevChange(idx, fieldLabel, newVal){
 async function saveDevTask(idx) {
   var task = DEV_TASKS[idx];
   try {
+    // sLog הוא יומן שינויים מצטבר - טוענים טרי מהשרת וממזגים איתו, כדי לא לאבד
+    // רשומות שנוספו במקביל ע"י יוזר אחר (למשל אם שניים שינו שדות שונים כמעט באותו זמן)
+    var freshRes = await fetch('https://malm-focus-default-rtdb.firebaseio.com/devTasks/' + idx + '.json?t=' + Date.now());
+    var fresh = (await freshRes.json()) || {};
+    var mergedLog = (fresh.sLog || []).slice();
+    (task.sLog || []).forEach(function(entry) {
+      var exists = mergedLog.some(function(e) { return e.t === entry.t && e.field === entry.field && e.by === entry.by && e.s === entry.s; });
+      if (!exists) mergedLog.push(entry);
+    });
+    mergedLog.sort(function(a, b) { return a.t - b.t; });
+    task.sLog = mergedLog;
+
     await fetch('https://malm-focus-default-rtdb.firebaseio.com/devTasks/' + idx + '.json', {
       method: 'PATCH',
       headers: {'Content-Type': 'application/json'},

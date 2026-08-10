@@ -319,3 +319,25 @@ test.describe('רגרסיה: דריסת שדות בעריכת בדיקת שפי�
     expect(liveSanity.s1.module).toBe('מודול עודכן');
   });
 });
+
+test.describe('רגרסיה: איבוד רשומות ביומן שינויים בפיתוחים ותיקונים (staleness)', () => {
+  test('שמירת שינוי סטטוס פיתוח לא מוחקת רשומת יומן שנוספה במקביל ע"י יוזר אחר', async ({ page }) => {
+    const { devTasks: liveDevTasks } = await mockFirebase(page, {});
+    await page.goto('/index.html');
+    await login(page, 'testadmin', 'pw');
+    await page.click('.tab[data-tab="3"]');
+    await expect(page.locator('#devBody')).toContainText('13770');
+
+    // מדמים שינוי מקביל בשרת: יוזר אחר כבר שינה tStatus ורשם שורת יומן, בזמן שהעמוד הזה עדיין לא רענן
+    liveDevTasks['0'] = { tester: '', tStatus: 'נבדק', tNotes: '', status: '', sLog: [{ field: 'סטטוס בדיקה', s: 'נבדק', t: 111, by: 'מישהו אחר' }] };
+
+    // בדפדפן הזה, המשתמש משנה שדה אחר ("סטטוס פיתוח") - מה שקורא ל-saveDevTask
+    const row = page.locator('#devBody tr', { hasText: '13770' });
+    await row.locator('select').first().selectOption('בפיתוח');
+    await page.waitForTimeout(150);
+
+    const sLog = liveDevTasks['0'].sLog;
+    expect(sLog.some(e => e.by === 'מישהו אחר' && e.s === 'נבדק')).toBe(true);
+    expect(sLog.some(e => e.s === 'בפיתוח')).toBe(true);
+  });
+});
