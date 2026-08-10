@@ -54,6 +54,7 @@ tr:hover td{background:#fffbf0}
 .s-בוטל{background:#f5f5f5;color:#9e9e9e}
 .s-ממתין-לבדיקה{background:#e8eaf6;color:#3949ab}
 .s-בטיפול{background:#e0f2f1;color:#00695c}
+.s-נכשל{background:#fde8e8;color:#c62828}
 .muted{color:#ccc}
 .nores{text-align:center;padding:30px;color:#aaa}
 .act-btn{background:none;border:none;cursor:pointer;padding:3px 5px;border-radius:4px;font-size:14px}
@@ -692,7 +693,7 @@ const SR_REPORT_CONFIG={
   rivka:{title:'📊 דוח שינויי סטטוס — משימות לרבקה', opts:()=>SR_ADMIN, def:'בוצע', cols:['נושא','מבקש']},
   malm:{title:'📊 דוח שינויי סטטוס — משימות מלמ כולל', opts:()=>SM, def:'טופל', cols:['משימה','תחום']},
   dev:{title:'📊 דוח שינויי סטטוס — פיתוחים ותיקונים', opts:()=>['פתוח','בפיתוח','בבדיקה','נבדק','נסגר','תקין','לא תקין'], def:'', cols:['משימה','שדה']},
-  sanity:{title:'📊 דוח בדיקות שהושלמו — בדיקות שפיות', opts:()=>['בוצע'], def:'בוצע', cols:['בדיקה','מסך/מודול']}
+  sanity:{title:'📊 דוח בדיקות שהושלמו — בדיקות שפיות', opts:()=>['בוצע','נכשל'], def:'בוצע', cols:['בדיקה','מסך/מודול']}
 };
 
 function openStatusReport(mode){
@@ -748,10 +749,11 @@ function renderStatusReport(){
   } else if(srMode==='sanity'){
     Object.keys(SANITY_TASKS||{}).forEach(id=>{
       const t=SANITY_TASKS[id];
-      if(!t||t.status!=='בוצע'||!t.closedAt)return;
+      if(!t||!t.closedAt||(t.status!=='בוצע'&&t.status!=='נכשל'))return;
+      if(status && t.status!==status) return;
       const ts=new Date(t.closedAt).getTime();
       if(ts<fromTs||ts>toTs)return;
-      rows.push({t:ts, c1:t.name||'', c2:t.module||'', s:'בוצע', by:t.closedBy||''});
+      rows.push({t:ts, c1:t.name||'', c2:t.module||'', s:t.status, by:t.closedBy||''});
     });
   }
 
@@ -1778,8 +1780,8 @@ function renderSanityAdmin() {
   }
   tb.innerHTML = tasks.map(function(t, i) {
     var bg = i%2 ? '#f9f9f9' : '#fff';
-    var statusColor = t.status==='בוצע' ? '#2e7d32' : t.status==='פתוח' ? '#e65100' : '#888';
-    var closedInfo = t.status==='בוצע' ? ' <span style="font-size:10px;color:#666">(ע"י ' + esc(t.closedBy||'') + ')</span>' : '';
+    var statusColor = t.status==='בוצע' ? '#2e7d32' : t.status==='נכשל' ? '#c62828' : t.status==='פתוח' ? '#e65100' : '#888';
+    var closedInfo = (t.status==='בוצע' || t.status==='נכשל') ? ' <span style="font-size:10px;color:#666">(ע"י ' + esc(t.closedBy||'') + ')</span>' : '';
     var envBg = t.env==='RDP' ? '#e3f2fd' : t.env==='טסט' ? '#f3e5f5' : '#fff8e1';
     var envColor = t.env==='RDP' ? '#1565c0' : t.env==='טסט' ? '#6a1b9a' : '#e65100';
     return '<tr style="background:' + bg + ';vertical-align:top">' +
@@ -1804,7 +1806,7 @@ function renderSanityManager() {
   if (!tb) return;
   var myName = CU ? CU.name : '';
   var tasks = Object.values(SANITY_TASKS).filter(function(t) {
-    return t.assignee === myName && t.status !== 'בוצע';
+    return t.assignee === myName && t.status === 'פתוח';
   });
   if (!tasks.length) {
     tb.innerHTML = '<tr><td colspan="5" style="padding:30px;text-align:center;color:#aaa">אין בדיקות פתוחות כרגע 👍</td></tr>';
@@ -1820,8 +1822,9 @@ function renderSanityManager() {
       '<td style="padding:8px 10px;border-bottom:1px solid #eee;text-align:center"><span style="background:' + envBg2 + ';color:' + envColor2 + ';padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700">' + esc(t.env||'') + '</span></td>' +
       '<td style="padding:7px 10px;border-bottom:1px solid #eee"><textarea data-sid="' + t.id + '" onchange="updateSanityField(this.dataset.sid,\'notes\',this.value)" rows="2" style="width:120px;border:1px solid #ddd;border-radius:4px;padding:3px 5px;font-size:11px;font-family:Arial;direction:rtl;resize:vertical">' + esc(t.notes||'') + '</textarea></td>' +
       '<td style="padding:7px 10px;border-bottom:1px solid #eee"><textarea data-sid="' + t.id + '" onchange="updateSanityField(this.dataset.sid,\'adminNotes\',this.value)" rows="2" style="width:120px;border:1px solid #ddd;border-radius:4px;padding:3px 5px;font-size:11px;font-family:Arial;direction:rtl;resize:vertical">' + esc(t.adminNotes||'') + '</textarea></td>' +
-      '<td style="padding:8px 10px;border-bottom:1px solid #eee">' +
-        '<button onclick="openCloseSanity(\'' + t.id + '\')" style="background:#2e7d32;color:#fff;border:none;border-radius:4px;padding:6px 14px;cursor:pointer;font-size:12px;font-weight:700;font-family:Arial">סגור ✓</button>' +
+      '<td style="padding:8px 10px;border-bottom:1px solid #eee;white-space:nowrap">' +
+        '<button onclick="openCloseSanity(\'' + t.id + '\',\'בוצע\')" style="background:#2e7d32;color:#fff;border:none;border-radius:4px;padding:6px 12px;cursor:pointer;font-size:12px;font-weight:700;font-family:Arial;margin-left:4px">עבר ✓</button>' +
+        '<button onclick="openCloseSanity(\'' + t.id + '\',\'נכשל\')" style="background:#c62828;color:#fff;border:none;border-radius:4px;padding:6px 12px;cursor:pointer;font-size:12px;font-weight:700;font-family:Arial">נכשל ✗</button>' +
       '</td>' +
     '</tr>';
   }).join('');
@@ -1831,6 +1834,9 @@ function openNewSanity() {
   document.getElementById('sanityEditId').value = '';
   document.getElementById('sanityName').value = '';
   document.getElementById('sanityDesc').value = '';
+  document.getElementById('sanityModule').value = '';
+  document.getElementById('sanityEnv').value = '';
+  document.getElementById('sanityStatus').value = 'פתוח';
   document.getElementById('sanityModalTitle').textContent = 'בדיקה חדשה';
   // Populate assignee dropdown from ALL users
   populateSanityAssignee(document.getElementById('sanityAssignee'), '');
@@ -1853,6 +1859,9 @@ function openEditSanity(id) {
   document.getElementById('sanityEditId').value = id;
   document.getElementById('sanityName').value = t.name || '';
   document.getElementById('sanityDesc').value = t.desc || '';
+  document.getElementById('sanityModule').value = t.module || '';
+  document.getElementById('sanityEnv').value = t.env || '';
+  document.getElementById('sanityStatus').value = t.status || 'פתוח';
   document.getElementById('sanityModalTitle').textContent = 'עריכת בדיקה';
   var sel = document.getElementById('sanityAssignee');
   populateSanityAssignee(sel, t.assignee || '');
@@ -1869,22 +1878,26 @@ async function saveSanityTask() {
   var editId = document.getElementById('sanityEditId').value;
   var assignee = document.getElementById('sanityAssignee').value;
   var desc = document.getElementById('sanityDesc').value.trim();
+  var module = document.getElementById('sanityModule').value.trim();
+  var env = document.getElementById('sanityEnv').value.trim();
+  var status = document.getElementById('sanityStatus').value;
   var isNew = !editId;
   var prevAssignee = editId && SANITY_TASKS[editId] ? SANITY_TASKS[editId].assignee : '';
 
   var id = editId || 'sanity_' + Date.now();
   var existing = (editId && SANITY_TASKS[editId]) ? SANITY_TASKS[editId] : {};
+  var statusChangedToClosed = status !== existing.status && (status === 'בוצע' || status === 'נכשל');
   var task = {
     id: id,
     name: name,
     desc: desc,
     assignee: assignee,
-    module: existing.module || '',
-    env: existing.env || '',
-    status: existing.status || 'פתוח',
+    module: module,
+    env: env,
+    status: status,
     notes: existing.notes || '',
-    closedBy: existing.closedBy || '',
-    closedAt: existing.closedAt || '',
+    closedBy: statusChangedToClosed ? (CU ? CU.name : '') : (status === 'פתוח' ? '' : (existing.closedBy || '')),
+    closedAt: statusChangedToClosed ? new Date().toISOString() : (status === 'פתוח' ? '' : (existing.closedAt || '')),
     adminNotes: existing.adminNotes || '',
     createdAt: existing.createdAt || new Date().toISOString()
   };
@@ -1929,9 +1942,15 @@ async function deleteSanityTask(id) {
   renderSanityAdmin();
 }
 
-function openCloseSanity(id) {
+function openCloseSanity(id, targetStatus) {
   document.getElementById('sanityCloseId').value = id;
+  document.getElementById('sanityCloseStatus').value = targetStatus;
   document.getElementById('sanityCloseNotes').value = '';
+  var isFail = targetStatus === 'נכשל';
+  document.getElementById('sanityNotesModalTitle').textContent = isFail ? 'סימון בדיקה כנכשלה' : 'סימון בדיקה כעברה';
+  var btn = document.getElementById('sanityCloseConfirmBtn');
+  btn.textContent = isFail ? 'נכשל ✗' : 'עבר ✓';
+  btn.style.background = isFail ? '#c62828' : '#2e7d32';
   document.getElementById('sanityNotesModal').style.display = 'flex';
 }
 
@@ -1941,11 +1960,12 @@ function closeSanityNotesModal() {
 
 async function confirmCloseSanity() {
   var id = document.getElementById('sanityCloseId').value;
+  var targetStatus = document.getElementById('sanityCloseStatus').value || 'בוצע';
   var notes = document.getElementById('sanityCloseNotes').value.trim();
   var t = SANITY_TASKS[id];
   if (!t) return;
   var updates = {
-    status: 'בוצע',
+    status: targetStatus,
     closedBy: CU ? CU.name : '',
     notes: notes,
     closedAt: new Date().toISOString()
@@ -2195,6 +2215,24 @@ async function dedupRecords(sheet) {
           <option value="">-- בחר מנהל --</option>
         </select>
       </div>
+      <div style="display:flex;gap:10px;margin-bottom:10px">
+        <div style="flex:1">
+          <label style="font-size:11px;color:#666;font-weight:700;display:block;margin-bottom:3px">מסך/מודול</label>
+          <input id="sanityModule" style="width:100%;padding:8px 10px;border:1.5px solid #ddd;border-radius:6px;font-size:13px;font-family:Arial;direction:rtl;box-sizing:border-box">
+        </div>
+        <div style="flex:1">
+          <label style="font-size:11px;color:#666;font-weight:700;display:block;margin-bottom:3px">סביבה</label>
+          <input id="sanityEnv" style="width:100%;padding:8px 10px;border:1.5px solid #ddd;border-radius:6px;font-size:13px;font-family:Arial;direction:ltr;box-sizing:border-box">
+        </div>
+      </div>
+      <div style="margin-bottom:10px">
+        <label style="font-size:11px;color:#666;font-weight:700;display:block;margin-bottom:3px">סטטוס</label>
+        <select id="sanityStatus" style="width:100%;padding:8px 10px;border:1.5px solid #ddd;border-radius:6px;font-size:13px;font-family:Arial;direction:rtl">
+          <option value="פתוח">פתוח</option>
+          <option value="בוצע">בוצע (עבר)</option>
+          <option value="נכשל">נכשל</option>
+        </select>
+      </div>
       <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
         <button onclick="closeSanityModal()" style="padding:8px 16px;border:1px solid #ddd;border-radius:6px;cursor:pointer;font-size:13px;font-family:Arial;background:#fff">ביטול</button>
         <button onclick="saveSanityTask()" style="padding:8px 16px;background:#D40511;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px;font-weight:700;font-family:Arial">שמור</button>
@@ -2206,15 +2244,16 @@ async function dedupRecords(sheet) {
   <!-- SANITY NOTES MODAL -->
   <div id="sanityNotesModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9000;align-items:center;justify-content:center">
     <div style="background:#fff;border-radius:12px;padding:24px;width:90%;max-width:420px;direction:rtl">
-      <div style="font-size:15px;font-weight:700;margin-bottom:16px;color:#1a1a2e">סגירת בדיקה</div>
+      <div style="font-size:15px;font-weight:700;margin-bottom:16px;color:#1a1a2e" id="sanityNotesModalTitle">סגירת בדיקה</div>
       <input type="hidden" id="sanityCloseId">
+      <input type="hidden" id="sanityCloseStatus">
       <div style="margin-bottom:12px">
         <label style="font-size:11px;color:#666;font-weight:700;display:block;margin-bottom:3px">הערות (אופציונלי)</label>
         <textarea id="sanityCloseNotes" rows="3" style="width:100%;padding:8px 10px;border:1.5px solid #ddd;border-radius:6px;font-size:13px;font-family:Arial;direction:rtl;resize:vertical;box-sizing:border-box"></textarea>
       </div>
       <div style="display:flex;gap:8px;justify-content:flex-end">
         <button onclick="closeSanityNotesModal()" style="padding:8px 16px;border:1px solid #ddd;border-radius:6px;cursor:pointer;font-size:13px;font-family:Arial;background:#fff">ביטול</button>
-        <button onclick="confirmCloseSanity()" style="padding:8px 16px;background:#2e7d32;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px;font-weight:700;font-family:Arial">סגור בדיקה ✓</button>
+        <button id="sanityCloseConfirmBtn" onclick="confirmCloseSanity()" style="padding:8px 16px;background:#2e7d32;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px;font-weight:700;font-family:Arial">עבר ✓</button>
       </div>
     </div>
   </div>

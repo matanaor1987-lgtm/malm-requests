@@ -246,4 +246,47 @@ test.describe('בדיקות שפיות - הערות לכולם', () => {
     await page.waitForTimeout(150);
     expect(await page.evaluate(() => SANITY_TASKS.s1.notes)).toBe('עדכון מהמנהל');
   });
+
+  test('מנהל יכול לסמן בדיקה כ"נכשל" (לא רק "בוצע"), והיא נעלמת מהרשימה הפתוחה שלו', async ({ page }) => {
+    await mockFirebase(page, { sanity: JSON.parse(JSON.stringify(sanity)) });
+    await page.goto('/index.html');
+    await login(page, 'testmgr', 'pw');
+    await page.click('.tab[data-tab="4"]');
+    await expect(page.locator('#sanityManagerBody')).toContainText('בדיקת מסך א');
+
+    const row = page.locator('#sanityManagerBody tr', { hasText: 'בדיקת מסך א' });
+    await row.locator('button', { hasText: 'נכשל' }).click();
+    await expect(page.locator('#sanityNotesModal')).toBeVisible();
+    await page.fill('#sanityCloseNotes', 'נפל בבדיקת שדה X');
+    await page.click('#sanityCloseConfirmBtn');
+    await page.waitForTimeout(150);
+
+    const task = await page.evaluate(() => SANITY_TASKS.s1);
+    expect(task.status).toBe('נכשל');
+    expect(task.closedBy).toBe('מנהלת בדיקה');
+    await expect(page.locator('#sanityManagerBody')).not.toContainText('בדיקת מסך א');
+  });
+
+  test('אדמין יכול לערוך מסך/מודול, סביבה וסטטוס ישירות דרך מודל העריכה', async ({ page }) => {
+    await mockFirebase(page, { sanity: JSON.parse(JSON.stringify(sanity)) });
+    await page.goto('/index.html');
+    await login(page, 'testadmin', 'pw');
+    await page.click('.tab[data-tab="4"]');
+    await expect(page.locator('#sanityAdminBody')).toContainText('בדיקת מסך ב');
+
+    const row = page.locator('#sanityAdminBody tr', { hasText: 'בדיקת מסך ב' });
+    await row.locator('button', { hasText: 'עריכה' }).click();
+    await expect(page.locator('#sanityModal')).toBeVisible();
+    await page.fill('#sanityModule', 'מודול חדש');
+    await page.fill('#sanityEnv', 'PROD');
+    await page.selectOption('#sanityStatus', 'נכשל');
+    await page.click('button[onclick="saveSanityTask()"]');
+    await page.waitForTimeout(150);
+
+    const task = await page.evaluate(() => SANITY_TASKS.s2);
+    expect(task.module).toBe('מודול חדש');
+    expect(task.env).toBe('PROD');
+    expect(task.status).toBe('נכשל');
+    expect(task.closedBy).toBe('מנהל בדיקה');
+  });
 });
