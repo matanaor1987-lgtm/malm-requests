@@ -1581,6 +1581,10 @@ function renderDevTable(){
       '<td style="padding:7px 10px;border-bottom:1px solid #eee;white-space:nowrap">'+esc(t.dev)+'</td>'+
       '<td style="padding:7px 10px;border-bottom:1px solid #eee"><select onchange="logDevChange('+i+',&quot;סטטוס פיתוח&quot;,this.value);DEV_TASKS['+i+'].status=this.value;saveDevTask('+i+');buildDevStats()" style="border:1px solid #ddd;border-radius:4px;padding:3px 5px;font-size:11px;font-family:Arial;direction:rtl">'+sOpts+'</select></td>'+
       '<td style="padding:7px 10px;border-bottom:1px solid #eee;font-size:11px;line-height:1.5">'+esc(t.desc)+'</td>'+
+      '<td style="padding:7px 10px;border-bottom:1px solid #eee">'+
+        '<input type="url" placeholder="קישור לוואן דרייב/טימס/שרפוינט" value="'+esc(t.specLink||'')+'" onchange="DEV_TASKS['+i+'].specLink=this.value;saveDevTask('+i+');renderDevTable()" style="width:130px;border:1px solid #ddd;border-radius:4px;padding:3px 5px;font-size:11px;font-family:Arial;direction:ltr">'+
+        (t.specLink?' <a href="'+esc(t.specLink)+'" target="_blank" rel="noopener" title="פתח איפיון" style="text-decoration:none">🔗</a>':'')+
+      '</td>'+
       '<td style="padding:7px 10px;border-bottom:1px solid #eee;font-size:11px;color:#555;line-height:1.5">'+esc(t.notes)+'</td>'+
       '<td style="padding:7px 10px;border-bottom:1px solid #eee;white-space:nowrap;font-size:11px">'+esc(t.comp)+'</td>'+
       '<td style="padding:7px 10px;border-bottom:1px solid #eee;white-space:nowrap;font-size:11px">'+esc(t.ver)+'</td>'+
@@ -1626,6 +1630,7 @@ function openNewDevTask(){
   document.getElementById('ndtComp').value='';
   document.getElementById('ndtVer').value='';
   document.getElementById('ndtIface').value='';
+  document.getElementById('ndtSpecLink').value='';
   document.getElementById('ndtNotes').value='';
   document.getElementById('newDevMsg').textContent='';
   document.getElementById('newDevModal').style.display='flex';
@@ -1649,6 +1654,7 @@ async function saveNewDevTask(){
     comp: document.getElementById('ndtComp').value.trim(),
     ver: document.getElementById('ndtVer').value.trim(),
     iface: document.getElementById('ndtIface').value.trim(),
+    specLink: document.getElementById('ndtSpecLink').value.trim(),
     tester: '',
     tNotes: '',
     tStatus: ''
@@ -1705,7 +1711,7 @@ async function saveDevTask(idx) {
     await fetch('https://malm-focus-default-rtdb.firebaseio.com/devTasks/' + idx + '.json', {
       method: 'PATCH',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({tester: task.tester, tStatus: task.tStatus, tNotes: task.tNotes, status: task.status, sLog: task.sLog||[]})
+      body: JSON.stringify({tester: task.tester, tStatus: task.tStatus, tNotes: task.tNotes, status: task.status, sLog: task.sLog||[], specLink: task.specLink||''})
     });
   } catch(e) { console.warn('saveDevTask error:', e); }
 }
@@ -1723,6 +1729,7 @@ async function loadDevTasks() {
           if (saved[idx].tNotes !== undefined) DEV_TASKS[i].tNotes = saved[idx].tNotes;
           if (saved[idx].status !== undefined) DEV_TASKS[i].status = saved[idx].status;
           if (saved[idx].sLog !== undefined) DEV_TASKS[i].sLog = saved[idx].sLog;
+          if (saved[idx].specLink !== undefined) DEV_TASKS[i].specLink = saved[idx].specLink;
         } else if (saved[idx] && saved[idx].desc) {
           // Manually added task beyond the hardcoded array — store the full record
           DEV_TASKS[i] = saved[idx];
@@ -2269,6 +2276,7 @@ async function dedupRecords(sheet) {
       <th style="padding:8px 10px;text-align:right;white-space:nowrap;cursor:pointer" onclick="sortDevTable('dev')" title="מיון">מפתח <span id="devSort_dev"></span></th>
       <th style="padding:8px 10px;text-align:right;white-space:nowrap;cursor:pointer" onclick="sortDevTable('status')" title="מיון">סטטוס <span id="devSort_status"></span></th>
       <th style="padding:8px 10px;text-align:right;min-width:220px">תאור משימה</th>
+      <th style="padding:8px 10px;text-align:right;min-width:150px">קישור לאיפיון</th>
       <th style="padding:8px 10px;text-align:right;min-width:150px">הערות</th>
       <th style="padding:8px 10px;text-align:right;white-space:nowrap;cursor:pointer" onclick="sortDevTable('comp')" title="מיון">רכיב <span id="devSort_comp"></span></th>
       <th style="padding:8px 10px;text-align:right;white-space:nowrap;cursor:pointer" onclick="sortDevTable('ver')" title="מיון">גרסה <span id="devSort_ver"></span></th>
@@ -2462,6 +2470,10 @@ async function dedupRecords(sheet) {
     <div style="margin-bottom:10px">
       <label style="font-size:11px;color:#666;font-weight:700;display:block;margin-bottom:3px">ממשק</label>
       <input id="ndtIface" style="width:100%;padding:8px 10px;border:1.5px solid #ddd;border-radius:6px;font-size:13px;font-family:Arial;direction:ltr;box-sizing:border-box">
+    </div>
+    <div style="margin-bottom:10px">
+      <label style="font-size:11px;color:#666;font-weight:700;display:block;margin-bottom:3px">קישור לאיפיון</label>
+      <input id="ndtSpecLink" type="url" placeholder="קישור לוואן דרייב/טימס/שרפוינט" style="width:100%;padding:8px 10px;border:1.5px solid #ddd;border-radius:6px;font-size:13px;font-family:Arial;direction:ltr;box-sizing:border-box">
     </div>
     <div style="margin-bottom:10px">
       <label style="font-size:11px;color:#666;font-weight:700;display:block;margin-bottom:3px">הערות</label>

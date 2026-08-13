@@ -395,3 +395,39 @@ test.describe('משימות בעליה לאוויר', () => {
     await expect(page.locator('#launchBody')).not.toContainText('משימה לבדיקה');
   });
 });
+
+test.describe('קישור לאיפיון בפיתוחים ותיקונים', () => {
+  test('הוספת קישור לאיפיון לשורה קיימת נשמרת ומציגה כפתור פתיחה', async ({ page }) => {
+    const { devTasks: liveDevTasks } = await mockFirebase(page, {});
+    await page.goto('/index.html');
+    await login(page, 'testadmin', 'pw');
+    await page.click('.tab[data-tab="3"]');
+    await expect(page.locator('#devBody')).toContainText('13770');
+
+    const row = page.locator('#devBody tr', { hasText: '13770' });
+    const link = 'https://dhlexpress.sharepoint.com/sites/focus/spec123.docx';
+    await row.locator('input[type="url"]').fill(link);
+    await row.locator('input[type="url"]').dispatchEvent('change');
+    await page.waitForTimeout(150);
+
+    expect(liveDevTasks['0'].specLink).toBe(link);
+    await expect(row.locator('a[href="' + link + '"]')).toHaveCount(1);
+  });
+
+  test('הוספת משימת פיתוח חדשה עם קישור לאיפיון שומרת אותו', async ({ page }) => {
+    await mockFirebase(page, {});
+    await page.goto('/index.html');
+    await login(page, 'testadmin', 'pw');
+    await page.click('.tab[data-tab="3"]');
+    await page.click('button[onclick="openNewDevTask()"]');
+    await expect(page.locator('#newDevModal')).toBeVisible();
+    await page.fill('#ndtDesc', 'משימה חדשה עם איפיון');
+    const link = 'https://teams.microsoft.com/l/file/spec456';
+    await page.fill('#ndtSpecLink', link);
+    await page.click('button[onclick="saveNewDevTask()"]');
+    await page.waitForTimeout(150);
+
+    const row = page.locator('#devBody tr', { hasText: 'משימה חדשה עם איפיון' });
+    await expect(row.locator('a[href="' + link + '"]')).toHaveCount(1);
+  });
+});
