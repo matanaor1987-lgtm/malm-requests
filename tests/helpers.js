@@ -18,6 +18,7 @@ async function mockFirebase(page, initial) {
   };
   const sanity = (initial && initial.sanity) || {};
   const devTasks = (initial && initial.devTasks) || {};
+  const launchTasks = (initial && initial.launchTasks) || {};
 
   await page.route('**/malm-focus-default-rtdb.firebaseio.com/**', async (route) => {
     const req = route.request();
@@ -47,6 +48,13 @@ async function mockFirebase(page, initial) {
       if (dm) {
         return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(devTasks[dm[1]] || null) });
       }
+      if (path === '/launchTasks.json') {
+        return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(launchTasks) });
+      }
+      const lm = path.match(/^\/launchTasks\/([^/]+)\.json$/);
+      if (lm) {
+        return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(launchTasks[lm[1]] || null) });
+      }
       // כל השאר - אין לנו נתונים, מחזירים ריק
       return route.fulfill({ status: 200, contentType: 'application/json', body: 'null' });
     }
@@ -57,11 +65,13 @@ async function mockFirebase(page, initial) {
       const m = path.match(/^\/db\/(malm|rivka|users)\.json$/);
       const sm = path.match(/^\/sanity\/([^/]+)\.json$/);
       const dm = path.match(/^\/devTasks\/([^/]+)\.json$/);
+      const lm = path.match(/^\/launchTasks\/([^/]+)\.json$/);
       if (m) db[m[1]] = body;
       else if (path === '/db.json' && body) Object.assign(db, body);
       else if (path === '/sanity.json') { Object.keys(sanity).forEach(k => delete sanity[k]); Object.assign(sanity, body); }
       else if (sm) sanity[sm[1]] = body;
       else if (dm) devTasks[dm[1]] = body;
+      else if (lm) launchTasks[lm[1]] = body;
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
     }
 
@@ -78,6 +88,14 @@ async function mockFirebase(page, initial) {
       return route.fulfill({ status: 200, contentType: 'application/json', body: '{}' });
     }
 
+    if (method === 'DELETE') {
+      const lm = path.match(/^\/launchTasks\/([^/]+)\.json$/);
+      const sm = path.match(/^\/sanity\/([^/]+)\.json$/);
+      if (lm) delete launchTasks[lm[1]];
+      else if (sm) delete sanity[sm[1]];
+      return route.fulfill({ status: 200, contentType: 'application/json', body: 'null' });
+    }
+
     return route.fulfill({ status: 200, contentType: 'application/json', body: '{}' });
   });
 
@@ -85,7 +103,7 @@ async function mockFirebase(page, initial) {
   // (הקוד באפליקציה כבר מטפל במקרה ש-emailjs לא נטען).
   await page.route('**/cdn.jsdelivr.net/**', (route) => route.abort());
 
-  return { db, sanity, devTasks };
+  return { db, sanity, devTasks, launchTasks };
 }
 
 async function login(page, username, password) {

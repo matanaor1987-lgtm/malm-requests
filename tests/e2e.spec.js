@@ -341,3 +341,57 @@ test.describe('רגרסיה: איבוד רשומות ביומן שינויים �
     expect(sLog.some(e => e.s === 'בפיתוח')).toBe(true);
   });
 });
+
+test.describe('משימות בעליה לאוויר', () => {
+  test('אדמין רואה את הטאב, יכול להוסיף משימה חדשה ולראות אותה ברשימה', async ({ page }) => {
+    const { launchTasks: liveLaunch } = await mockFirebase(page, {});
+    await page.goto('/index.html');
+    await login(page, 'testadmin', 'pw');
+    await expect(page.locator('#tabLaunch')).toBeVisible();
+    await page.click('.tab[data-tab="5"]');
+
+    await page.click('button[onclick="openNewLaunch()"]');
+    await expect(page.locator('#launchModal')).toBeVisible();
+    await page.fill('#launchTask', 'לוודא שהממשק החדש עלה בפרוד');
+    await page.click('button[onclick="saveLaunchTask()"]');
+    await page.waitForTimeout(150);
+
+    await expect(page.locator('#launchBody')).toContainText('לוודא שהממשק החדש עלה בפרוד');
+    const ids = Object.keys(liveLaunch);
+    expect(ids.length).toBe(1);
+    expect(liveLaunch[ids[0]].status).toBe('פתוח');
+  });
+
+  test('מנהל (לא אדמין) לא רואה את הטאב', async ({ page }) => {
+    await mockFirebase(page, {});
+    await page.goto('/index.html');
+    await login(page, 'testmgr', 'pw');
+    await expect(page.locator('#tabLaunch')).toBeHidden();
+  });
+
+  test('עריכת משימה וסימון כ"בוצע" רושם מי סגר ומתי, ומחיקה מסירה מהרשימה', async ({ page }) => {
+    const seed = { l1: { id: 'l1', task: 'משימה לבדיקה', status: 'פתוח', notes: '', createdAt: '2026-08-01T00:00:00.000Z' } };
+    const { launchTasks: liveLaunch } = await mockFirebase(page, { launchTasks: JSON.parse(JSON.stringify(seed)) });
+    await page.goto('/index.html');
+    await login(page, 'testadmin', 'pw');
+    await page.click('.tab[data-tab="5"]');
+    await expect(page.locator('#launchBody')).toContainText('משימה לבדיקה');
+
+    await page.click('button[onclick="openEditLaunch(\'l1\')"]');
+    await expect(page.locator('#launchModal')).toBeVisible();
+    await page.selectOption('#launchStatus', 'בוצע');
+    await page.fill('#launchNotes', 'טופל בעליה');
+    await page.click('button[onclick="saveLaunchTask()"]');
+    await page.waitForTimeout(150);
+
+    expect(liveLaunch.l1.status).toBe('בוצע');
+    expect(liveLaunch.l1.closedBy).toBe('מנהל בדיקה');
+    expect(liveLaunch.l1.notes).toBe('טופל בעליה');
+
+    page.once('dialog', d => d.accept());
+    await page.click('button[onclick="deleteLaunchTask(\'l1\')"]');
+    await page.waitForTimeout(150);
+    expect(liveLaunch.l1).toBeUndefined();
+    await expect(page.locator('#launchBody')).not.toContainText('משימה לבדיקה');
+  });
+});
