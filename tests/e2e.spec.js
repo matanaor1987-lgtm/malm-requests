@@ -321,19 +321,22 @@ test.describe('רגרסיה: דריסת שדות בעריכת בדיקת שפי�
 });
 
 test.describe('רגרסיה: איבוד רשומות ביומן שינויים בפיתוחים ותיקונים (staleness)', () => {
-  test('שמירת שינוי סטטוס פיתוח לא מוחקת רשומת יומן שנוספה במקביל ע"י יוזר אחר', async ({ page }) => {
+  test('שמירת שינוי סטטוס פיתוח דרך מודל העריכה לא מוחקת רשומת יומן שנוספה במקביל ע"י יוזר אחר', async ({ page }) => {
     const { devTasks: liveDevTasks } = await mockFirebase(page, {});
     await page.goto('/index.html');
     await login(page, 'testadmin', 'pw');
     await page.click('.tab[data-tab="3"]');
     await expect(page.locator('#devBody')).toContainText('13770');
 
-    // מדמים שינוי מקביל בשרת: יוזר אחר כבר שינה tStatus ורשם שורת יומן, בזמן שהעמוד הזה עדיין לא רענן
+    const row = page.locator('#devBody tr', { hasText: '13770' });
+    await row.locator('button', { hasText: 'עריכה' }).click();
+    await expect(page.locator('#devEditModal')).toBeVisible();
+
+    // מדמים שינוי מקביל בשרת: יוזר אחר כבר שינה tStatus ורשם שורת יומן, בזמן שמודל העריכה הזה פתוח
     liveDevTasks['0'] = { tester: '', tStatus: 'נבדק', tNotes: '', status: '', sLog: [{ field: 'סטטוס בדיקה', s: 'נבדק', t: 111, by: 'מישהו אחר' }] };
 
-    // בדפדפן הזה, המשתמש משנה שדה אחר ("סטטוס פיתוח") - מה שקורא ל-saveDevTask
-    const row = page.locator('#devBody tr', { hasText: '13770' });
-    await row.locator('select').first().selectOption('בפיתוח');
+    await page.selectOption('#devEditStatus', 'בפיתוח');
+    await page.click('button[onclick="saveDevTaskModal()"]');
     await page.waitForTimeout(150);
 
     const sLog = liveDevTasks['0'].sLog;
@@ -397,7 +400,7 @@ test.describe('משימות בעליה לאוויר', () => {
 });
 
 test.describe('קישור לאיפיון בפיתוחים ותיקונים', () => {
-  test('הוספת קישור לאיפיון לשורה קיימת נשמרת ומציגה כפתור פתיחה', async ({ page }) => {
+  test('הוספת קישור לאיפיון לשורה קיימת דרך מודל העריכה נשמרת ומציגה כפתור פתיחה', async ({ page }) => {
     const { devTasks: liveDevTasks } = await mockFirebase(page, {});
     await page.goto('/index.html');
     await login(page, 'testadmin', 'pw');
@@ -405,9 +408,11 @@ test.describe('קישור לאיפיון בפיתוחים ותיקונים', () 
     await expect(page.locator('#devBody')).toContainText('13770');
 
     const row = page.locator('#devBody tr', { hasText: '13770' });
+    await row.locator('button', { hasText: 'עריכה' }).click();
+    await expect(page.locator('#devEditModal')).toBeVisible();
     const link = 'https://dhlexpress.sharepoint.com/sites/focus/spec123.docx';
-    await row.locator('input[type="url"]').fill(link);
-    await row.locator('input[type="url"]').dispatchEvent('change');
+    await page.fill('#devEditSpecLink', link);
+    await page.click('button[onclick="saveDevTaskModal()"]');
     await page.waitForTimeout(150);
 
     expect(liveDevTasks['0'].specLink).toBe(link);
@@ -429,5 +434,47 @@ test.describe('קישור לאיפיון בפיתוחים ותיקונים', () 
 
     const row = page.locator('#devBody tr', { hasText: 'משימה חדשה עם איפיון' });
     await expect(row.locator('a[href="' + link + '"]')).toHaveCount(1);
+  });
+});
+
+test.describe('רגרסיה: שדות שלא נשמרו בכלל בעריכה הישנה (תאור/הערות/רכיב/גרסה/ממשק/הערות בודק)', () => {
+  test('עריכת כל השדות דרך מודל העריכה ושמירה - כולם נשמרים בפועל בשרת ונשארים אחרי רענון', async ({ page }) => {
+    const { devTasks: liveDevTasks } = await mockFirebase(page, {});
+    await page.goto('/index.html');
+    await login(page, 'testadmin', 'pw');
+    await page.click('.tab[data-tab="3"]');
+    await expect(page.locator('#devBody')).toContainText('13770');
+
+    const row = page.locator('#devBody tr', { hasText: '13770' });
+    await row.locator('button', { hasText: 'עריכה' }).click();
+    await expect(page.locator('#devEditModal')).toBeVisible();
+
+    // עד היום השדות האלה לא היו ניתנים לעריכה בכלל, או שהעריכה שלהם לא הובילה לשמירה בפועל
+    await page.fill('#devEditDesc', 'תאור משימה עודכן');
+    await page.fill('#devEditNotes', 'הערת מפתח עודכנה');
+    await page.fill('#devEditComp', 'COMP2');
+    await page.fill('#devEditVer', '5.9999');
+    await page.fill('#devEditIface', 'IFACE2');
+    await page.fill('#devEditTNotes', 'הערת בודק עודכנה');
+    await page.click('button[onclick="saveDevTaskModal()"]');
+    await page.waitForTimeout(150);
+
+    expect(liveDevTasks['0']).toMatchObject({
+      desc: 'תאור משימה עודכן',
+      notes: 'הערת מפתח עודכנה',
+      comp: 'COMP2',
+      ver: '5.9999',
+      iface: 'IFACE2',
+      tNotes: 'הערת בודק עודכנה',
+    });
+
+    // רענון מלא של הדף - מוודא שהערכים חוזרים מהשרת ולא רק ישבו בזיכרון המקומי
+    // (ההתחברות משוחזרת אוטומטית מ-sessionStorage אחרי רענון, אז אין צורך ב-login() שוב)
+    await page.reload();
+    await page.waitForSelector('#mainTabs', { state: 'visible' });
+    await page.click('.tab[data-tab="3"]');
+    await expect(page.locator('#devBody')).toContainText('תאור משימה עודכן');
+    await expect(page.locator('#devBody')).toContainText('הערת מפתח עודכנה');
+    await expect(page.locator('#devBody')).toContainText('COMP2');
   });
 });

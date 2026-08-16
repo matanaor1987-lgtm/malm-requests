@@ -1573,27 +1573,25 @@ function renderDevTable(){
   var tb=document.getElementById('devBody');
   if(!tb)return;
   tb.innerHTML=DEV_TASKS.map(function(t,i){
-    var sOpts=['','פתוח','בפיתוח','בבדיקה','נבדק','נסגר'].map(function(s){return'<option value="'+s+'"'+(t.status===s?' selected':'')+'>'+s+'</option>';  }).join('');
-    var tsOpts=['','תקין','לא תקין'].map(function(s){return'<option value="'+s+'"'+(t.tStatus===s?' selected':'')+'>'+s+'</option>';  }).join('');
     var bg=i%2?'#f9f9f9':'#fff';
     return '<tr style="background:'+bg+';vertical-align:top" data-tester="'+esc(t.tester)+'" data-tstatus="'+esc(t.tStatus)+'">'+
       '<td style="padding:7px 10px;border-bottom:1px solid #eee;white-space:nowrap;font-weight:700;color:#D40511">'+esc(t.id)+'</td>'+
       '<td style="padding:7px 10px;border-bottom:1px solid #eee;white-space:nowrap">'+esc(t.dev)+'</td>'+
-      '<td style="padding:7px 10px;border-bottom:1px solid #eee"><select onchange="logDevChange('+i+',&quot;סטטוס פיתוח&quot;,this.value);DEV_TASKS['+i+'].status=this.value;saveDevTask('+i+');buildDevStats()" style="border:1px solid #ddd;border-radius:4px;padding:3px 5px;font-size:11px;font-family:Arial;direction:rtl">'+sOpts+'</select></td>'+
+      '<td style="padding:7px 10px;border-bottom:1px solid #eee;white-space:nowrap">'+esc(t.status||'—')+'</td>'+
       '<td style="padding:7px 10px;border-bottom:1px solid #eee;font-size:11px;line-height:1.5">'+esc(t.desc)+'</td>'+
-      '<td style="padding:7px 10px;border-bottom:1px solid #eee">'+
-        '<input type="url" placeholder="קישור לוואן דרייב/טימס/שרפוינט" value="'+esc(t.specLink||'')+'" onchange="DEV_TASKS['+i+'].specLink=this.value;saveDevTask('+i+');renderDevTable()" style="width:130px;border:1px solid #ddd;border-radius:4px;padding:3px 5px;font-size:11px;font-family:Arial;direction:ltr">'+
-        (t.specLink?' <a href="'+esc(t.specLink)+'" target="_blank" rel="noopener" title="פתח איפיון" style="text-decoration:none">🔗</a>':'')+
+      '<td style="padding:7px 10px;border-bottom:1px solid #eee;font-size:11px">'+
+        (t.specLink?'<a href="'+esc(t.specLink)+'" target="_blank" rel="noopener">🔗 פתח</a>':'—')+
       '</td>'+
       '<td style="padding:7px 10px;border-bottom:1px solid #eee;font-size:11px;color:#555;line-height:1.5">'+esc(t.notes)+'</td>'+
       '<td style="padding:7px 10px;border-bottom:1px solid #eee;white-space:nowrap;font-size:11px">'+esc(t.comp)+'</td>'+
       '<td style="padding:7px 10px;border-bottom:1px solid #eee;white-space:nowrap;font-size:11px">'+esc(t.ver)+'</td>'+
       '<td style="padding:7px 10px;border-bottom:1px solid #eee;white-space:nowrap;font-size:11px;font-weight:700;color:#1565c0">'+esc(t.iface)+'</td>'+
-      '<td style="padding:7px 10px;border-bottom:1px solid #eee"><select onchange="DEV_TASKS['+i+'].tester=this.value;this.parentElement.parentElement.setAttribute(&quot;data-tester&quot;,this.value);saveDevTask('+i+')" style="border:1px solid #ddd;border-radius:4px;padding:3px 5px;font-size:11px;font-family:Arial;direction:rtl">'+
-      ['','מתן','עידו','ניר','רבקה'].map(function(n){return'<option value="'+n+'"'+(t.tester===n?' selected':'')+'>'+n+'</option>';}).join('')+
-    '</select></td>'+
-      '<td style="padding:7px 10px;border-bottom:1px solid #eee"><textarea onchange="DEV_TASKS['+i+'].tNotes=this.value" rows="2" style="width:120px;border:1px solid #ddd;border-radius:4px;padding:3px 5px;font-size:11px;font-family:Arial;direction:rtl;resize:vertical">'+esc(t.tNotes)+'</textarea></td>'+
-      '<td style="padding:7px 10px;border-bottom:1px solid #eee"><select onchange="logDevChange('+i+',&quot;סטטוס בדיקה&quot;,this.value);DEV_TASKS['+i+'].tStatus=this.value;this.parentElement.parentElement.setAttribute(&quot;data-tstatus&quot;,this.value);saveDevTask('+i+')" style="border:1px solid #ddd;border-radius:4px;padding:3px 5px;font-size:11px;font-family:Arial">'+tsOpts+'</select></td>'+
+      '<td style="padding:7px 10px;border-bottom:1px solid #eee;white-space:nowrap;font-size:11px">'+esc(t.tester||'—')+'</td>'+
+      '<td style="padding:7px 10px;border-bottom:1px solid #eee;font-size:11px;color:#555;line-height:1.5">'+esc(t.tNotes)+'</td>'+
+      '<td style="padding:7px 10px;border-bottom:1px solid #eee;white-space:nowrap;font-size:11px">'+esc(t.tStatus||'—')+'</td>'+
+      '<td style="padding:7px 10px;border-bottom:1px solid #eee;white-space:nowrap">'+
+        '<button onclick="openEditDevTask('+i+')" style="background:#1565c0;color:#fff;border:none;border-radius:4px;padding:4px 10px;cursor:pointer;font-size:11px;font-family:Arial">עריכה</button>'+
+      '</td>'+
     '</tr>';
   }).join('');
 }
@@ -1693,27 +1691,84 @@ function logDevChange(idx, fieldLabel, newVal){
   t.sLog.push({field:fieldLabel, s:newVal, t:Date.now(), by:CU?CU.name:''});
 }
 
-async function saveDevTask(idx) {
-  var task = DEV_TASKS[idx];
+// עריכת משימת פיתוח - נעשית תמיד דרך מודל עריכה מלא עם כפתור "שמור" מפורש,
+// כדי שלא יהיה מצב של שינוי בשדה שנראה כאילו נשמר אבל בפועל לא נשלח לשרת.
+function openEditDevTask(idx){
+  var t=DEV_TASKS[idx];
+  if(!t)return;
+  document.getElementById('devEditIdx').value=idx;
+  document.getElementById('devEditDev').value=t.dev||'';
+  document.getElementById('devEditStatus').value=t.status||'';
+  document.getElementById('devEditDesc').value=t.desc||'';
+  document.getElementById('devEditSpecLink').value=t.specLink||'';
+  document.getElementById('devEditNotes').value=t.notes||'';
+  document.getElementById('devEditComp').value=t.comp||'';
+  document.getElementById('devEditVer').value=t.ver||'';
+  document.getElementById('devEditIface').value=t.iface||'';
+  document.getElementById('devEditTester').value=t.tester||'';
+  document.getElementById('devEditTStatus').value=t.tStatus||'';
+  document.getElementById('devEditTNotes').value=t.tNotes||'';
+  document.getElementById('devEditMsg').textContent='';
+  document.getElementById('devEditModal').style.display='flex';
+}
+function closeDevEditModal(){
+  document.getElementById('devEditModal').style.display='none';
+}
+async function saveDevTaskModal(){
+  var idx=parseInt(document.getElementById('devEditIdx').value);
+  var t=DEV_TASKS[idx];
+  if(!t)return;
+  var newDesc=document.getElementById('devEditDesc').value.trim();
+  if(!newDesc){
+    document.getElementById('devEditMsg').style.color='#c62828';
+    document.getElementById('devEditMsg').textContent='חובה למלא תאור משימה';
+    return;
+  }
+  var newStatus=document.getElementById('devEditStatus').value;
+  var newTStatus=document.getElementById('devEditTStatus').value;
+  if(newStatus!==t.status) logDevChange(idx,'סטטוס פיתוח',newStatus);
+  if(newTStatus!==t.tStatus) logDevChange(idx,'סטטוס בדיקה',newTStatus);
+
+  t.dev=document.getElementById('devEditDev').value.trim();
+  t.status=newStatus;
+  t.desc=newDesc;
+  t.specLink=document.getElementById('devEditSpecLink').value.trim();
+  t.notes=document.getElementById('devEditNotes').value.trim();
+  t.comp=document.getElementById('devEditComp').value.trim();
+  t.ver=document.getElementById('devEditVer').value.trim();
+  t.iface=document.getElementById('devEditIface').value.trim();
+  t.tester=document.getElementById('devEditTester').value;
+  t.tStatus=newTStatus;
+  t.tNotes=document.getElementById('devEditTNotes').value.trim();
+
+  document.getElementById('devEditMsg').style.color='#666';
+  document.getElementById('devEditMsg').textContent='שומר...';
   try {
     // sLog הוא יומן שינויים מצטבר - טוענים טרי מהשרת וממזגים איתו, כדי לא לאבד
     // רשומות שנוספו במקביל ע"י יוזר אחר (למשל אם שניים שינו שדות שונים כמעט באותו זמן)
     var freshRes = await fetch('https://malm-focus-default-rtdb.firebaseio.com/devTasks/' + idx + '.json?t=' + Date.now());
     var fresh = (await freshRes.json()) || {};
     var mergedLog = (fresh.sLog || []).slice();
-    (task.sLog || []).forEach(function(entry) {
+    (t.sLog || []).forEach(function(entry) {
       var exists = mergedLog.some(function(e) { return e.t === entry.t && e.field === entry.field && e.by === entry.by && e.s === entry.s; });
       if (!exists) mergedLog.push(entry);
     });
     mergedLog.sort(function(a, b) { return a.t - b.t; });
-    task.sLog = mergedLog;
+    t.sLog = mergedLog;
 
-    await fetch('https://malm-focus-default-rtdb.firebaseio.com/devTasks/' + idx + '.json', {
-      method: 'PATCH',
+    var res = await fetch('https://malm-focus-default-rtdb.firebaseio.com/devTasks/' + idx + '.json', {
+      method: 'PUT',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({tester: task.tester, tStatus: task.tStatus, tNotes: task.tNotes, status: task.status, sLog: task.sLog||[], specLink: task.specLink||''})
+      body: JSON.stringify(t)
     });
-  } catch(e) { console.warn('saveDevTask error:', e); }
+    if (!res.ok) throw new Error('Firebase error: ' + res.status);
+    closeDevEditModal();
+    renderDevTable();
+    populateDevTesterFilter();
+  } catch(e) {
+    document.getElementById('devEditMsg').style.color='#c62828';
+    document.getElementById('devEditMsg').textContent='שגיאה בשמירה, נסה שוב';
+  }
 }
 
 async function loadDevTasks() {
@@ -1730,6 +1785,12 @@ async function loadDevTasks() {
           if (saved[idx].status !== undefined) DEV_TASKS[i].status = saved[idx].status;
           if (saved[idx].sLog !== undefined) DEV_TASKS[i].sLog = saved[idx].sLog;
           if (saved[idx].specLink !== undefined) DEV_TASKS[i].specLink = saved[idx].specLink;
+          if (saved[idx].dev !== undefined) DEV_TASKS[i].dev = saved[idx].dev;
+          if (saved[idx].desc !== undefined) DEV_TASKS[i].desc = saved[idx].desc;
+          if (saved[idx].notes !== undefined) DEV_TASKS[i].notes = saved[idx].notes;
+          if (saved[idx].comp !== undefined) DEV_TASKS[i].comp = saved[idx].comp;
+          if (saved[idx].ver !== undefined) DEV_TASKS[i].ver = saved[idx].ver;
+          if (saved[idx].iface !== undefined) DEV_TASKS[i].iface = saved[idx].iface;
         } else if (saved[idx] && saved[idx].desc) {
           // Manually added task beyond the hardcoded array — store the full record
           DEV_TASKS[i] = saved[idx];
@@ -2284,6 +2345,7 @@ async function dedupRecords(sheet) {
       <th style="padding:8px 10px;text-align:right;white-space:nowrap;cursor:pointer" onclick="sortDevTable('tester')" title="מיון">בודק DHL <span id="devSort_tester"></span></th>
       <th style="padding:8px 10px;text-align:right;min-width:130px">הערות בודק</th>
       <th style="padding:8px 10px;text-align:right;white-space:nowrap;cursor:pointer" onclick="sortDevTable('tStatus')" title="מיון">סטטוס בדיקה <span id="devSort_tStatus"></span></th>
+      <th style="padding:8px 10px;text-align:right;white-space:nowrap">פעולות</th>
     </tr></thead>
     <tbody id="devBody"></tbody>
   </table>
@@ -2483,6 +2545,87 @@ async function dedupRecords(sheet) {
     <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px">
       <button onclick="closeNewDevModal()" style="padding:8px 16px;border:1px solid #ddd;border-radius:6px;cursor:pointer;font-size:13px;font-family:Arial;background:#fff">ביטול</button>
       <button onclick="saveNewDevTask()" style="padding:8px 16px;background:#D40511;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px;font-weight:700;font-family:Arial">שמור</button>
+    </div>
+  </div>
+</div>
+
+<!-- EDIT DEV TASK MODAL -->
+<div id="devEditModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9000;align-items:center;justify-content:center">
+  <div style="background:#fff;border-radius:12px;padding:24px;width:90%;max-width:520px;max-height:90vh;overflow-y:auto;direction:rtl">
+    <div style="font-size:15px;font-weight:700;margin-bottom:16px;color:#1a1a2e">עריכת משימה</div>
+    <input type="hidden" id="devEditIdx">
+    <div style="display:flex;gap:8px;margin-bottom:10px">
+      <div style="flex:1">
+        <label style="font-size:11px;color:#666;font-weight:700;display:block;margin-bottom:3px">מפתח</label>
+        <input id="devEditDev" style="width:100%;padding:8px 10px;border:1.5px solid #ddd;border-radius:6px;font-size:13px;font-family:Arial;direction:rtl;box-sizing:border-box">
+      </div>
+      <div style="flex:1">
+        <label style="font-size:11px;color:#666;font-weight:700;display:block;margin-bottom:3px">סטטוס פיתוח</label>
+        <select id="devEditStatus" style="width:100%;padding:8px 10px;border:1.5px solid #ddd;border-radius:6px;font-size:13px;font-family:Arial;direction:rtl">
+          <option value="">—</option>
+          <option value="פתוח">פתוח</option>
+          <option value="בפיתוח">בפיתוח</option>
+          <option value="בבדיקה">בבדיקה</option>
+          <option value="נבדק">נבדק</option>
+          <option value="נסגר">נסגר</option>
+        </select>
+      </div>
+    </div>
+    <div style="margin-bottom:10px">
+      <label style="font-size:11px;color:#666;font-weight:700;display:block;margin-bottom:3px">תאור משימה *</label>
+      <textarea id="devEditDesc" rows="3" style="width:100%;padding:8px 10px;border:1.5px solid #ddd;border-radius:6px;font-size:13px;font-family:Arial;direction:rtl;resize:vertical;box-sizing:border-box"></textarea>
+    </div>
+    <div style="margin-bottom:10px">
+      <label style="font-size:11px;color:#666;font-weight:700;display:block;margin-bottom:3px">קישור לאיפיון</label>
+      <input id="devEditSpecLink" type="url" placeholder="קישור לוואן דרייב/טימס/שרפוינט" style="width:100%;padding:8px 10px;border:1.5px solid #ddd;border-radius:6px;font-size:13px;font-family:Arial;direction:ltr;box-sizing:border-box">
+    </div>
+    <div style="margin-bottom:10px">
+      <label style="font-size:11px;color:#666;font-weight:700;display:block;margin-bottom:3px">הערות</label>
+      <textarea id="devEditNotes" rows="2" style="width:100%;padding:8px 10px;border:1.5px solid #ddd;border-radius:6px;font-size:13px;font-family:Arial;direction:rtl;resize:vertical;box-sizing:border-box"></textarea>
+    </div>
+    <div style="display:flex;gap:8px;margin-bottom:10px">
+      <div style="flex:1">
+        <label style="font-size:11px;color:#666;font-weight:700;display:block;margin-bottom:3px">רכיב</label>
+        <input id="devEditComp" style="width:100%;padding:8px 10px;border:1.5px solid #ddd;border-radius:6px;font-size:13px;font-family:Arial;direction:ltr;box-sizing:border-box">
+      </div>
+      <div style="flex:1">
+        <label style="font-size:11px;color:#666;font-weight:700;display:block;margin-bottom:3px">גרסה</label>
+        <input id="devEditVer" style="width:100%;padding:8px 10px;border:1.5px solid #ddd;border-radius:6px;font-size:13px;font-family:Arial;direction:ltr;box-sizing:border-box">
+      </div>
+    </div>
+    <div style="margin-bottom:10px">
+      <label style="font-size:11px;color:#666;font-weight:700;display:block;margin-bottom:3px">ממשק</label>
+      <input id="devEditIface" style="width:100%;padding:8px 10px;border:1.5px solid #ddd;border-radius:6px;font-size:13px;font-family:Arial;direction:ltr;box-sizing:border-box">
+    </div>
+    <div style="border-top:1px solid #eee;margin:14px 0;padding-top:10px;font-size:12px;font-weight:700;color:#666">בדיקה</div>
+    <div style="display:flex;gap:8px;margin-bottom:10px">
+      <div style="flex:1">
+        <label style="font-size:11px;color:#666;font-weight:700;display:block;margin-bottom:3px">בודק DHL</label>
+        <select id="devEditTester" style="width:100%;padding:8px 10px;border:1.5px solid #ddd;border-radius:6px;font-size:13px;font-family:Arial;direction:rtl">
+          <option value="">—</option>
+          <option value="מתן">מתן</option>
+          <option value="עידו">עידו</option>
+          <option value="ניר">ניר</option>
+          <option value="רבקה">רבקה</option>
+        </select>
+      </div>
+      <div style="flex:1">
+        <label style="font-size:11px;color:#666;font-weight:700;display:block;margin-bottom:3px">סטטוס בדיקה</label>
+        <select id="devEditTStatus" style="width:100%;padding:8px 10px;border:1.5px solid #ddd;border-radius:6px;font-size:13px;font-family:Arial">
+          <option value="">—</option>
+          <option value="תקין">תקין</option>
+          <option value="לא תקין">לא תקין</option>
+        </select>
+      </div>
+    </div>
+    <div style="margin-bottom:10px">
+      <label style="font-size:11px;color:#666;font-weight:700;display:block;margin-bottom:3px">הערות בודק</label>
+      <textarea id="devEditTNotes" rows="2" style="width:100%;padding:8px 10px;border:1.5px solid #ddd;border-radius:6px;font-size:13px;font-family:Arial;direction:rtl;resize:vertical;box-sizing:border-box"></textarea>
+    </div>
+    <div id="devEditMsg" style="margin-bottom:6px;font-size:12px;font-weight:700"></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px">
+      <button onclick="closeDevEditModal()" style="padding:8px 16px;border:1px solid #ddd;border-radius:6px;cursor:pointer;font-size:13px;font-family:Arial;background:#fff">ביטול</button>
+      <button onclick="saveDevTaskModal()" style="padding:8px 16px;background:#D40511;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px;font-weight:700;font-family:Arial">שמור</button>
     </div>
   </div>
 </div>
