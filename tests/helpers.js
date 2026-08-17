@@ -17,7 +17,7 @@ async function mockFirebase(page, initial) {
     users: (initial && initial.users) || seedUsers(),
   };
   const sanity = (initial && initial.sanity) || {};
-  const devTasksById = (initial && initial.devTasksById) || {};
+  const devTasksByUid = (initial && initial.devTasksByUid) || {};
   const launchTasks = (initial && initial.launchTasks) || {};
 
   await page.route('**/malm-focus-default-rtdb.firebaseio.com/**', async (route) => {
@@ -41,12 +41,12 @@ async function mockFirebase(page, initial) {
       if (sm) {
         return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(sanity[sm[1]] || null) });
       }
-      if (path === '/devTasksById.json') {
-        return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(devTasksById) });
+      if (path === '/devTasksByUid.json') {
+        return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(devTasksByUid) });
       }
-      const dm = path.match(/^\/devTasksById\/([^/]+)\.json$/);
+      const dm = path.match(/^\/devTasksByUid\/([^/]+)\.json$/);
       if (dm) {
-        return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(devTasksById[decodeURIComponent(dm[1])] || null) });
+        return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(devTasksByUid[decodeURIComponent(dm[1])] || null) });
       }
       if (path === '/launchTasks.json') {
         return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(launchTasks) });
@@ -64,27 +64,27 @@ async function mockFirebase(page, initial) {
       try { body = req.postDataJSON(); } catch (e) { body = null; }
       const m = path.match(/^\/db\/(malm|rivka|users)\.json$/);
       const sm = path.match(/^\/sanity\/([^/]+)\.json$/);
-      const dm = path.match(/^\/devTasksById\/([^/]+)\.json$/);
+      const dm = path.match(/^\/devTasksByUid\/([^/]+)\.json$/);
       const lm = path.match(/^\/launchTasks\/([^/]+)\.json$/);
       if (m) db[m[1]] = body;
       else if (path === '/db.json' && body) Object.assign(db, body);
       else if (path === '/sanity.json') { Object.keys(sanity).forEach(k => delete sanity[k]); Object.assign(sanity, body); }
       else if (sm) sanity[sm[1]] = body;
-      else if (dm) devTasksById[decodeURIComponent(dm[1])] = body;
-      else if (path === '/devTasksById.json' && body) { Object.keys(devTasksById).forEach(k => delete devTasksById[k]); Object.assign(devTasksById, body); }
+      else if (dm) devTasksByUid[decodeURIComponent(dm[1])] = body;
+      else if (path === '/devTasksByUid.json' && body) { Object.keys(devTasksByUid).forEach(k => delete devTasksByUid[k]); Object.assign(devTasksByUid, body); }
       else if (lm) launchTasks[lm[1]] = body;
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
     }
 
     if (method === 'PATCH') {
       const m = path.match(/^\/sanity\/([^/]+)\.json$/);
-      const dm = path.match(/^\/devTasksById\/([^/]+)\.json$/);
+      const dm = path.match(/^\/devTasksByUid\/([^/]+)\.json$/);
       if (m) {
         let body; try { body = req.postDataJSON(); } catch (e) { body = {}; }
         sanity[m[1]] = Object.assign(sanity[m[1]] || {}, body);
       } else if (dm) {
         let body; try { body = req.postDataJSON(); } catch (e) { body = {}; }
-        devTasksById[decodeURIComponent(dm[1])] = Object.assign(devTasksById[decodeURIComponent(dm[1])] || {}, body);
+        devTasksByUid[decodeURIComponent(dm[1])] = Object.assign(devTasksByUid[decodeURIComponent(dm[1])] || {}, body);
       }
       return route.fulfill({ status: 200, contentType: 'application/json', body: '{}' });
     }
@@ -104,7 +104,7 @@ async function mockFirebase(page, initial) {
   // (הקוד באפליקציה כבר מטפל במקרה ש-emailjs לא נטען).
   await page.route('**/cdn.jsdelivr.net/**', (route) => route.abort());
 
-  return { db, sanity, devTasksById, launchTasks };
+  return { db, sanity, devTasksByUid, launchTasks };
 }
 
 async function login(page, username, password) {

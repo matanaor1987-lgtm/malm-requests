@@ -322,7 +322,7 @@ test.describe('רגרסיה: דריסת שדות בעריכת בדיקת שפי�
 
 test.describe('רגרסיה: איבוד רשומות ביומן שינויים בפיתוחים ותיקונים (staleness)', () => {
   test('שמירת שינוי סטטוס פיתוח דרך מודל העריכה לא מוחקת רשומת יומן שנוספה במקביל ע"י יוזר אחר', async ({ page }) => {
-    const { devTasksById: liveDevTasks } = await mockFirebase(page, {});
+    const { devTasksByUid: liveDevTasks } = await mockFirebase(page, {});
     await page.goto('/index.html');
     await login(page, 'testadmin', 'pw');
     await page.click('.tab[data-tab="3"]');
@@ -333,13 +333,13 @@ test.describe('רגרסיה: איבוד רשומות ביומן שינויים �
     await expect(page.locator('#devEditModal')).toBeVisible();
 
     // מדמים שינוי מקביל בשרת: יוזר אחר כבר שינה tStatus ורשם שורת יומן, בזמן שמודל העריכה הזה פתוח
-    liveDevTasks['13770'] = { tester: '', tStatus: 'נבדק', tNotes: '', status: '', sLog: [{ field: 'סטטוס בדיקה', s: 'נבדק', t: 111, by: 'מישהו אחר' }] };
+    liveDevTasks['dt_001'] = { tester: '', tStatus: 'נבדק', tNotes: '', status: '', sLog: [{ field: 'סטטוס בדיקה', s: 'נבדק', t: 111, by: 'מישהו אחר' }] };
 
     await page.selectOption('#devEditStatus', 'בפיתוח');
     await page.click('button[onclick="saveDevTaskModal()"]');
     await page.waitForTimeout(150);
 
-    const sLog = liveDevTasks['13770'].sLog;
+    const sLog = liveDevTasks['dt_001'].sLog;
     expect(sLog.some(e => e.by === 'מישהו אחר' && e.s === 'נבדק')).toBe(true);
     expect(sLog.some(e => e.s === 'בפיתוח')).toBe(true);
   });
@@ -401,7 +401,7 @@ test.describe('משימות בעליה לאוויר', () => {
 
 test.describe('קישור לאיפיון בפיתוחים ותיקונים', () => {
   test('הוספת קישור לאיפיון לשורה קיימת דרך מודל העריכה נשמרת ומציגה כפתור פתיחה', async ({ page }) => {
-    const { devTasksById: liveDevTasks } = await mockFirebase(page, {});
+    const { devTasksByUid: liveDevTasks } = await mockFirebase(page, {});
     await page.goto('/index.html');
     await login(page, 'testadmin', 'pw');
     await page.click('.tab[data-tab="3"]');
@@ -415,7 +415,7 @@ test.describe('קישור לאיפיון בפיתוחים ותיקונים', () 
     await page.click('button[onclick="saveDevTaskModal()"]');
     await page.waitForTimeout(150);
 
-    expect(liveDevTasks['13770'].specLink).toBe(link);
+    expect(liveDevTasks['dt_001'].specLink).toBe(link);
     await expect(row.locator('a[href="' + link + '"]')).toHaveCount(1);
   });
 
@@ -439,7 +439,7 @@ test.describe('קישור לאיפיון בפיתוחים ותיקונים', () 
 
 test.describe('רגרסיה: שדות שלא נשמרו בכלל בעריכה הישנה (תאור/הערות/רכיב/גרסה/ממשק/הערות בודק)', () => {
   test('עריכת כל השדות דרך מודל העריכה ושמירה - כולם נשמרים בפועל בשרת ונשארים אחרי רענון', async ({ page }) => {
-    const { devTasksById: liveDevTasks } = await mockFirebase(page, {});
+    const { devTasksByUid: liveDevTasks } = await mockFirebase(page, {});
     await page.goto('/index.html');
     await login(page, 'testadmin', 'pw');
     await page.click('.tab[data-tab="3"]');
@@ -459,7 +459,7 @@ test.describe('רגרסיה: שדות שלא נשמרו בכלל בעריכה ה
     await page.click('button[onclick="saveDevTaskModal()"]');
     await page.waitForTimeout(150);
 
-    expect(liveDevTasks['13770']).toMatchObject({
+    expect(liveDevTasks['dt_001']).toMatchObject({
       desc: 'תאור משימה עודכן',
       notes: 'הערת מפתח עודכנה',
       comp: 'COMP2',
@@ -483,7 +483,7 @@ test.describe('אימות כתיבה מול השרת (לא מסתפקים בתג
   test('אם הכתיבה "מצליחה" ברמת ה-HTTP אבל לא נשמרת בפועל, האפליקציה מזהה זאת, מציגה שגיאה, ולא סוגרת את מסך העריכה', async ({ page }) => {
     await mockFirebase(page, {});
     // מיירטים במיוחד את הכתיבה למשימה 13770 ומדמים "הצלחה" מזויפת (200) שלא באמת משנה כלום בשרת
-    await page.route('**/devTasksById/13770.json', async (route) => {
+    await page.route('**/devTasksByUid/dt_001.json', async (route) => {
       if (route.request().method() === 'PUT') {
         return route.fulfill({ status: 200, contentType: 'application/json', body: '{}' });
       }
@@ -526,7 +526,7 @@ test.describe('אימות כתיבה מול השרת (לא מסתפקים בתג
 
 test.describe('רגרסיה: מיון בטבלת פיתוחים ותיקונים לא ישבש את המשימה שנשמרת', () => {
   test('מיון העמודות, ואז עריכה ושמירה של משימה - נשמרת על המשימה הנכונה, לא על אחרת שקפצה למקומה', async ({ page }) => {
-    const { devTasksById: liveDevTasks } = await mockFirebase(page, {});
+    const { devTasksByUid: liveDevTasks } = await mockFirebase(page, {});
     await page.goto('/index.html');
     await login(page, 'testadmin', 'pw');
     await page.click('.tab[data-tab="3"]');
@@ -546,8 +546,8 @@ test.describe('רגרסיה: מיון בטבלת פיתוחים ותיקונים
     await page.waitForTimeout(200);
 
     // הרשומה שנשמרה בפועל בשרת נשמרת לפי מזהה המשימה היציב "13770" - לא רשומה אחרת
-    expect(liveDevTasks['13770'].notes).toBe('הערה שנוספה אחרי מיון');
-    expect(Object.keys(liveDevTasks)).toEqual(['13770']);
+    expect(liveDevTasks['dt_001'].notes).toBe('הערה שנוספה אחרי מיון');
+    expect(Object.keys(liveDevTasks)).toEqual(['dt_001']);
 
     // רענון מלא - מוודאים שההערה נחתה על המשימה הנכונה ולא "נעלמה" מבחינת המשתמש
     await page.reload();
@@ -558,7 +558,7 @@ test.describe('רגרסיה: מיון בטבלת פיתוחים ותיקונים
   });
 
   test('גם אם סדר DEV_TASKS משתנה לגמרי בזמן שמודל העריכה פתוח (סיבה כלשהי, לא רק מיון), השמירה עדיין נופלת על המשימה הנכונה', async ({ page }) => {
-    const { devTasksById: liveDevTasks } = await mockFirebase(page, {});
+    const { devTasksByUid: liveDevTasks } = await mockFirebase(page, {});
     await page.goto('/index.html');
     await login(page, 'testadmin', 'pw');
     await page.click('.tab[data-tab="3"]');
@@ -574,7 +574,36 @@ test.describe('רגרסיה: מיון בטבלת פיתוחים ותיקונים
     await page.click('button[onclick="saveDevTaskModal()"]');
     await page.waitForTimeout(200);
 
-    expect(liveDevTasks['13770'].notes).toBe('עדיין אמור לנחות על 13770');
-    expect(Object.keys(liveDevTasks)).toEqual(['13770']);
+    expect(liveDevTasks['dt_001'].notes).toBe('עדיין אמור לנחות על 13770');
+    expect(Object.keys(liveDevTasks)).toEqual(['dt_001']);
+  });
+});
+
+test.describe('משימת פיתוח בלי מספר משימה (מזהה עסקי) - עדיין נשמרת ונערכת תקין', () => {
+  test('יצירת משימה חדשה בלי למלא מספר משימה, ועריכה שלה אחר כך - שתיהן עובדות כי הזהות מבוססת על מזהה פנימי, לא על המספר', async ({ page }) => {
+    const { devTasksByUid: liveDevTasks } = await mockFirebase(page, {});
+    await page.goto('/index.html');
+    await login(page, 'testadmin', 'pw');
+    await page.click('.tab[data-tab="3"]');
+    await page.click('button[onclick="openNewDevTask()"]');
+    await expect(page.locator('#newDevModal')).toBeVisible();
+    // בכוונה לא ממלאים את "מספר משימה"
+    await page.fill('#ndtDesc', 'משימה בלי מספר משימה כלל');
+    await page.click('button[onclick="saveNewDevTask()"]');
+    await page.waitForTimeout(150);
+
+    const savedIds = Object.keys(liveDevTasks);
+    expect(savedIds.length).toBe(1);
+    expect(liveDevTasks[savedIds[0]].id).toBe('');
+    expect(liveDevTasks[savedIds[0]].desc).toBe('משימה בלי מספר משימה כלל');
+
+    const row = page.locator('#devBody tr', { hasText: 'משימה בלי מספר משימה כלל' });
+    await row.locator('button', { hasText: 'עריכה' }).click();
+    await expect(page.locator('#devEditModal')).toBeVisible();
+    await page.fill('#devEditNotes', 'עריכה אחרי יצירה בלי מספר משימה');
+    await page.click('button[onclick="saveDevTaskModal()"]');
+    await page.waitForTimeout(150);
+
+    expect(liveDevTasks[savedIds[0]].notes).toBe('עריכה אחרי יצירה בלי מספר משימה');
   });
 });
