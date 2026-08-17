@@ -457,6 +457,18 @@ function showApp() {
 
 function genId(){ return 'r_'+Date.now()+'_'+Math.random().toString(36).slice(2,9); }
 
+// השוואת שוויון עמוקה, לא תלוית סדר מפתחות - JSON.stringify רגיל לא בטוח להשוואה
+// כי Firebase לא מבטיח לשמור על אותו סדר מפתחות שנשלח בכתיבה.
+function deepEqual(a, b){
+  if(a===b) return true;
+  if(typeof a!==typeof b || a===null || b===null) return false;
+  if(typeof a!=='object') return false;
+  if(Array.isArray(a)!==Array.isArray(b)) return false;
+  const ak=Object.keys(a), bk=Object.keys(b);
+  if(ak.length!==bk.length) return false;
+  return ak.every(function(k){ return deepEqual(a[k], b[k]); });
+}
+
 // מבטיח שלכל רשומה יש _id ייחודי. אם חסר — מוסיף ושומר בחזרה ל-Firebase.
 async function ensureIds(){
   var changed = false;
@@ -538,6 +550,7 @@ async function saveRecord(sheet, idx, rec){
   try{
     // טען טרי מ-Firebase כדי לא לדרוס שינויים של אחרים
     const fresh = await fetch('https://malm-focus-default-rtdb.firebaseio.com/db/'+sheet+'.json?t='+Date.now());
+    if(!fresh.ok) throw new Error('שגיאה בטעינה טרייה מהשרת (סטטוס '+fresh.status+')');
     let arr = await fresh.json() || [];
 
     if(rec._id){
@@ -558,17 +571,28 @@ async function saveRecord(sheet, idx, rec){
       headers:{'Content-Type':'application/json'},
       body:JSON.stringify(arr)
     });
-    if(!r.ok)throw new Error('Firebase error: '+r.status);
+    if(!r.ok){
+      const body = await r.text().catch(()=>'');
+      throw new Error('השרת דחה את הכתיבה (סטטוס '+r.status+') '+body);
+    }
 
-    // סנכרן DB המקומי עם מה שבאמת נשמר
-    DB[sheet] = arr;
+    // אימות: קוראים שוב מהשרת ומוודאים שהרשומה באמת שם - לא מסתפקים בכך שה-HTTP הגיב 200
+    const verifyRes = await fetch('https://malm-focus-default-rtdb.firebaseio.com/db/'+sheet+'.json?t='+Date.now());
+    const verifyArr = await verifyRes.json() || [];
+    const saved = verifyArr.find(function(x){ return x._id===rec._id; });
+    if(!saved || !deepEqual(saved, rec)){
+      throw new Error('האימות מול השרת נכשל - השינוי לא הגיע בפועל לשרת. נסה/י לשמור שוב.');
+    }
 
-    el.textContent='✓ נשמר!';
+    // סנכרן DB המקומי עם המערך המאומת מהשרת (לא רק הגרסה המקומית)
+    DB[sheet] = verifyArr;
+
+    el.textContent='✓ נשמר ואומת!';
     setTimeout(()=>{el.style.display='none';},1500);
   }catch(e){
     el.textContent='❌ שגיאה: '+e.message;
     el.style.background='#c62828';
-    setTimeout(()=>{el.style.display='none';el.style.background='#1a1a2e';},3000);
+    setTimeout(()=>{el.style.display='none';el.style.background='#1a1a2e';},6000);
   }
 }
 
@@ -1682,15 +1706,6 @@ async function saveNewDevTask(){
   }
 }
 
-function logDevChange(idx, fieldLabel, newVal){
-  var t=DEV_TASKS[idx];
-  if(!t)return;
-  var oldVal = fieldLabel==='סטטוס פיתוח' ? t.status : t.tStatus;
-  if(oldVal===newVal)return;
-  if(!t.sLog)t.sLog=[];
-  t.sLog.push({field:fieldLabel, s:newVal, t:Date.now(), by:CU?CU.name:''});
-}
-
 // עריכת משימת פיתוח - נעשית תמיד דרך מודל עריכה מלא עם כפתור "שמור" מפורש,
 // כדי שלא יהיה מצב של שינוי בשדה שנראה כאילו נשמר אבל בפועל לא נשלח לשרת.
 function openEditDevTask(idx){
@@ -1726,48 +1741,78 @@ async function saveDevTaskModal(){
   }
   var newStatus=document.getElementById('devEditStatus').value;
   var newTStatus=document.getElementById('devEditTStatus').value;
-  if(newStatus!==t.status) logDevChange(idx,'סטטוס פיתוח',newStatus);
-  if(newTStatus!==t.tStatus) logDevChange(idx,'סטטוס בדיקה',newTStatus);
 
-  t.dev=document.getElementById('devEditDev').value.trim();
-  t.status=newStatus;
-  t.desc=newDesc;
-  t.specLink=document.getElementById('devEditSpecLink').value.trim();
-  t.notes=document.getElementById('devEditNotes').value.trim();
-  t.comp=document.getElementById('devEditComp').value.trim();
-  t.ver=document.getElementById('devEditVer').value.trim();
-  t.iface=document.getElementById('devEditIface').value.trim();
-  t.tester=document.getElementById('devEditTester').value;
-  t.tStatus=newTStatus;
-  t.tNotes=document.getElementById('devEditTNotes').value.trim();
+  // בונים אובייקט נפרד עם הערכים החדשים - לא נוגעים ב-DEV_TASKS[idx] האמיתי
+  // עד שנקבל אישור וודאי (כתיבה + קריאה חוזרת שמאמתת) שהשמירה בשרת הצליחה.
+  var updatedFields = {
+    dev: document.getElementById('devEditDev').value.trim(),
+    status: newStatus,
+    desc: newDesc,
+    specLink: document.getElementById('devEditSpecLink').value.trim(),
+    notes: document.getElementById('devEditNotes').value.trim(),
+    comp: document.getElementById('devEditComp').value.trim(),
+    ver: document.getElementById('devEditVer').value.trim(),
+    iface: document.getElementById('devEditIface').value.trim(),
+    tester: document.getElementById('devEditTester').value,
+    tStatus: newTStatus,
+    tNotes: document.getElementById('devEditTNotes').value.trim()
+  };
+  var sLogAdditions = [];
+  if (newStatus !== t.status) sLogAdditions.push({field:'סטטוס פיתוח', s:newStatus, t:Date.now(), by:CU?CU.name:''});
+  if (newTStatus !== t.tStatus) sLogAdditions.push({field:'סטטוס בדיקה', s:newTStatus, t:Date.now(), by:CU?CU.name:''});
 
+  var saveBtn = document.getElementById('devEditSaveBtn');
+  saveBtn.disabled = true;
   document.getElementById('devEditMsg').style.color='#666';
   document.getElementById('devEditMsg').textContent='שומר...';
+
   try {
+    var BASE = 'https://malm-focus-default-rtdb.firebaseio.com';
     // sLog הוא יומן שינויים מצטבר - טוענים טרי מהשרת וממזגים איתו, כדי לא לאבד
-    // רשומות שנוספו במקביל ע"י יוזר אחר (למשל אם שניים שינו שדות שונים כמעט באותו זמן)
-    var freshRes = await fetch('https://malm-focus-default-rtdb.firebaseio.com/devTasks/' + idx + '.json?t=' + Date.now());
+    // רשומות שנוספו במקביל ע"י יוזר אחר
+    var freshRes = await fetch(BASE + '/devTasks/' + idx + '.json?t=' + Date.now());
+    if (!freshRes.ok) throw new Error('שגיאה בטעינה טרייה מהשרת (סטטוס ' + freshRes.status + ')');
     var fresh = (await freshRes.json()) || {};
     var mergedLog = (fresh.sLog || []).slice();
-    (t.sLog || []).forEach(function(entry) {
+    (t.sLog || []).concat(sLogAdditions).forEach(function(entry) {
       var exists = mergedLog.some(function(e) { return e.t === entry.t && e.field === entry.field && e.by === entry.by && e.s === entry.s; });
       if (!exists) mergedLog.push(entry);
     });
     mergedLog.sort(function(a, b) { return a.t - b.t; });
-    t.sLog = mergedLog;
 
-    var res = await fetch('https://malm-focus-default-rtdb.firebaseio.com/devTasks/' + idx + '.json', {
+    var fullRecord = Object.assign({}, t, updatedFields, { sLog: mergedLog });
+
+    var putRes = await fetch(BASE + '/devTasks/' + idx + '.json', {
       method: 'PUT',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify(t)
+      body: JSON.stringify(fullRecord)
     });
-    if (!res.ok) throw new Error('Firebase error: ' + res.status);
-    closeDevEditModal();
+    if (!putRes.ok) {
+      var putBody = await putRes.text().catch(function(){ return ''; });
+      throw new Error('השרת דחה את הכתיבה (סטטוס ' + putRes.status + ') ' + putBody);
+    }
+
+    // אימות: קוראים שוב מהשרת ומוודאים שהערכים באמת שם - לא מסתפקים בכך שה-HTTP הגיב 200
+    var verifyRes = await fetch(BASE + '/devTasks/' + idx + '.json?t=' + Date.now());
+    var verifyData = (await verifyRes.json()) || {};
+    var badField = Object.keys(updatedFields).find(function(k){ return (verifyData[k]||'') !== (updatedFields[k]||''); });
+    if (badField) {
+      throw new Error('האימות מול השרת נכשל בשדה "' + badField + '" - השינויים לא הגיעו בפועל לשרת. אל תסגור/י את המסך, נסה/י לשמור שוב.');
+    }
+
+    Object.assign(t, updatedFields);
+    t.sLog = mergedLog;
+
+    document.getElementById('devEditMsg').style.color='#2e7d32';
+    document.getElementById('devEditMsg').textContent='✅ נשמר ואומת מול השרת בהצלחה';
     renderDevTable();
     populateDevTesterFilter();
+    setTimeout(closeDevEditModal, 600);
   } catch(e) {
     document.getElementById('devEditMsg').style.color='#c62828';
-    document.getElementById('devEditMsg').textContent='שגיאה בשמירה, נסה שוב';
+    document.getElementById('devEditMsg').textContent='❌ ' + e.message;
+  } finally {
+    saveBtn.disabled = false;
   }
 }
 
@@ -2625,7 +2670,7 @@ async function dedupRecords(sheet) {
     <div id="devEditMsg" style="margin-bottom:6px;font-size:12px;font-weight:700"></div>
     <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px">
       <button onclick="closeDevEditModal()" style="padding:8px 16px;border:1px solid #ddd;border-radius:6px;cursor:pointer;font-size:13px;font-family:Arial;background:#fff">ביטול</button>
-      <button onclick="saveDevTaskModal()" style="padding:8px 16px;background:#D40511;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px;font-weight:700;font-family:Arial">שמור</button>
+      <button id="devEditSaveBtn" onclick="saveDevTaskModal()" style="padding:8px 16px;background:#D40511;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px;font-weight:700;font-family:Arial">שמור</button>
     </div>
   </div>
 </div>

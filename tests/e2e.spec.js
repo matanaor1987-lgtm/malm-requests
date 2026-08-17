@@ -478,3 +478,48 @@ test.describe('רגרסיה: שדות שלא נשמרו בכלל בעריכה ה
     await expect(page.locator('#devBody')).toContainText('COMP2');
   });
 });
+
+test.describe('אימות כתיבה מול השרת (לא מסתפקים בתגובת HTTP 200)', () => {
+  test('אם הכתיבה "מצליחה" ברמת ה-HTTP אבל לא נשמרת בפועל, האפליקציה מזהה זאת, מציגה שגיאה, ולא סוגרת את מסך העריכה', async ({ page }) => {
+    await mockFirebase(page, {});
+    // מיירטים במיוחד את הכתיבה לרשומה 0 ומדמים "הצלחה" מזויפת (200) שלא באמת משנה כלום בשרת
+    await page.route('**/devTasks/0.json', async (route) => {
+      if (route.request().method() === 'PUT') {
+        return route.fulfill({ status: 200, contentType: 'application/json', body: '{}' });
+      }
+      return route.fallback();
+    });
+    await page.goto('/index.html');
+    await login(page, 'testadmin', 'pw');
+    await page.click('.tab[data-tab="3"]');
+    const row = page.locator('#devBody tr', { hasText: '13770' });
+    await row.locator('button', { hasText: 'עריכה' }).click();
+    await page.fill('#devEditNotes', 'זה לא אמור באמת להישמר');
+    await page.click('button[onclick="saveDevTaskModal()"]');
+    await page.waitForTimeout(300);
+
+    await expect(page.locator('#devEditModal')).toBeVisible();
+    await expect(page.locator('#devEditMsg')).toContainText('האימות מול השרת נכשל');
+  });
+
+  test('אותו דבר במשימות לרבקה - כתיבה שלא נקלטת בפועל מציגה שגיאת אימות', async ({ page }) => {
+    const taskA = { _id: 'A', נ: 'משימה', מב: 'מנהלת בדיקה', ת: '2026-07-01', כ: 'k', ב: 'b', ע: 1, ס: 'פתוח', chat: {} };
+    await mockFirebase(page, { rivka: [taskA] });
+    await page.route('**/db/rivka.json', async (route) => {
+      if (route.request().method() === 'PUT') {
+        return route.fulfill({ status: 200, contentType: 'application/json', body: '[]' });
+      }
+      return route.fallback();
+    });
+    await page.goto('/index.html');
+    await login(page, 'testadmin', 'pw');
+    await page.click('.tab[data-tab="1"]');
+    await page.evaluate(() => openEdit('rivka', 0));
+    await expect(page.locator('#modalBg')).toHaveClass(/open/);
+    await page.fill('#f_כ', 'כותרת שלא תישמר');
+    await page.click('button.btn-save');
+    await page.waitForTimeout(300);
+
+    await expect(page.locator('#savingMsg')).toContainText('האימות מול השרת נכשל');
+  });
+});
