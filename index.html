@@ -1235,9 +1235,9 @@ function restoreDB(input) {
   reader.onload = async function(e) {
     try {
       const parsed = JSON.parse(e.target.result);
-      // Support both old format (plain db) and new format {db, devTasks}
+      // Support old format (plain db), and both devTasks-by-position (legacy) and devTasksById (current)
       const dbData = parsed.db || parsed;
-      const devTasksData = parsed.devTasks || null;
+      const devTasksByIdData = parsed.devTasksById || null;
       const r = await fetch('https://malm-focus-default-rtdb.firebaseio.com/db.json', {
         method: 'PUT',
         headers: {'Content-Type': 'application/json'},
@@ -1246,11 +1246,11 @@ function restoreDB(input) {
       if (!r.ok) { alert('❌ שגיאה בשחזור'); input.value=''; return; }
       DB = dbData;
       await ensureIds();
-      if (devTasksData) {
-        await fetch('https://malm-focus-default-rtdb.firebaseio.com/devTasks.json', {
+      if (devTasksByIdData) {
+        await fetch('https://malm-focus-default-rtdb.firebaseio.com/devTasksById.json', {
           method: 'PUT',
           headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify(devTasksData)
+          body: JSON.stringify(devTasksByIdData)
         });
       }
       initFilters(); r1(); r2();
@@ -1268,12 +1268,12 @@ async function backupDB() {
   const date = now.toLocaleDateString('he-IL').replace(/\//g,'-');
   const time = now.toLocaleTimeString('he-IL',{hour:'2-digit',minute:'2-digit'}).replace(':','-');
   const filename = 'backup_malm_' + date + '_' + time + '.json';
-  let devTasks = {};
+  let devTasksById = {};
   try {
-    const r = await fetch('https://malm-focus-default-rtdb.firebaseio.com/devTasks.json?t='+Date.now());
-    devTasks = (await r.json()) || {};
+    const r = await fetch('https://malm-focus-default-rtdb.firebaseio.com/devTasksById.json?t='+Date.now());
+    devTasksById = (await r.json()) || {};
   } catch(e) {}
-  const fullBackup = {db: DB, devTasks: devTasks};
+  const fullBackup = {db: DB, devTasksById: devTasksById};
   const content = JSON.stringify(fullBackup, null, 2);
   const blob = new Blob([content], {type: 'application/json'});
   const a = document.createElement('a');
@@ -1596,10 +1596,9 @@ function renderDevTable(){
   buildDevStats();
   var tb=document.getElementById('devBody');
   if(!tb)return;
-  // חשוב: לעולם לא ממיינים את DEV_TASKS עצמו - כתובת השמירה ב-Firebase (/devTasks/{idx}.json)
-  // מבוססת על המיקום המקורי במערך, אז מיון של המערך "בחיים" מנתק בין המשימה לכתובת
-  // השמירה שלה (הרשומה שנשמרת בפועל "נודדת" לאינדקס של משימה אחרת). ממיינים רק את
-  // סדר התצוגה, ומחזיקים בכל שורה את ה-idx היציב המקורי (לעריכה/שמירה).
+  // לעולם לא ממיינים את DEV_TASKS עצמו - idx בכל שורה הוא מיקום נוכחי בזיכרון בלבד,
+  // לא מזהה יציב (השמירה בפועל מבוססת על t.id - ראו saveDevTaskModal). ממיינים רק
+  // את סדר התצוגה, כדי שהתנהגות הטבלה תישאר צפויה ולא תלויה במיקום.
   var order = DEV_TASKS.map(function(_, i){ return i; });
   if (devSortCol) {
     order.sort(function(ia, ib){
@@ -1679,8 +1678,14 @@ async function saveNewDevTask(){
     document.getElementById('newDevMsg').style.color='#c62828';
     return;
   }
+  var taskId=document.getElementById('ndtId').value.trim() || ('new_'+Date.now());
+  if (DEV_TASKS.some(function(x){ return x.id===taskId; })) {
+    document.getElementById('newDevMsg').style.color='#c62828';
+    document.getElementById('newDevMsg').textContent='כבר קיימת משימה עם מספר משימה זה';
+    return;
+  }
   var task={
-    id: document.getElementById('ndtId').value.trim(),
+    id: taskId,
     dev: document.getElementById('ndtDev').value.trim(),
     status: '',
     desc: desc,
@@ -1696,25 +1701,26 @@ async function saveNewDevTask(){
   document.getElementById('newDevMsg').style.color='#666';
   document.getElementById('newDevMsg').textContent='שומר...';
   try{
-    // Determine next free index by checking both local array and server data,
-    // to avoid overwriting an existing record if another session added one meanwhile.
-    var r=await fetch('https://malm-focus-default-rtdb.firebaseio.com/devTasks.json?t='+Date.now());
-    var saved=await r.json();
-    var maxSavedIdx=-1;
-    if(saved){ Object.keys(saved).forEach(function(k){var n=parseInt(k);if(!isNaN(n)&&n>maxSavedIdx)maxSavedIdx=n;}); }
-    var newIdx=Math.max(DEV_TASKS.length, maxSavedIdx+1);
-    DEV_TASKS[newIdx]=task;
-    await fetch('https://malm-focus-default-rtdb.firebaseio.com/devTasks/'+newIdx+'.json',{
+    var BASE='https://malm-focus-default-rtdb.firebaseio.com';
+    var putRes=await fetch(BASE+'/devTasksById/'+encodeURIComponent(taskId)+'.json',{
       method:'PUT',
       headers:{'Content-Type':'application/json'},
       body:JSON.stringify(task)
     });
+    if(!putRes.ok) throw new Error('השרת דחה את הכתיבה (סטטוס '+putRes.status+')');
+
+    // אימות: קוראים שוב מהשרת ומוודאים שהמשימה באמת שם
+    var verifyRes=await fetch(BASE+'/devTasksById/'+encodeURIComponent(taskId)+'.json?t='+Date.now());
+    var verifyData=(await verifyRes.json())||{};
+    if(!deepEqual(verifyData, task)) throw new Error('האימות מול השרת נכשל - המשימה לא נשמרה בפועל. נסה/י שוב.');
+
+    DEV_TASKS.push(task);
     renderDevTable();
     populateDevTesterFilter();
     closeNewDevModal();
   }catch(e){
     document.getElementById('newDevMsg').style.color='#c62828';
-    document.getElementById('newDevMsg').textContent='שגיאה בשמירה, נסה שוב';
+    document.getElementById('newDevMsg').textContent='❌ '+e.message;
   }
 }
 
@@ -1723,7 +1729,9 @@ async function saveNewDevTask(){
 function openEditDevTask(idx){
   var t=DEV_TASKS[idx];
   if(!t)return;
-  document.getElementById('devEditIdx').value=idx;
+  // שומרים את מזהה המשימה היציב (t.id) - לא את idx. idx הוא רק מיקום נוכחי
+  // בזיכרון של הדפדפן הזה, שיכול להשתנות; ה-id הוא מה שבאמת מזהה את המשימה.
+  document.getElementById('devEditIdx').value=t.id;
   document.getElementById('devEditDev').value=t.dev||'';
   document.getElementById('devEditStatus').value=t.status||'';
   document.getElementById('devEditDesc').value=t.desc||'';
@@ -1742,9 +1750,15 @@ function closeDevEditModal(){
   document.getElementById('devEditModal').style.display='none';
 }
 async function saveDevTaskModal(){
-  var idx=parseInt(document.getElementById('devEditIdx').value);
-  var t=DEV_TASKS[idx];
-  if(!t)return;
+  var taskId=document.getElementById('devEditIdx').value;
+  // מאתרים תמיד לפי המזהה היציב, לא לפי מיקום - כדי שכל שינוי שקרה בסדר המערך
+  // (מיון, טעינה מחדש, הוספת משימות וכו') בזמן שהמודל היה פתוח לא ישבש את השמירה.
+  var t=DEV_TASKS.find(function(x){ return x.id===taskId; });
+  if(!t){
+    document.getElementById('devEditMsg').style.color='#c62828';
+    document.getElementById('devEditMsg').textContent='המשימה לא נמצאה - ייתכן שהיא נמחקה. רענן/י ונסה/י שוב.';
+    return;
+  }
   var newDesc=document.getElementById('devEditDesc').value.trim();
   if(!newDesc){
     document.getElementById('devEditMsg').style.color='#c62828';
@@ -1782,7 +1796,7 @@ async function saveDevTaskModal(){
     var BASE = 'https://malm-focus-default-rtdb.firebaseio.com';
     // sLog הוא יומן שינויים מצטבר - טוענים טרי מהשרת וממזגים איתו, כדי לא לאבד
     // רשומות שנוספו במקביל ע"י יוזר אחר
-    var freshRes = await fetch(BASE + '/devTasks/' + idx + '.json?t=' + Date.now());
+    var freshRes = await fetch(BASE + '/devTasksById/' + encodeURIComponent(taskId) + '.json?t=' + Date.now());
     if (!freshRes.ok) throw new Error('שגיאה בטעינה טרייה מהשרת (סטטוס ' + freshRes.status + ')');
     var fresh = (await freshRes.json()) || {};
     var mergedLog = (fresh.sLog || []).slice();
@@ -1794,7 +1808,7 @@ async function saveDevTaskModal(){
 
     var fullRecord = Object.assign({}, t, updatedFields, { sLog: mergedLog });
 
-    var putRes = await fetch(BASE + '/devTasks/' + idx + '.json', {
+    var putRes = await fetch(BASE + '/devTasksById/' + encodeURIComponent(taskId) + '.json', {
       method: 'PUT',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify(fullRecord)
@@ -1805,7 +1819,7 @@ async function saveDevTaskModal(){
     }
 
     // אימות: קוראים שוב מהשרת ומוודאים שהערכים באמת שם - לא מסתפקים בכך שה-HTTP הגיב 200
-    var verifyRes = await fetch(BASE + '/devTasks/' + idx + '.json?t=' + Date.now());
+    var verifyRes = await fetch(BASE + '/devTasksById/' + encodeURIComponent(taskId) + '.json?t=' + Date.now());
     var verifyData = (await verifyRes.json()) || {};
     var badField = Object.keys(updatedFields).find(function(k){ return (verifyData[k]||'') !== (updatedFields[k]||''); });
     if (badField) {
@@ -1828,33 +1842,29 @@ async function saveDevTaskModal(){
   }
 }
 
+var DEV_OVERRIDE_FIELDS = ['tester','tStatus','tNotes','status','sLog','specLink','dev','desc','notes','comp','ver','iface'];
+
+// טוען עדכונים לפי מזהה משימה יציב (t.id, למשל "13770") - לא לפי מיקום במערך.
+// זה קריטי: מיקום במערך יכול להשתנות (מיון, סינון, הוספת משימות, "חורים" שמתאזנים
+// אחרי סינון וכו') - ואם השמירה תלויה במיקום, כל שינוי בסדר "מנתק" בין משימה
+// לרשומה שנשמרה עבורה בפועל, וגורם לעדכונים "להיעלם" או ליפול על משימה אחרת.
 async function loadDevTasks() {
   try {
-    var r = await fetch('https://malm-focus-default-rtdb.firebaseio.com/devTasks.json?t=' + Date.now());
+    var r = await fetch('https://malm-focus-default-rtdb.firebaseio.com/devTasksById.json?t=' + Date.now());
     var saved = await r.json();
     if (saved) {
-      Object.keys(saved).sort(function(a,b){return parseInt(a)-parseInt(b);}).forEach(function(idx) {
-        var i = parseInt(idx);
-        if (DEV_TASKS[i]) {
-          if (saved[idx].tester !== undefined) DEV_TASKS[i].tester = saved[idx].tester;
-          if (saved[idx].tStatus !== undefined) DEV_TASKS[i].tStatus = saved[idx].tStatus;
-          if (saved[idx].tNotes !== undefined) DEV_TASKS[i].tNotes = saved[idx].tNotes;
-          if (saved[idx].status !== undefined) DEV_TASKS[i].status = saved[idx].status;
-          if (saved[idx].sLog !== undefined) DEV_TASKS[i].sLog = saved[idx].sLog;
-          if (saved[idx].specLink !== undefined) DEV_TASKS[i].specLink = saved[idx].specLink;
-          if (saved[idx].dev !== undefined) DEV_TASKS[i].dev = saved[idx].dev;
-          if (saved[idx].desc !== undefined) DEV_TASKS[i].desc = saved[idx].desc;
-          if (saved[idx].notes !== undefined) DEV_TASKS[i].notes = saved[idx].notes;
-          if (saved[idx].comp !== undefined) DEV_TASKS[i].comp = saved[idx].comp;
-          if (saved[idx].ver !== undefined) DEV_TASKS[i].ver = saved[idx].ver;
-          if (saved[idx].iface !== undefined) DEV_TASKS[i].iface = saved[idx].iface;
-        } else if (saved[idx] && saved[idx].desc) {
-          // Manually added task beyond the hardcoded array — store the full record
-          DEV_TASKS[i] = saved[idx];
+      var byId = {};
+      DEV_TASKS.forEach(function(t){ if (t && t.id) byId[t.id] = t; });
+      Object.keys(saved).forEach(function(id) {
+        var ov = saved[id];
+        if (!ov) return;
+        if (byId[id]) {
+          DEV_OVERRIDE_FIELDS.forEach(function(f){ if (ov[f] !== undefined) byId[id][f] = ov[f]; });
+        } else if (ov.desc) {
+          // משימה שנוספה ואינה בבסיס הקוד הקבוע
+          DEV_TASKS.push(Object.assign({ id: id }, ov));
         }
       });
-      // Remove any holes (e.g. from index gaps) so rendering/sorting stays clean
-      DEV_TASKS = DEV_TASKS.filter(function(t){ return t !== undefined && t !== null; });
     }
   } catch(e) { console.warn('loadDevTasks error:', e); }
 }

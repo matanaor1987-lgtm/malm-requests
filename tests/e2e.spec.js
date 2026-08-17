@@ -322,7 +322,7 @@ test.describe('רגרסיה: דריסת שדות בעריכת בדיקת שפי�
 
 test.describe('רגרסיה: איבוד רשומות ביומן שינויים בפיתוחים ותיקונים (staleness)', () => {
   test('שמירת שינוי סטטוס פיתוח דרך מודל העריכה לא מוחקת רשומת יומן שנוספה במקביל ע"י יוזר אחר', async ({ page }) => {
-    const { devTasks: liveDevTasks } = await mockFirebase(page, {});
+    const { devTasksById: liveDevTasks } = await mockFirebase(page, {});
     await page.goto('/index.html');
     await login(page, 'testadmin', 'pw');
     await page.click('.tab[data-tab="3"]');
@@ -333,13 +333,13 @@ test.describe('רגרסיה: איבוד רשומות ביומן שינויים �
     await expect(page.locator('#devEditModal')).toBeVisible();
 
     // מדמים שינוי מקביל בשרת: יוזר אחר כבר שינה tStatus ורשם שורת יומן, בזמן שמודל העריכה הזה פתוח
-    liveDevTasks['0'] = { tester: '', tStatus: 'נבדק', tNotes: '', status: '', sLog: [{ field: 'סטטוס בדיקה', s: 'נבדק', t: 111, by: 'מישהו אחר' }] };
+    liveDevTasks['13770'] = { tester: '', tStatus: 'נבדק', tNotes: '', status: '', sLog: [{ field: 'סטטוס בדיקה', s: 'נבדק', t: 111, by: 'מישהו אחר' }] };
 
     await page.selectOption('#devEditStatus', 'בפיתוח');
     await page.click('button[onclick="saveDevTaskModal()"]');
     await page.waitForTimeout(150);
 
-    const sLog = liveDevTasks['0'].sLog;
+    const sLog = liveDevTasks['13770'].sLog;
     expect(sLog.some(e => e.by === 'מישהו אחר' && e.s === 'נבדק')).toBe(true);
     expect(sLog.some(e => e.s === 'בפיתוח')).toBe(true);
   });
@@ -401,7 +401,7 @@ test.describe('משימות בעליה לאוויר', () => {
 
 test.describe('קישור לאיפיון בפיתוחים ותיקונים', () => {
   test('הוספת קישור לאיפיון לשורה קיימת דרך מודל העריכה נשמרת ומציגה כפתור פתיחה', async ({ page }) => {
-    const { devTasks: liveDevTasks } = await mockFirebase(page, {});
+    const { devTasksById: liveDevTasks } = await mockFirebase(page, {});
     await page.goto('/index.html');
     await login(page, 'testadmin', 'pw');
     await page.click('.tab[data-tab="3"]');
@@ -415,7 +415,7 @@ test.describe('קישור לאיפיון בפיתוחים ותיקונים', () 
     await page.click('button[onclick="saveDevTaskModal()"]');
     await page.waitForTimeout(150);
 
-    expect(liveDevTasks['0'].specLink).toBe(link);
+    expect(liveDevTasks['13770'].specLink).toBe(link);
     await expect(row.locator('a[href="' + link + '"]')).toHaveCount(1);
   });
 
@@ -439,7 +439,7 @@ test.describe('קישור לאיפיון בפיתוחים ותיקונים', () 
 
 test.describe('רגרסיה: שדות שלא נשמרו בכלל בעריכה הישנה (תאור/הערות/רכיב/גרסה/ממשק/הערות בודק)', () => {
   test('עריכת כל השדות דרך מודל העריכה ושמירה - כולם נשמרים בפועל בשרת ונשארים אחרי רענון', async ({ page }) => {
-    const { devTasks: liveDevTasks } = await mockFirebase(page, {});
+    const { devTasksById: liveDevTasks } = await mockFirebase(page, {});
     await page.goto('/index.html');
     await login(page, 'testadmin', 'pw');
     await page.click('.tab[data-tab="3"]');
@@ -459,7 +459,7 @@ test.describe('רגרסיה: שדות שלא נשמרו בכלל בעריכה ה
     await page.click('button[onclick="saveDevTaskModal()"]');
     await page.waitForTimeout(150);
 
-    expect(liveDevTasks['0']).toMatchObject({
+    expect(liveDevTasks['13770']).toMatchObject({
       desc: 'תאור משימה עודכן',
       notes: 'הערת מפתח עודכנה',
       comp: 'COMP2',
@@ -482,8 +482,8 @@ test.describe('רגרסיה: שדות שלא נשמרו בכלל בעריכה ה
 test.describe('אימות כתיבה מול השרת (לא מסתפקים בתגובת HTTP 200)', () => {
   test('אם הכתיבה "מצליחה" ברמת ה-HTTP אבל לא נשמרת בפועל, האפליקציה מזהה זאת, מציגה שגיאה, ולא סוגרת את מסך העריכה', async ({ page }) => {
     await mockFirebase(page, {});
-    // מיירטים במיוחד את הכתיבה לרשומה 0 ומדמים "הצלחה" מזויפת (200) שלא באמת משנה כלום בשרת
-    await page.route('**/devTasks/0.json', async (route) => {
+    // מיירטים במיוחד את הכתיבה למשימה 13770 ומדמים "הצלחה" מזויפת (200) שלא באמת משנה כלום בשרת
+    await page.route('**/devTasksById/13770.json', async (route) => {
       if (route.request().method() === 'PUT') {
         return route.fulfill({ status: 200, contentType: 'application/json', body: '{}' });
       }
@@ -526,7 +526,7 @@ test.describe('אימות כתיבה מול השרת (לא מסתפקים בתג
 
 test.describe('רגרסיה: מיון בטבלת פיתוחים ותיקונים לא ישבש את המשימה שנשמרת', () => {
   test('מיון העמודות, ואז עריכה ושמירה של משימה - נשמרת על המשימה הנכונה, לא על אחרת שקפצה למקומה', async ({ page }) => {
-    const { devTasks: liveDevTasks } = await mockFirebase(page, {});
+    const { devTasksById: liveDevTasks } = await mockFirebase(page, {});
     await page.goto('/index.html');
     await login(page, 'testadmin', 'pw');
     await page.click('.tab[data-tab="3"]');
@@ -545,9 +545,9 @@ test.describe('רגרסיה: מיון בטבלת פיתוחים ותיקונים
     await page.click('button[onclick="saveDevTaskModal()"]');
     await page.waitForTimeout(200);
 
-    // הרשומה שנשמרה בפועל בשרת (מפתח 0, כי זה המיקום היציב המקורי של 13770) - לא רשומה אחרת
-    expect(liveDevTasks['0'].notes).toBe('הערה שנוספה אחרי מיון');
-    expect(Object.keys(liveDevTasks)).toEqual(['0']);
+    // הרשומה שנשמרה בפועל בשרת נשמרת לפי מזהה המשימה היציב "13770" - לא רשומה אחרת
+    expect(liveDevTasks['13770'].notes).toBe('הערה שנוספה אחרי מיון');
+    expect(Object.keys(liveDevTasks)).toEqual(['13770']);
 
     // רענון מלא - מוודאים שההערה נחתה על המשימה הנכונה ולא "נעלמה" מבחינת המשתמש
     await page.reload();
@@ -555,5 +555,26 @@ test.describe('רגרסיה: מיון בטבלת פיתוחים ותיקונים
     await page.click('.tab[data-tab="3"]');
     const reloadedRow = page.locator('#devBody tr', { hasText: '13770' });
     await expect(reloadedRow).toContainText('הערה שנוספה אחרי מיון');
+  });
+
+  test('גם אם סדר DEV_TASKS משתנה לגמרי בזמן שמודל העריכה פתוח (סיבה כלשהי, לא רק מיון), השמירה עדיין נופלת על המשימה הנכונה', async ({ page }) => {
+    const { devTasksById: liveDevTasks } = await mockFirebase(page, {});
+    await page.goto('/index.html');
+    await login(page, 'testadmin', 'pw');
+    await page.click('.tab[data-tab="3"]');
+    const row = page.locator('#devBody tr', { hasText: '13770' });
+    await row.locator('button', { hasText: 'עריכה' }).click();
+    await expect(page.locator('#devEditModal')).toBeVisible();
+
+    // הופכים לגמרי את סדר המערך בזיכרון בזמן שהמודל פתוח - מדמה כל תרחיש עתידי
+    // אפשרי של שינוי סדר, לא רק מיון (שכבר לא באמת קורה, אבל ההגנה צריכה להיות עקרונית)
+    await page.evaluate(() => { DEV_TASKS.reverse(); });
+
+    await page.fill('#devEditNotes', 'עדיין אמור לנחות על 13770');
+    await page.click('button[onclick="saveDevTaskModal()"]');
+    await page.waitForTimeout(200);
+
+    expect(liveDevTasks['13770'].notes).toBe('עדיין אמור לנחות על 13770');
+    expect(Object.keys(liveDevTasks)).toEqual(['13770']);
   });
 });
