@@ -523,3 +523,37 @@ test.describe('אימות כתיבה מול השרת (לא מסתפקים בתג
     await expect(page.locator('#savingMsg')).toContainText('האימות מול השרת נכשל');
   });
 });
+
+test.describe('רגרסיה: מיון בטבלת פיתוחים ותיקונים לא ישבש את המשימה שנשמרת', () => {
+  test('מיון העמודות, ואז עריכה ושמירה של משימה - נשמרת על המשימה הנכונה, לא על אחרת שקפצה למקומה', async ({ page }) => {
+    const { devTasks: liveDevTasks } = await mockFirebase(page, {});
+    await page.goto('/index.html');
+    await login(page, 'testadmin', 'pw');
+    await page.click('.tab[data-tab="3"]');
+    await expect(page.locator('#devBody')).toContainText('13770');
+
+    // ממיינים לפי "מפתח" - זה שינה בעבר את סדר DEV_TASKS בפועל ולא רק את התצוגה
+    await page.click('th[onclick="sortDevTable(\'dev\')"]');
+    await page.waitForTimeout(100);
+
+    // עורכים ושומרים את המשימה "13770" (איפה שהיא לא נמצאת עכשיו בתצוגה הממוינת)
+    const row = page.locator('#devBody tr', { hasText: '13770' });
+    await row.locator('button', { hasText: 'עריכה' }).click();
+    await expect(page.locator('#devEditModal')).toBeVisible();
+    await expect(page.locator('#devEditDesc')).toHaveValue(/שינוי בחירת יבואן/);
+    await page.fill('#devEditNotes', 'הערה שנוספה אחרי מיון');
+    await page.click('button[onclick="saveDevTaskModal()"]');
+    await page.waitForTimeout(200);
+
+    // הרשומה שנשמרה בפועל בשרת (מפתח 0, כי זה המיקום היציב המקורי של 13770) - לא רשומה אחרת
+    expect(liveDevTasks['0'].notes).toBe('הערה שנוספה אחרי מיון');
+    expect(Object.keys(liveDevTasks)).toEqual(['0']);
+
+    // רענון מלא - מוודאים שההערה נחתה על המשימה הנכונה ולא "נעלמה" מבחינת המשתמש
+    await page.reload();
+    await page.waitForSelector('#mainTabs', { state: 'visible' });
+    await page.click('.tab[data-tab="3"]');
+    const reloadedRow = page.locator('#devBody tr', { hasText: '13770' });
+    await expect(reloadedRow).toContainText('הערה שנוספה אחרי מיון');
+  });
+});

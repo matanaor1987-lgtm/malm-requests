@@ -1596,8 +1596,20 @@ function renderDevTable(){
   buildDevStats();
   var tb=document.getElementById('devBody');
   if(!tb)return;
-  tb.innerHTML=DEV_TASKS.map(function(t,i){
-    var bg=i%2?'#f9f9f9':'#fff';
+  // חשוב: לעולם לא ממיינים את DEV_TASKS עצמו - כתובת השמירה ב-Firebase (/devTasks/{idx}.json)
+  // מבוססת על המיקום המקורי במערך, אז מיון של המערך "בחיים" מנתק בין המשימה לכתובת
+  // השמירה שלה (הרשומה שנשמרת בפועל "נודדת" לאינדקס של משימה אחרת). ממיינים רק את
+  // סדר התצוגה, ומחזיקים בכל שורה את ה-idx היציב המקורי (לעריכה/שמירה).
+  var order = DEV_TASKS.map(function(_, i){ return i; });
+  if (devSortCol) {
+    order.sort(function(ia, ib){
+      var av = DEV_TASKS[ia][devSortCol] || '', bv = DEV_TASKS[ib][devSortCol] || '';
+      return av.localeCompare(bv, 'he') * devSortDir;
+    });
+  }
+  tb.innerHTML=order.map(function(i, pos){
+    var t=DEV_TASKS[i];
+    var bg=pos%2?'#f9f9f9':'#fff';
     return '<tr style="background:'+bg+';vertical-align:top" data-tester="'+esc(t.tester)+'" data-tstatus="'+esc(t.tStatus)+'">'+
       '<td style="padding:7px 10px;border-bottom:1px solid #eee;white-space:nowrap;font-weight:700;color:#D40511">'+esc(t.id)+'</td>'+
       '<td style="padding:7px 10px;border-bottom:1px solid #eee;white-space:nowrap">'+esc(t.dev)+'</td>'+
@@ -1850,11 +1862,8 @@ async function loadDevTasks() {
 var devSortCol='', devSortDir=1;
 function sortDevTable(col){
   if(devSortCol===col){ devSortDir*=-1; } else { devSortCol=col; devSortDir=1; }
-  DEV_TASKS.sort(function(a,b){
-    var av=a[col]||'', bv=b[col]||'';
-    return av.localeCompare(bv,'he')*devSortDir;
-  });
-  // Update sort indicators
+  // הערה: לא ממיינים כאן את DEV_TASKS עצמו - ראו הסבר ב-renderDevTable().
+  // renderDevTable() ממיין רק את סדר התצוגה, לפי devSortCol/devSortDir.
   ['id','dev','status','comp','ver','iface','tester','tStatus'].forEach(function(c){
     var el=document.getElementById('devSort_'+c);
     if(el) el.textContent = c===devSortCol ? (devSortDir===1?'▲':'▼') : '';
