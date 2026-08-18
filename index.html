@@ -829,6 +829,7 @@ function rivkaFields(r={}, isEdit=false){
       ${isEdit?`<div class="form-row narrow"><label>סטטוס</label><select id="f_ס">${(isAdmin()?SR_ADMIN:SR).map(s=>`<option ${(r.ס||'פתוח')===s?'selected':''}>${s}</option>`).join('')}</select></div>`:''}
       ${isEdit && isAdmin()?`<div class="form-row"><label>מטפל</label><input id="f_מט" value="${(r.מט||'').replace(/"/g,'&quot;')}" placeholder="שם מטפל..."></div>`:''}
     </div>
+    ${isEdit && isAdmin()?`<div class="form-row"><label>מבקש</label><input id="f_מב" value="${(r.מב||'').replace(/"/g,'&quot;')}" placeholder="שם המבקש..."></div>`:''}
     <div class="form-row"><label>בקשה</label><textarea id="f_ב" class="tall">${r.ב||''}</textarea></div>`;
 }
 
@@ -903,7 +904,7 @@ function saveModal(){
     };
   }else{
     rec={
-      נ:g('f_נ'), מב:r?r.מב:(CU?CU.name:''), ת:g('f_ת'), כ:g('f_כ'), ב:g('f_ב'),
+      נ:g('f_נ'), מב:document.getElementById('f_מב')?g('f_מב'):(r?r.מב:(CU?CU.name:'')), ת:g('f_ת'), כ:g('f_כ'), ב:g('f_ב'),
       מט:g('f_מט'), ע:g('f_ע'),
       ס:r?(g('f_ס')||r.ס):'פתוח',
       ה:r?r.ה||'':'',
@@ -1729,6 +1730,7 @@ function openEditDevTask(idx){
   // שומרים את המזהה הפנימי היציב (t._uid) - לא את idx (מיקום נוכחי בזיכרון,
   // יכול להשתנות) ולא את t.id (מספר משימה - שדה עסקי חופשי, לא אמין כמזהה).
   document.getElementById('devEditIdx').value=t._uid;
+  document.getElementById('devEditTaskNum').value=t.id||'';
   document.getElementById('devEditDev').value=t.dev||'';
   document.getElementById('devEditStatus').value=t.status||'';
   document.getElementById('devEditDesc').value=t.desc||'';
@@ -1768,6 +1770,7 @@ async function saveDevTaskModal(){
   // בונים אובייקט נפרד עם הערכים החדשים - לא נוגעים ב-DEV_TASKS[idx] האמיתי
   // עד שנקבל אישור וודאי (כתיבה + קריאה חוזרת שמאמתת) שהשמירה בשרת הצליחה.
   var updatedFields = {
+    id: document.getElementById('devEditTaskNum').value.trim(),
     dev: document.getElementById('devEditDev').value.trim(),
     status: newStatus,
     desc: newDesc,
@@ -1839,7 +1842,7 @@ async function saveDevTaskModal(){
   }
 }
 
-var DEV_OVERRIDE_FIELDS = ['tester','tStatus','tNotes','status','sLog','specLink','dev','desc','notes','comp','ver','iface'];
+var DEV_OVERRIDE_FIELDS = ['tester','tStatus','tNotes','status','sLog','specLink','dev','desc','notes','comp','ver','iface','id'];
 
 // טוען עדכונים לפי מזהה פנימי יציב (t._uid) - לא לפי מיקום במערך, ולא לפי "מספר משימה"
 // (t.id) שהוא שדה עסקי חופשי שמוזן ע"י המשתמש ולכן יכול להיות ריק, לא ייחודי, או
@@ -2616,6 +2619,10 @@ async function dedupRecords(sheet) {
     <div style="font-size:15px;font-weight:700;margin-bottom:16px;color:#1a1a2e">עריכת משימה</div>
     <input type="hidden" id="devEditIdx">
     <div style="display:flex;gap:8px;margin-bottom:10px">
+      <div style="flex:1">
+        <label style="font-size:11px;color:#666;font-weight:700;display:block;margin-bottom:3px">מספר משימה</label>
+        <input id="devEditTaskNum" style="width:100%;padding:8px 10px;border:1.5px solid #ddd;border-radius:6px;font-size:13px;font-family:Arial;direction:ltr;box-sizing:border-box">
+      </div>
       <div style="flex:1">
         <label style="font-size:11px;color:#666;font-weight:700;display:block;margin-bottom:3px">מפתח</label>
         <input id="devEditDev" style="width:100%;padding:8px 10px;border:1.5px solid #ddd;border-radius:6px;font-size:13px;font-family:Arial;direction:rtl;box-sizing:border-box">

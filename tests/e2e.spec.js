@@ -607,3 +607,52 @@ test.describe('משימת פיתוח בלי מספר משימה (מזהה עסק
     expect(liveDevTasks[savedIds[0]].notes).toBe('עריכה אחרי יצירה בלי מספר משימה');
   });
 });
+
+test.describe('אדמין יכול לערוך כל שדה שמוצג בטבלאות', () => {
+  test('מספר משימה ניתן לעריכה במודל העריכה של פיתוחים ותיקונים', async ({ page }) => {
+    const { devTasksByUid: liveDevTasks } = await mockFirebase(page, {});
+    await page.goto('/index.html');
+    await login(page, 'testadmin', 'pw');
+    await page.click('.tab[data-tab="3"]');
+    await expect(page.locator('#devBody')).toContainText('13770');
+
+    const row = page.locator('#devBody tr', { hasText: '13770' });
+    await row.locator('button', { hasText: 'עריכה' }).click();
+    await expect(page.locator('#devEditModal')).toBeVisible();
+    await expect(page.locator('#devEditTaskNum')).toHaveValue('13770');
+    await page.fill('#devEditTaskNum', '99999');
+    await page.click('button[onclick="saveDevTaskModal()"]');
+    await page.waitForTimeout(150);
+
+    expect(liveDevTasks['dt_001'].id).toBe('99999');
+    await expect(page.locator('#devBody')).toContainText('99999');
+    await expect(page.locator('#devBody')).not.toContainText('13770');
+  });
+
+  test('אדמין יכול לערוך את שדה "מבקש" במשימות לרבקה, ומנהל (לא אדמין) לא רואה את השדה הזה', async ({ page }) => {
+    const rec = { _id: 'r1', נ: 'משימה', מב: 'מנהלת בדיקה', ת: '2026-07-01', כ: 'k', ב: 'b', ע: 1, ס: 'פתוח', chat: {} };
+    await mockFirebase(page, { rivka: [rec] });
+    await page.goto('/index.html');
+    await login(page, 'testadmin', 'pw');
+    await page.click('.tab[data-tab="1"]');
+    await page.click('tr:has-text("משימה") .act-btn');
+    await expect(page.locator('#modalBg')).toHaveClass(/open/);
+    await expect(page.locator('#f_מב')).toHaveValue('מנהלת בדיקה');
+    await page.fill('#f_מב', 'מנהל אחר');
+    await page.click('button.btn-save');
+    await expect(page.locator('#modalBg')).not.toHaveClass(/open/);
+
+    const savedMav = await page.evaluate(() => DB.rivka.find(r => r._id === 'r1').מב);
+    expect(savedMav).toBe('מנהל אחר');
+  });
+
+  test('מנהל (לא אדמין) לא רואה שדה "מבקש" בעריכה', async ({ page }) => {
+    const rec = { _id: 'r2', נ: 'משימה 2', מב: 'מנהלת בדיקה', ת: '2026-07-01', כ: 'k', ב: 'b', ע: 1, ס: 'פתוח', chat: {} };
+    await mockFirebase(page, { rivka: [rec] });
+    await page.goto('/index.html');
+    await login(page, 'testmgr', 'pw');
+    await page.click('tr:has-text("משימה 2") .act-btn');
+    await expect(page.locator('#modalBg')).toHaveClass(/open/);
+    await expect(page.locator('#f_מב')).toHaveCount(0);
+  });
+});
