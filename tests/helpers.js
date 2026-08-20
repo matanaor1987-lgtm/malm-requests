@@ -19,6 +19,7 @@ async function mockFirebase(page, initial) {
   const sanity = (initial && initial.sanity) || {};
   const devTasksByUid = (initial && initial.devTasksByUid) || {};
   const launchTasks = (initial && initial.launchTasks) || {};
+  const devLists = (initial && initial.devLists) || {};
 
   await page.route('**/malm-focus-default-rtdb.firebaseio.com/**', async (route) => {
     const req = route.request();
@@ -55,6 +56,9 @@ async function mockFirebase(page, initial) {
       if (lm) {
         return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(launchTasks[lm[1]] || null) });
       }
+      if (path === '/devLists.json') {
+        return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(devLists) });
+      }
       // כל השאר - אין לנו נתונים, מחזירים ריק
       return route.fulfill({ status: 200, contentType: 'application/json', body: 'null' });
     }
@@ -73,6 +77,7 @@ async function mockFirebase(page, initial) {
       else if (dm) devTasksByUid[decodeURIComponent(dm[1])] = body;
       else if (path === '/devTasksByUid.json' && body) { Object.keys(devTasksByUid).forEach(k => delete devTasksByUid[k]); Object.assign(devTasksByUid, body); }
       else if (lm) launchTasks[lm[1]] = body;
+      else if (path === '/devLists.json' && body) { Object.keys(devLists).forEach(k => delete devLists[k]); Object.assign(devLists, body); }
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
     }
 
@@ -104,7 +109,7 @@ async function mockFirebase(page, initial) {
   // (הקוד באפליקציה כבר מטפל במקרה ש-emailjs לא נטען).
   await page.route('**/cdn.jsdelivr.net/**', (route) => route.abort());
 
-  return { db, sanity, devTasksByUid, launchTasks };
+  return { db, sanity, devTasksByUid, launchTasks, devLists };
 }
 
 async function login(page, username, password) {

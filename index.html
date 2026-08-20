@@ -718,7 +718,7 @@ let srMode='rivka';
 const SR_REPORT_CONFIG={
   rivka:{title:'📊 דוח שינויי סטטוס — משימות לרבקה', opts:()=>SR_ADMIN, def:'בוצע', cols:['נושא','מבקש']},
   malm:{title:'📊 דוח שינויי סטטוס — משימות מלמ כולל', opts:()=>SM, def:'טופל', cols:['משימה','תחום']},
-  dev:{title:'📊 דוח שינויי סטטוס — פיתוחים ותיקונים', opts:()=>['פתוח','בפיתוח','בבדיקה','נבדק','נסגר','תקין','לא תקין'], def:'', cols:['משימה','שדה']},
+  dev:{title:'📊 דוח שינויי סטטוס — פיתוחים ותיקונים', opts:()=>(DEV_LISTS.status||[]).concat(DEV_LISTS.tStatus||[]), def:'', cols:['משימה','שדה']},
   sanity:{title:'📊 דוח בדיקות שהושלמו — בדיקות שפיות', opts:()=>['בוצע','נכשל'], def:'בוצע', cols:['בדיקה','מסך/מודול']}
 };
 
@@ -1149,7 +1149,7 @@ function switchTab(i) {
   var ba=document.getElementById('btnAdd');
   if(ba){ ba.style.display=(i===2||i===3||i===4||i===5)?'none':'block'; if(i===0)ba.textContent='+ משימה חדשה (מלמ)'; if(i===1)ba.textContent='+ משימה חדשה (רבקה)'; }
   if(i===2)renderUsers();
-  if(i===3){loadDevTasks().then(function(){renderDevTable();});}
+  if(i===3){Promise.all([loadDevLists(),loadDevTasks()]).then(function(){renderDevTable();populateDevFilters();});}
   if(i===4)loadSanityTab();
   if(i===5){loadLaunchTab().then(function(){renderLaunchTable();});}
 }
@@ -1239,6 +1239,7 @@ function restoreDB(input) {
       // תומך בפורמט ישן (db גרידא) ובגיבויים עם devTasksByUid (הפורמט הנוכחי)
       const dbData = parsed.db || parsed;
       const devTasksByUidData = parsed.devTasksByUid || null;
+      const devListsData = parsed.devLists || null;
       const r = await fetch('https://malm-focus-default-rtdb.firebaseio.com/db.json', {
         method: 'PUT',
         headers: {'Content-Type': 'application/json'},
@@ -1252,6 +1253,13 @@ function restoreDB(input) {
           method: 'PUT',
           headers: {'Content-Type': 'application/json'},
           body: JSON.stringify(devTasksByUidData)
+        });
+      }
+      if (devListsData) {
+        await fetch('https://malm-focus-default-rtdb.firebaseio.com/devLists.json', {
+          method: 'PUT',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify(devListsData)
         });
       }
       initFilters(); r1(); r2();
@@ -1274,7 +1282,12 @@ async function backupDB() {
     const r = await fetch('https://malm-focus-default-rtdb.firebaseio.com/devTasksByUid.json?t='+Date.now());
     devTasksByUid = (await r.json()) || {};
   } catch(e) {}
-  const fullBackup = {db: DB, devTasksByUid: devTasksByUid};
+  let devLists = {};
+  try {
+    const r2 = await fetch('https://malm-focus-default-rtdb.firebaseio.com/devLists.json?t='+Date.now());
+    devLists = (await r2.json()) || {};
+  } catch(e) {}
+  const fullBackup = {db: DB, devTasksByUid: devTasksByUid, devLists: devLists};
   const content = JSON.stringify(fullBackup, null, 2);
   const blob = new Blob([content], {type: 'application/json'});
   const a = document.createElement('a');
@@ -1575,6 +1588,118 @@ document.addEventListener('keydown',e=>{
 });
 
 function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+
+// רשימות האפשרויות ל-3 ה-DROPDOWN-ים בטאב פיתוחים ותיקונים לבדיקה (סטטוס פיתוח,
+// בודק DHL, סטטוס בדיקה). אלו ערכי ברירת מחדל; אדמין יכול לערוך אותן מתוך המערכת
+// (ראו openDevListsModal) - השינויים נשמרים ב-/devLists.json ונטענים מעל ברירת המחדל.
+var DEV_LISTS = {
+  status: ['פתוח','בפיתוח','בבדיקה','נבדק','נסגר'],
+  tester: ['מתן','עידו','ניר','רבקה'],
+  tStatus: ['תקין','לא תקין','לבדיקה בעליה לאוויר','לא רלוונטי']
+};
+var DEV_LIST_LABELS = { status: 'סטטוס פיתוח', tester: 'בודק DHL', tStatus: 'סטטוס בדיקה' };
+
+async function loadDevLists() {
+  try {
+    var r = await fetch('https://malm-focus-default-rtdb.firebaseio.com/devLists.json?t=' + Date.now());
+    var saved = await r.json();
+    if (saved) {
+      Object.keys(DEV_LISTS).forEach(function(key) {
+        if (Array.isArray(saved[key])) DEV_LISTS[key] = saved[key];
+      });
+    }
+  } catch (e) { console.warn('loadDevLists error:', e); }
+}
+
+async function saveDevLists() {
+  var BASE = 'https://malm-focus-default-rtdb.firebaseio.com';
+  var putRes = await fetch(BASE + '/devLists.json', {
+    method: 'PUT',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(DEV_LISTS)
+  });
+  if (!putRes.ok) throw new Error('השרת דחה את הכתיבה (סטטוס ' + putRes.status + ')');
+  var verifyRes = await fetch(BASE + '/devLists.json?t=' + Date.now());
+  var verifyData = (await verifyRes.json()) || {};
+  if (!deepEqual(verifyData, DEV_LISTS)) throw new Error('האימות מול השרת נכשל - הרשימה לא נשמרה בפועל.');
+}
+
+function openDevListsModal(){
+  if (!isAdmin()) return;
+  document.getElementById('devListsMsg').textContent='';
+  renderDevListsModalBody();
+  document.getElementById('devListsModal').style.display='flex';
+}
+function closeDevListsModal(){
+  document.getElementById('devListsModal').style.display='none';
+}
+function renderDevListsModalBody(){
+  var container=document.getElementById('devListsBody');
+  if(!container)return;
+  container.innerHTML=Object.keys(DEV_LIST_LABELS).map(function(key){
+    var opts=DEV_LISTS[key]||[];
+    var chips=opts.map(function(o,i){
+      return '<span style="background:#eee;border-radius:14px;padding:4px 6px 4px 10px;font-size:12px;display:inline-flex;align-items:center;gap:6px">'+esc(o)+
+        '<button onclick="removeDevListOption(\''+key+'\','+i+')" title="הסר" style="border:none;background:none;color:#c62828;cursor:pointer;font-weight:700;font-size:13px;line-height:1;padding:0">✕</button></span>';
+    }).join('');
+    return '<div style="margin-bottom:18px">'+
+      '<div style="font-weight:700;font-size:13px;margin-bottom:6px;color:#1a1a2e">'+esc(DEV_LIST_LABELS[key])+'</div>'+
+      '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px">'+(chips||'<span style="color:#999;font-size:12px">אין אפשרויות ברשימה</span>')+'</div>'+
+      '<div style="display:flex;gap:6px">'+
+        '<input id="devListNew_'+key+'" placeholder="הוסף אפשרות..." style="flex:1;padding:6px 8px;border:1px solid #ddd;border-radius:6px;font-size:12px;font-family:Arial;direction:rtl;box-sizing:border-box" onkeydown="if(event.key===\'Enter\'){event.preventDefault();addDevListOption(\''+key+'\');}">'+
+        '<button onclick="addDevListOption(\''+key+'\')" style="padding:6px 12px;background:#1565c0;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-family:Arial">הוסף</button>'+
+      '</div>'+
+    '</div>';
+  }).join('');
+}
+async function addDevListOption(key){
+  if (!isAdmin()) return;
+  var input=document.getElementById('devListNew_'+key);
+  var val=(input.value||'').trim();
+  if(!val) return;
+  if((DEV_LISTS[key]||[]).indexOf(val)>-1){
+    document.getElementById('devListsMsg').style.color='#c62828';
+    document.getElementById('devListsMsg').textContent='האפשרות "'+val+'" כבר קיימת ברשימה';
+    return;
+  }
+  var prev=(DEV_LISTS[key]||[]).slice();
+  DEV_LISTS[key]=prev.concat([val]);
+  document.getElementById('devListsMsg').style.color='#666';
+  document.getElementById('devListsMsg').textContent='שומר...';
+  try{
+    await saveDevLists();
+    document.getElementById('devListsMsg').style.color='#2e7d32';
+    document.getElementById('devListsMsg').textContent='✅ נשמר';
+    renderDevListsModalBody();
+    populateDevFilters();
+  }catch(e){
+    DEV_LISTS[key]=prev;
+    document.getElementById('devListsMsg').style.color='#c62828';
+    document.getElementById('devListsMsg').textContent='❌ '+e.message;
+    renderDevListsModalBody();
+  }
+}
+async function removeDevListOption(key, idx){
+  if (!isAdmin()) return;
+  var prev=(DEV_LISTS[key]||[]).slice();
+  var next=prev.slice();
+  next.splice(idx,1);
+  DEV_LISTS[key]=next;
+  document.getElementById('devListsMsg').style.color='#666';
+  document.getElementById('devListsMsg').textContent='שומר...';
+  try{
+    await saveDevLists();
+    document.getElementById('devListsMsg').style.color='#2e7d32';
+    document.getElementById('devListsMsg').textContent='✅ נשמר';
+    renderDevListsModalBody();
+    populateDevFilters();
+  }catch(e){
+    DEV_LISTS[key]=prev;
+    document.getElementById('devListsMsg').style.color='#c62828';
+    document.getElementById('devListsMsg').textContent='❌ '+e.message;
+    renderDevListsModalBody();
+  }
+}
 var DEV_TASKS=[{"_uid": "dt_001", "id": "13770", "dev": "קארו", "status": "", "desc": "שינוי בחירת יבואן ממשק DCC על פי האפיון", "notes": "מאושר 5 שעות. DH תכ' 82,83,89,54", "comp": "DH", "ver": "5.1557", "iface": "DCC", "tester": "", "tNotes": "", "tStatus": ""}, {"_uid": "dt_002", "id": "14281", "dev": "קארו", "status": "", "desc": "ממשק 116-3 DCC עדכון קוד הנחה במשלוחים מסחריים ערך נמוך", "notes": "אושרו 27 שעות. מייל לנועה 26/5/26", "comp": "DH", "ver": "5.1555", "iface": "DCC", "tester": "", "tNotes": "", "tStatus": ""}, {"_uid": "dt_003", "id": "12311", "dev": "קארו", "status": "", "desc": "ממשק GCCP חלק א - ממשק יוצא במבנה JSON", "notes": "אושרה הצעת מחיר 150 שע'. FF תכ' 1646,1647", "comp": "TB|FF", "ver": "5.1523", "iface": "GCCP", "tester": "", "tNotes": "", "tStatus": ""}, {"_uid": "dt_004", "id": "13557", "dev": "קארו", "status": "", "desc": "GCCP - שינוי AppCd ל-FOCUS-IL, AppNm ל-FOCUS", "notes": "FF תכ' 1642", "comp": "FF", "ver": "5.1523", "iface": "GCCP", "tester": "", "tNotes": "", "tStatus": ""}, {"_uid": "dt_005", "id": "13606", "dev": "קארו", "status": "", "desc": "GCCP - שינוי שדות שורה 17+25 לערך FOCUS", "notes": "FF תכ' 1642", "comp": "FF", "ver": "5.1525", "iface": "GCCP", "tester": "", "tNotes": "", "tStatus": ""}, {"_uid": "dt_006", "id": "13712", "dev": "קארו", "status": "", "desc": "GCCP 380 - ריבוי אנשי קשר: מייל ראשון EML, שאר CC", "notes": "FF תכ' 1577", "comp": "FF", "ver": "5.1525", "iface": "GCCP", "tester": "", "tNotes": "", "tStatus": ""}, {"_uid": "dt_007", "id": "13741", "dev": "קארו", "status": "", "desc": "GCCP 380 - תיקון שגיאת סינטקס (נקודה במקום נקודתיים)", "notes": "FF תכ' 1578", "comp": "FF", "ver": "5.1525", "iface": "GCCP", "tester": "", "tNotes": "", "tStatus": ""}, {"_uid": "dt_008", "id": "13754", "dev": "קארו", "status": "", "desc": "GCCP 280 - שינויים במיפוי, שדה B2C/B2B", "notes": "FF תכ' 1578", "comp": "FF", "ver": "5.1530", "iface": "GCCP", "tester": "", "tNotes": "", "tStatus": ""}, {"_uid": "dt_009", "id": "13816", "dev": "קארו", "status": "", "desc": "GCCP/GCCR - אירועים לא נתפסים, בדיקת תאריך ריצה ב-SWC", "notes": "FF תכ' 1575,1578", "comp": "FF", "ver": "5.1531", "iface": "GCCP", "tester": "", "tNotes": "", "tStatus": ""}, {"_uid": "dt_010", "id": "14482", "dev": "קארו", "status": "", "desc": "GCCP 380 - שינוי שדה מאובייקט למערך, תיקון אלמנט ריק", "notes": "לחיוב 2 שעות. FF תכ' 1581", "comp": "FF", "ver": "5.1555", "iface": "GCCP", "tester": "", "tNotes": "", "tStatus": ""}, {"_uid": "dt_011", "id": "13545", "dev": "קארו", "status": "", "desc": "GCCR 280 - שדות S001 D002 הוספת גרשיים", "notes": "FF תכ' 1639", "comp": "FF", "ver": "5.1524", "iface": "GCCR", "tester": "", "tNotes": "", "tStatus": ""}, {"_uid": "dt_012", "id": "13617", "dev": "קארו", "status": "", "desc": "GCCR - גרשיים מחוץ לסוגריים + חסרים בשדות string", "notes": "FF תכ' 1639", "comp": "FF", "ver": "5.1525", "iface": "GCCR", "tester": "", "tNotes": "", "tStatus": ""}, {"_uid": "dt_013", "id": "13629", "dev": "קארו", "status": "", "desc": "GCCR - הוספת שדה רץ שורה באירוע 678", "notes": "FF תכ' 1639", "comp": "FF", "ver": "5.1525", "iface": "GCCR", "tester": "", "tNotes": "", "tStatus": ""}, {"_uid": "dt_014", "id": "14358", "dev": "קארו", "status": "", "desc": "GCCR 280 - גרשיים מיותרים בשדות נומריים DR01+SR01", "notes": "FF תכ' 1571", "comp": "FF", "ver": "5.1554", "iface": "GCCR", "tester": "", "tNotes": "", "tStatus": ""}, {"_uid": "dt_015", "id": "14377", "dev": "קארו", "status": "", "desc": "GCCR - ריבוי שורות סיווג + בעיה בבסיס מס לחשבונית", "notes": "FF תכ' 1575", "comp": "FF", "ver": "5.1554", "iface": "GCCR", "tester": "", "tNotes": "", "tStatus": ""}, {"_uid": "dt_016", "id": "14627", "dev": "קארו", "status": "", "desc": "GCCR - CUST SP מציג מיילים ריקים, טלפונים לא כ-string", "notes": "FF תכ' 1582", "comp": "FF", "ver": "5.1559", "iface": "GCCR", "tester": "", "tNotes": "", "tStatus": ""}, {"_uid": "dt_017", "id": "14732", "dev": "קארו", "status": "", "desc": "GCCR 280 - שדות L009 L021 ללא גרשיים בהצהרה ארוכה", "notes": "", "comp": "FF", "ver": "5.1559", "iface": "GCCR", "tester": "", "tNotes": "", "tStatus": ""}, {"_uid": "dt_018", "id": "11974", "dev": "אשכנזי", "status": "", "desc": "ביטול בדיקה - פתח שלב במקום לבטל", "notes": "4/8/25 מוחזר לפיתוח", "comp": "NE", "ver": "5.1525", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"_uid": "dt_019", "id": "13531", "dev": "זוקי", "status": "", "desc": "בכניסה לרצף תחנות בלדרות F8 - ניירת נעלמת", "notes": "", "comp": "NF", "ver": "5.1523", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"_uid": "dt_020", "id": "13532", "dev": "זוקי", "status": "", "desc": "מסך בחירת פלט תדפיס הצהרה - לא נשלח סוג/מספר תיק", "notes": "", "comp": "OP", "ver": "5.1525", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"_uid": "dt_021", "id": "13533", "dev": "זוקי", "status": "", "desc": "לאחר שליחת תדפיס הצהרה - לא נרשם אירוע משלוח", "notes": "", "comp": "OP", "ver": "5.1525", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"_uid": "dt_022", "id": "13548", "dev": "ברסקי", "status": "", "desc": "בדיקת פרוצדורה p_get_status_by_delay_file ב-SORT MACHINE", "notes": "", "comp": "Nothing", "ver": "5.1523", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"_uid": "dt_023", "id": "13595", "dev": "אשכנזי", "status": "", "desc": "משלוחים בדרך - שגיאה בשידור מפוקוס ומהכס", "notes": "", "comp": "NE", "ver": "5.1524", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"_uid": "dt_024", "id": "13611", "dev": "גליק", "status": "", "desc": "תעודת עיכוב - שגיאה על עמיל שאינו במאגר, הפוך להזהרה", "notes": "", "comp": "MA", "ver": "5.1525", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"_uid": "dt_025", "id": "13648", "dev": "זוקי", "status": "", "desc": "הוספת צרופה בדרישות מסמך - התראה גודל 0 שלא ניתן לסגור", "notes": "", "comp": "NE", "ver": "5.1530", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"_uid": "dt_026", "id": "13700", "dev": "רוזובסקי", "status": "", "desc": "ממשק PDF חשבוניות מס לתקיה - יבוא אישי בלבד", "notes": "03/2/26 אושרה הצעת מחיר. יעבוד מול SWC", "comp": "FF", "ver": "5.1547", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"_uid": "dt_027", "id": "13947", "dev": "ברסקי", "status": "", "desc": "סרגל חישוב 19 קריטריון 11 - מחיר פיקס כפול ימי אחסנה", "notes": "לחיוב 18 שע' לפי 270. מייל 27/1/26", "comp": "AP", "ver": "5.1537", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"_uid": "dt_028", "id": "14044", "dev": "קבטני", "status": "", "desc": "לא ניתן לעדכן אישורים תוקף מעל 2030 - input century ב-TOOLS", "notes": "", "comp": "TD", "ver": "5.1539", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"_uid": "dt_029", "id": "14075", "dev": "קארו", "status": "", "desc": "כניסה לסוג אישור - תחום לפי גורם מאשר, תכנית נפרדת", "notes": "TG + NF תכ' 857", "comp": "TG|NF", "ver": "5.1541", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"_uid": "dt_030", "id": "14314", "dev": "קבטני", "status": "", "desc": "שטמ בלדר כניסה ל-H - תוקעת מערכת, H נשאר ברירת מחדל", "notes": "הסטוריה חצי שנה אחורה", "comp": "NF", "ver": "5.1554", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"_uid": "dt_031", "id": "14520", "dev": "קארו", "status": "", "desc": "קבלת ייפוי כוח מהמכס - מסר PoaUpdateForCustomsAgent", "notes": "נבדק ואושר. NE תכ' 83", "comp": "NE", "ver": "5.1555", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"_uid": "dt_032", "id": "13261", "dev": "", "status": "", "desc": "בדיקות פיזיות - כאשר מגיע מסר סגירת בדיקה בבלדרות לסגור גם בדיקה במסוף\nבפתיחת בדיקה פיזית במסוף לבצע בדיקה האם בדיקה זו כבר נסגרה בבלדות , אם כן לפתוח אותה עם תאריך סגירה", "notes": "", "comp": "NE", "ver": "5.1524", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"_uid": "dt_033", "id": "13313", "dev": "", "status": "", "desc": "בלדרות יבוא:\nערך בשקל לא תמיד מתעדכן\nלבטל חישוב בקליטת שט\"מ ולעדכן את הערך ממשוב מסר הכנה\nלבצע עדכון כל פעם כשמתקבל משוב בתנאי שערך במשוב לא ריק", "notes": "", "comp": "DH | NE | FF", "ver": "5.1523", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"_uid": "dt_034", "id": "13438", "dev": "", "status": "", "desc": "שמירת תדפיסי הצהרת יבוא בתיקיה:\n1. שליפת תדפיס הצהרה לפי תנאי SWC\n2. בניית אצווה לשמירת תדפיס בתיקיה\nלהוסיף SWC לממשק 22 1=1 (סיסטם)", "notes": "", "comp": "EC", "ver": "5.1524", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"_uid": "dt_035", "id": "14166", "dev": "", "status": "", "desc": "בפתיחת שלב 219 דרישות ממכס להכניס מלל של דרישה להערה של שלב", "notes": "", "comp": "NE", "ver": "5.1554", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"_uid": "dt_036", "id": "14077", "dev": "", "status": "", "desc": "שידור יציאה מהמסוף -\nיש לשדר סוג יציאה בהתאם לסטטוס תעודת העיכוב (התרה/אישור סב\"ן/אישור שטעון וכו') ולא לפי אירועים.", "notes": "", "comp": "NE", "ver": "5.1541", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"_uid": "dt_037", "id": "10666", "dev": "", "status": "", "desc": "לאחר התקנת גרסה, בטבלת סיסטם 2139- טבלת סטטוסים (תפריט שער עולמי  - טבלאות - סטטוסים הצהרת יבוא), קוד סטטוס 98- טיוטה שגויה (בלבד),  בעמודת מצב, הערך מתעדכן ל\" הוגש\" כאשר הוא צריך להיות \"טיוטה\" - משבש את התהליך בזמן השידורים במקרה של טיוטה שגויה.", "notes": "", "comp": "Nothing", "ver": "5.1536", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"_uid": "dt_038", "id": "13779", "dev": "", "status": "", "desc": "בלדרות יבוא- תיקון הצהרה.\nבפתיחת תיקון הצהרה השדות לא מועתקים בזהה להצהרה הקצרה ששודרה ולכן לא עובר אוטומטית במכס ומצריך אישור של מעריך.", "notes": "", "comp": "NE", "ver": "5.1536", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"_uid": "dt_039", "id": "14542", "dev": "", "status": "", "desc": "חשבונית עמילות טיוטה (סוג 11) שמוגדרת בשפה אנגלית בבנייה של חשבונית הטיוטה תיאור סעיפי החיוב מוצגים באנגלית.\nבביצוע רענון ידני לטיוטה (כפתור רענון בכותרת החשבונית) תיאור סעיפי החיוב מתעדכן לעברית.\nמצורפת חשבונית לדוגמא + צילום מסך.", "notes": "", "comp": "HH", "ver": "5.1556", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"_uid": "dt_040", "id": "13183", "dev": "", "status": "", "desc": "להוסיף לטבלת פרמטרים של אצווה 185 תאריך ומעדכן אחרון", "notes": "", "comp": "BA", "ver": "5.1523", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"_uid": "dt_041", "id": "13318", "dev": "", "status": "", "desc": "SWC לשידור צרופות עמילות\nשידור צרופה למכס -\nלתת אזהרה במידה וגודל הצרופה מעל 10MB", "notes": "", "comp": "NE", "ver": "5.1537", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"_uid": "dt_042", "id": "13359", "dev": "", "status": "", "desc": "להחליף שימוש בקוד מדינה נומרי לקוד ISO", "notes": "", "comp": "NF", "ver": "5.1525", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"_uid": "dt_043", "id": "13361", "dev": "", "status": "", "desc": "מעבר לשימוש בקוד ISO של מטבע -\n1. רשימת חשבוניות ספק, כותרת חשבוניות ספק, שרורות חשבוניות ספק\n2. הורדת מטבע נומרי מהכותרות והוספה ל-tooltip על קוד ISO (בדומה לקיים בשט\"מ בלדרות יבוא)\n3. שינוי תכנית בחירת מטבע שמחזירה את קוד ISO לשדה החדש\n4. שינוי של ודא תקינות\n5. שינוי הפניה לתכנית שליפת שערי מטבע\n6. שימוש בפונקציה של דניאל בהקלדת מטבע (דוגמה מכותרת שט\"מ בלדר יבוא)\n7. בניית טריגר להוספה בלבד להשלמת קוד נומרי מ-ISO וההיפך בתנאי שקיים אחד ולא קיים השני.\n8. בניית סקריפט לעדכון רשומות ישנות", "notes": "", "comp": "HH", "ver": "5.1523", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"_uid": "dt_044", "id": "13393", "dev": "", "status": "", "desc": "בטבלת שערי מטבע (חשבונות - טבלאות - מטבעות) -\nלבצע מנגנון הזנת מטבע כמו בכל מקום אחר.\nלהוריד את השדה הנומרי מהתצוגה ולהשאיר רק קוד ISO.\nלהציג את הנומרי ב-tooltip.", "notes": "", "comp": "NF | RD | HG", "ver": "5.1523", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"_uid": "dt_045", "id": "13402", "dev": "", "status": "", "desc": "ניראות מסך טיסות בלדרות יבוא- מצורף קובץ עם צילום מסך\nבנוסף, במסך כותרת שטר המטען המסגרת של שדה קניה ברובריקה של המסים לא סגורה.", "notes": "", "comp": "NF", "ver": "5.1524", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"_uid": "dt_046", "id": "13453", "dev": "", "status": "", "desc": "מעבר לשימוש בקוד ISO של מטבע -\n1. רשימת תשלום לספק, כותרת תשלום לספק, שורות תשלום לספק\n2. הורדת מטבע נומרי מהכותרות והוספה ל-tooltip על קוד ISO (בדומה לקיים בשט\"מ בלדרות יבוא)\n3. שינוי תכנית בחירת מטבע שמחזירה את קוד ISO לשדה החדש\n4. שינוי של ודא תקינות\n5. שינוי הפניה לתכנית שליפת שערי מטבע\n6. שימוש בפונקציה של דניאל בהקלדת מטבע (דוגמה מכותרת שט\"מ בלדר יבוא)\n7. בניית טריגר להוספה בלבד להשלמת קוד נומרי מ-ISO וההיפך בתנאי שקיים אחד ולא קיים השני.\n8. בניית סקריפט לעדכון רשומות ישנות", "notes": "", "comp": "HH | HG", "ver": "5.1531", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"_uid": "dt_047", "id": "13454", "dev": "", "status": "", "desc": "מעבר לשימוש בקוד ISO של מטבע -\n1. רשימת תשלום לתיק, כותרת תשלום לתיק, שורות תשלום לתיק\n2. הורדת מטבע נומרי מהכותרות והוספה ל-tooltip על קוד ISO (בדומה לקיים בשט\"מ בלדרות יבוא)\n3. שינוי תכנית בחירת מטבע שמחזירה את קוד ISO לשדה החדש\n4. שינוי של ודא תקינות\n5. שינוי הפניה לתכנית שליפת שערי מטבע\n6. שימוש בפונקציה של דניאל בהקלדת מטבע (דוגמה מכותרת שט\"מ בלדר יבוא)\n7. בניית טריגר להוספה בלבד להשלמת קוד נומרי מ-ISO וההיפך בתנאי שקיים אחד ולא קיים השני.\n8. בניית סקריפט לעדכון רשומות ישנות", "notes": "", "comp": "HT | HH", "ver": "5.1531", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"_uid": "dt_048", "id": "13466", "dev": "", "status": "", "desc": "תיקים בתחנות:\nלא ניתן לפתוח תחנה מהקופסה.\nמתקבלת שגיאת ORA - מצורף צילום מסך", "notes": "", "comp": "EC", "ver": "5.1524", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"_uid": "dt_049", "id": "13473", "dev": "", "status": "", "desc": "בטבלת שערי מטבעות בהזנה ידנית לא מופיע קוד ISO של מטבע", "notes": "", "comp": "RD", "ver": "5.1523", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"_uid": "dt_050", "id": "13519", "dev": "", "status": "", "desc": "בלדרות יבוא - כותרת שטר מטען:\nבעמידה על שדה מספר הצהרה נפתח טבלת לקוחות.", "notes": "", "comp": "NF", "ver": "5.1524", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"_uid": "dt_051", "id": "13614", "dev": "", "status": "", "desc": "מעבר לשימוש בקוד ISO של מטבע -\n1. רשימת קבלות, כותרת קבלה, שורות קבלה\n2. הורדת מטבע נומרי מהכותרות והוספה ל-tooltip על קוד ISO (בדומה לקיים בשט\"מ בלדרות יבוא)\n3. שינוי תכנית בחירת מטבע שמחזירה את קוד ISO לשדה החדש\n4. שינוי של ודא תקינות\n5. שינוי הפניה לתכנית שליפת שערי מטבע\n6. שימוש בפונקציה של דניאל בהקלדת מטבע (דוגמה מכותרת שט\"מ בלדר יבוא)\n7. בניית טריגר להוספה בלבד להשלמת קוד נומרי מ-ISO וההיפך בתנאי שקיים אחד ולא קיים השני.\n8. בניית סקריפט לעדכון רשומות ישנות", "notes": "", "comp": "HG", "ver": "5.1525", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"_uid": "dt_052", "id": "13615", "dev": "", "status": "", "desc": "מעבר לשימוש בקוד ISO של מטבע -\n1. רשימת הפקדות, כותרת הפקדה\n2. הורדת מטבע נומרי מהכותרות והוספה ל-tooltip על קוד ISO (בדומה לקיים בשט\"מ בלדרות יבוא)\n3. שינוי תכנית בחירת מטבע שמחזירה את קוד ISO לשדה החדש\n4. שינוי של ודא תקינות\n5. שינוי הפניה לתכנית שליפת שערי מטבע\n6. שימוש בפונקציה של דניאל בהקלדת מטבע (דוגמה מכותרת שט\"מ בלדר יבוא)\n7. בניית טריגר להוספה בלבד להשלמת קוד נומרי מ-ISO וההיפך בתנאי שקיים אחד ולא קיים השני.\n8. בניית סקריפט לעדכון רשומות ישנות", "notes": "", "comp": "HG", "ver": "5.1525", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"_uid": "dt_053", "id": "13616", "dev": "", "status": "", "desc": "מעבר לשימוש בקוד ISO של מטבע -\n1. כותרת תנועות יומן\n2. הורדת מטבע נומרי מהכותרות והוספה ל-tooltip על קוד ISO (בדומה לקיים בשט\"מ בלדרות יבוא)\n3. שינוי תכנית בחירת מטבע שמחזירה את קוד ISO לשדה החדש\n4. שינוי של ודא תקינות\n5. שינוי הפניה לתכנית שליפת שערי מטבע\n6. שימוש בפונקציה של דניאל בהקלדת מטבע (דוגמה מכותרת שט\"מ בלדר יבוא)\n7. בניית טריגר להוספה בלבד להשלמת קוד נומרי מ-ISO וההיפך בתנאי שקיים אחד ולא קיים השני.\n8. בניית סקריפט לעדכון רשומות ישנות", "notes": "", "comp": "HG", "ver": "5.1525", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"_uid": "dt_054", "id": "13623", "dev": "", "status": "", "desc": "במסך רשימת בעלי הרשאה ממסך הרשאות - להציג את כל המשתמשים שיש להם את ההרשאה ומה המקור -1. הרשאה בודדת, 2. שיוך לרשימת קבוצות\nבמסך רשימת משתמשים לפי מספר הרשאה לתת כניסה למסך הקודם עם תחום של המשתמש.\nלאפשר מסך קודם כמסך ריק.", "notes": "", "comp": "TD", "ver": "5.153", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"_uid": "dt_055", "id": "13624", "dev": "", "status": "", "desc": "להוסיף הרשאת חברה \"שליפת הקצאה לכל סכום\"\nכאשר ההרשאה פעילה יישלף מספר הקצאה כאשר מע\"מ גדול מ-0 ולקוח ישראלי", "notes": "", "comp": "HH", "ver": "5.153", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"_uid": "dt_056", "id": "13698", "dev": "", "status": "", "desc": "שינוי מנגנון של כתיבת שלבים לפי מפתח יחודי\n1. סוג תיק\n2. מספר תיק\n3. קוד שלב\n4. אסמכתא", "notes": "", "comp": "EC", "ver": "5.1539", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"_uid": "dt_057", "id": "13755", "dev": "", "status": "", "desc": "בדיקת שפיות לגרסה 5.1526:\nשדה קוד מדינה בכל המסכים הפך לשדה חובה ומתקבלת שגיאה ולא ניתן להמשיך ללא עדכון השדה (בבדיקה ב 9.4 השדה אינו חובה) - נוצר בעקבות פיתוח משימה 13359", "notes": "", "comp": "NF", "ver": "5.1525", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"_uid": "dt_058", "id": "13762", "dev": "", "status": "", "desc": "בעיה בשיחות CRM - בבחירת כל סוגי התיקים מתקבלת שגיאת אורקל", "notes": "", "comp": "NF", "ver": "5.1531", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"_uid": "dt_059", "id": "13778", "dev": "", "status": "", "desc": "במסך דרישות מסמך בשדה מזהה מכס מופיעים כוכביות", "notes": "", "comp": "NE", "ver": "5.1532", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"_uid": "dt_060", "id": "13807", "dev": "", "status": "", "desc": "יש לבצע בתוכנית שמעתיקה - להפעיל תוכנית העתקה שתתן את הודעת השגיאה\nבעקבות פניה מלקוח -\nכאשר הצהרת יבוא לא הוגשה, לחצן תיקון הצהרה מופיע כ disabled.\nהלקוחה לא הבינה מדוע היא לא יכולה לבצע תיקון.\nהאם לא עדיף שהלחצן יהיה enabled ובלחיצה שתקפוץ הודעת שגיאה בנוסח \"ההצהרה טרם הוגשה. אין צורך לפתוח תיקון\"?", "notes": "", "comp": "NE", "ver": "5.1538", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"_uid": "dt_061", "id": "13828", "dev": "", "status": "", "desc": "מעבר לשימוש בקוד ISO של מטבע - מסך שיערוך כותרת\n2. הורדת מטבע נומרי מהכותרות והוספה ל-tooltip על קוד ISO (בדומה לקיים בשט\"מ בלדרות יבוא)\n3. שינוי תכנית בחירת מטבע שמחזירה את קוד ISO לשדה החדש\n4. שינוי של ודא תקינות\n5. שינוי הפניה לתכנית שליפת שערי מטבע\n6. שימוש בפונקציה של דניאל בהקלדת מטבע (דוגמה מכותרת שט\"מ בלדר יבוא)\n7. בניית טריגר להוספה בלבד להשלמת קוד נומרי מ-ISO וההיפך בתנאי שקיים אחד ולא קיים השני.", "notes": "", "comp": "HG", "ver": "5.1538", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"_uid": "dt_062", "id": "13829", "dev": "", "status": "", "desc": "בכל המסכים בהם בוצע שינוי של קוד מטבע לISO לבצע פניה לפונקציה של אלכס\nתיק עמילות יבוא\nתיק עמילות יצוא\nספד ים/אוויר\nספד LAND\nתיק שילוח ים/אוייר\nתיק שילוח LAND\nהזמנה\nהצעת מחיר\nDROP שילוח", "notes": "", "comp": "NF", "ver": "5.1533", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"_uid": "dt_063", "id": "13830", "dev": "", "status": "", "desc": "מעבר לשימוש בקוד ISO של מטבע -התאמות\n1.  הוספה של שדות ISO ליד כל מטבע \n2. הורדת מטבע נומרי מהכותרות והוספה ל-tooltip על קוד ISO (בדומה לקיים בשט\"מ בלדרות יבוא)\n3. שינוי תכנית בחירת מטבע שמחזירה את קוד ISO לשדה החדש\n4. שינוי של ודא תקינות\n5. שינוי הפניה לתכנית שליפת שערי מטבע\n6. שימוש בפונקציה של דניאל בהקלדת מטבע (דוגמה מכותרת שט\"מ בלדר יבוא)\n7. בניית טריגר להוספה בלבד להשלמת קוד נומרי מ-ISO וההיפך בתנאי שקיים אחד ולא קיים השני.", "notes": "", "comp": "HG", "ver": "5.1538", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"_uid": "dt_064", "id": "13832", "dev": "", "status": "", "desc": "מעבר לשימוש בקוד ISO של מטבע - חשבון ספק כללי\n1.  הוספה של שדות ISO ליד כל מטבע \n2. הורדת מטבע נומרי מהכותרות והוספה ל-tooltip על קוד ISO (בדומה לקיים בשט\"מ בלדרות יבוא)\n3. שינוי תכנית בחירת מטבע שמחזירה את קוד ISO לשדה החדש\n4. שינוי של ודא תקינות\n5. שינוי הפניה לתכנית שליפת שערי מטבע\n6. שימוש בפונקציה של דניאל בהקלדת מטבע (דוגמה מכותרת שט\"מ בלדר יבוא)\n7. בניית טריגר להוספה בלבד להשלמת קוד נומרי מ-ISO וההיפך בתנאי שקיים אחד ולא קיים השני.", "notes": "", "comp": "HH", "ver": "5.1538", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"_uid": "dt_065", "id": "13834", "dev": "", "status": "", "desc": "מעבר לשימוש בקוד ISO של מטבע - חשבוניות עמילות שילוח\n1. הוספה של שדות ISO ליד כל מטבע \n2. הורדת מטבע נומרי מהכותרות והוספה ל-tooltip על קוד ISO (בדומה לקיים בשט\"מ בלדרות יבוא)\n3. שינוי תכנית בחירת מטבע שמחזירה את קוד ISO לשדה החדש\n4. שינוי של ודא תקינות\n5. שינוי הפניה לתכנית שליפת שערי מטבע\n6. שימוש בפונקציה של דניאל בהקלדת מטבע (דוגמה מכותרת שט\"מ בלדר יבוא)\n7. בניית טריגר להוספה בלבד להשלמת קוד נומרי מ-ISO וההיפך בתנאי שקיים אחד ולא קיים השני.", "notes": "", "comp": "HH", "ver": "5.1539", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"_uid": "dt_066", "id": "13835", "dev": "", "status": "", "desc": "מעבר לשימוש בקוד ISO של מטבע - חשבוניות בלדרות סוג תיק  8,11,12\n1. הוספה של שדות ISO ליד כל מטבע \n2. הורדת מטבע נומרי מהכותרות והוספה ל-tooltip על קוד ISO (בדומה לקיים בשט\"מ בלדרות יבוא)\n3. שינוי תכנית בחירת מטבע שמחזירה את קוד ISO לשדה החדש\n4. שינוי של ודא תקינות\n5. שינוי הפניה לתכנית שליפת שערי מטבע\n6. שימוש בפונקציה של דניאל בהקלדת מטבע (דוגמה מכותרת שט\"מ בלדר יבוא)\n7. בניית טריגר להוספה בלבד להשלמת קוד נומרי מ-ISO וההיפך בתנאי שקיים אחד ולא קיים השני.", "notes": "", "comp": "HH", "ver": "5.1539", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"_uid": "dt_067", "id": "13849", "dev": "", "status": "", "desc": "מעבר לשימוש בקוד ISO של מטבע - כתובות\n1. הוספה של שדות ISO ליד כל מטבע \n2. הורדת מטבע נומרי מהכותרות והוספה ל-tooltip על קוד ISO (בדומה לקיים בשט\"מ בלדרות יבוא)\n3. שינוי תכנית בחירת מטבע שמחזירה את קוד ISO לשדה החדש\n4. שינוי של ודא תקינות\n5. שינוי הפניה לתכנית שליפת שערי מטבע\n6. שימוש בפונקציה של דניאל בהקלדת מטבע (דוגמה מכותרת שט\"מ בלדר יבוא)\n7. בניית טריגר להוספה בלבד להשלמת קוד נומרי מ-ISO וההיפך בתנאי שקיים אחד ולא קיים השני.", "notes": "", "comp": "TG | IG", "ver": "5.1533", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"_uid": "dt_068", "id": "13903", "dev": "", "status": "", "desc": "במסך עדכון סטטוס שט\"מ -\nכאשר בוחרים HAWB import  ומוסיפים event מס' 338 - בתת אירוע לא ניתן להוסיף שלב מטבלת process אלא רק מ-steps אחרת מתקבלת הודעת שגיאה.", "notes": "", "comp": "TB | NF | VIEW", "ver": "5.1533", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"_uid": "dt_069", "id": "13914", "dev": "", "status": "", "desc": "להוסיף למנגנון חישוב פרצופים חישוב שעת כניסה לתחנה בהתאם ל-Pin של אותה התחנה. \nלשנות  ערך ברירת מחדל של שדה \"שעת הכניסה לתחנה\" ל-0\nהריתנ של batch רק על שורות עם שדה \"שעת הכניסה לתחנה\" שווה ל-0", "notes": "", "comp": "PROCEDURE | TRIGGER | EC", "ver": "5.1537", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"_uid": "dt_070", "id": "14015", "dev": "", "status": "", "desc": "לעבור על כל המערכת ולבדוק איפה יש קריאה לתכנית בחירת קוד מטבע\nHH", "notes": "", "comp": "HH", "ver": "5.1543", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"_uid": "dt_071", "id": "14063", "dev": "", "status": "", "desc": "להפריד הגדרה של שלבים לשלבים חדשים / ישנים\nרשימת לקוחות\n  - אם לא מופעלת הרשאה של בלדרות - להתייחס להגדרה כללית של שלבים\n  - אם לא מופעלת הרשאה של עמולות או שילוח - ישירות שלבים ישנים", "notes": "", "comp": "TG", "ver": "5.1541", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"_uid": "dt_072", "id": "14256", "dev": "", "status": "", "desc": "אירועים:\nהערות 1, 2, 3 של אירוע שכתובות בעברית לא מוצגות באירוע.", "notes": "", "comp": "SCRIPT", "ver": "5.1545", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"_uid": "dt_073", "id": "14259", "dev": "", "status": "", "desc": "גרסה 5.1544: - שליפת ספק במכס.\nלא מאפשר ביצוע שליפת ספק ומתקבלת שגיאה במסר.\nשדה קוד מדינה הפך לחובת הזנה בשליפת ספק.", "notes": "", "comp": "NE", "ver": "5.1545", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"_uid": "dt_074", "id": "14375", "dev": "", "status": "", "desc": "אצווה 185 -\nלבנות טבלה חדשה שדומה לטבלה של השידורים.\nלבצע העתקה מ-tab_sys לטבלה החדשה - סקריפט לגרסה.\nלהוסיף כפתור \"העתקה מ-tab_sys\" שיעבוד רק בתנאי שהטבלה החדשה ריקה - הכפתור יפעיל את הסקריפט.\nלהוסיף ברמה של כל אובייקט (הכנה, הגשה, מצהר וכו') תת SWC ברירת מחדל.\nלשנות תכנית ביצוע 185 ותכנית שליפת SWC ותת SWC שמופעלת בכל הממשקים של האובייקטים.", "notes": "", "comp": "NE", "ver": "5.1554", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"_uid": "dt_075", "id": "14426", "dev": "", "status": "", "desc": "טבלת state -\nלבצע תחום לא לפי קוד נומרי אלא לפי קוד אלפא-נומרי של המדינה.\nלאתר את כל המקומות שמשתמשים בטבלה tab_num_tab 800", "notes": "", "comp": "TB | AP", "ver": "5.1557", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"_uid": "dt_076", "id": "14477", "dev": "", "status": "", "desc": "1. בקבלת מסר אישור/דחיית סב\"ן יש לקלוט סוג אסמכתא 5 ומספר אסמכתא מתג warningInternalID לתעודת עיכוב.\n2. לשדר את האסמכתא במסר יציאת סב\"ן בתנאי שאין אסמכתא לשדר מספר תעודת עיכוב.\n3. ביציאה ממסך שידור מסר יציאה ללא שידור - לא לבצע שידור (כיום משודר בכל מקרה)", "notes": "", "comp": "NE", "ver": "5.1555", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"_uid": "dt_077", "id": "14544", "dev": "", "status": "", "desc": "מספרי הקצאות:\n1. בקבלת שגיאה בניסיון שליפת מספר הקצאה לחשבונית, לא נרשם אירוע 618/3 עם הפנייה למשוב - נרשם אירוע הצלחה 618/2 במקום שגיאה.\n2. ברישום אירוע 618/2 על הצלחה בשליפת מספר הקצאה יש הפנייה לקובץ המסר היוצא במקום למסר הנכנס (המשוב).", "notes": "", "comp": "HH", "ver": "5.1558", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"_uid": "dt_078", "id": "14545", "dev": "", "status": "", "desc": "נמצא בעקבות בדיקות שפיות לגרסה 5.1555:\ndrag&drop:\nלאחר סריקת צרופה, הכפתורים בסרגל הכפתורים בדואר הנכנס לא פעילים.", "notes": "", "comp": "AP", "ver": "5.1556", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"_uid": "dt_079", "id": "14588", "dev": "", "status": "", "desc": "גרסה 5.1556\nבניסיון פתיחת מסך רשימת תת אצווה לאצווה 185 (במסך BATCH) \nמתקבלת שגיאת ORA שהטבלה לא קיימת", "notes": "", "comp": "SCRIPT", "ver": "5.1556", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"_uid": "dt_080", "id": "14607", "dev": "", "status": "", "desc": "נמצא בבדיקות לגרסה 5.1557:\nכותרת שט\"מ בלדר יבוא:\n1. בשדה ארץ (eraz_sholch_iso), ב F5 לא נפתחת טבלת הארצות (Countries table) ומתקבלת שגיאה \"ארץ ספק לא תקינה\". כן ניתן לעדכן את הערך באופן ידני.\n2.בעמידה על שדה מטבע, בערך הובלה (freight_cur_iso) ב F5 לא נפתחת טבלת המטבעות(Currency Table).", "notes": "", "comp": "NF", "ver": "5.1558", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"_uid": "dt_081", "id": "14711", "dev": "", "status": "", "desc": "בלדרות יבוא: חשבונית מרכזת (סוג 11)\nבבניה של מרכזת המערכת נתקעת עם הודעה REQUEST TAX NUMBER (במקרה של החשבונית הזו אין פנייה להקצאה - מתחת לסכום המוגדר למשיכת הקצאה) וזאת למרות שהחשבונית מופקת למס.", "notes": "", "comp": "HH", "ver": "5.1559", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"_uid": "dt_082", "id": "14713", "dev": "", "status": "", "desc": "גרסה 5.1558:\nבבלדרות יבוא בשיוך עמיל מכס בכותרת שטר מטען, בתיק שטר המטען לא נפתח שלב 307 - 3PB ושלבים מסויימים בתיק לא מתבטלים (כמו שלב 2- סיווג) בעקבות שיוך עמיל המכס.", "notes": "", "comp": "Nothing", "ver": "5.1559", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"_uid": "dt_083", "id": "13720", "dev": "", "status": "", "desc": "ברשימת שלבים מלאה, חיפוש שלב לפי שם בעברית, לא עובד (לא מחזיר תוצאות).\nלבצע המרה oem2ansii", "notes": "", "comp": "VIEW | EC", "ver": "5.1525", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"_uid": "dt_084", "id": "14513", "dev": "", "status": "", "desc": "בשידור מצהר בלדר,\nכאשר אין מספר טלפון Conseignee, משדרים \"0\".\nשער עולמי מחזיר שגיאה \"טלפון לא תקין\" וקולט את המטען בסטטוס \"שגוי\".\nכתוצאה מכך, בשידור מסר הכנה, מקבלים שגיאה \"המטען בסטטוס שגוי\".", "notes": "", "comp": "NE", "ver": "5.1558", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}, {"_uid": "dt_085", "id": "14667", "dev": "", "status": "", "desc": "בשטר מטען בלדר יבוא,\nבמעבר משורת סיווג אחת לשניה, הסמן תמיד עובר לעמודת \"פרט מכס\".\nמבקשים שיקרה רק עם נכנסים מתוך תחנה שבה מוגדר השדה עליו הסמן צריך לעמוד.", "notes": "", "comp": "NF", "ver": "5.1558", "iface": "", "tester": "", "tNotes": "", "tStatus": ""}];
 function buildDevStats(){
   var el=document.getElementById('s3');
@@ -1610,7 +1735,7 @@ function renderDevTable(){
   tb.innerHTML=order.map(function(i, pos){
     var t=DEV_TASKS[i];
     var bg=pos%2?'#f9f9f9':'#fff';
-    return '<tr style="background:'+bg+';vertical-align:top" data-tester="'+esc(t.tester)+'" data-tstatus="'+esc(t.tStatus)+'">'+
+    return '<tr style="background:'+bg+';vertical-align:top" data-tester="'+esc(t.tester)+'" data-status="'+esc(t.status)+'" data-tstatus="'+esc(t.tStatus)+'" data-comp="'+esc(t.comp)+'" data-iface="'+esc(t.iface)+'" data-ver="'+esc(t.ver)+'">'+
       '<td style="padding:7px 10px;border-bottom:1px solid #eee;white-space:nowrap;font-weight:700;color:#D40511">'+esc(t.id)+'</td>'+
       '<td style="padding:7px 10px;border-bottom:1px solid #eee;white-space:nowrap">'+esc(t.dev)+'</td>'+
       '<td style="padding:7px 10px;border-bottom:1px solid #eee;white-space:nowrap">'+esc(t.status||'—')+'</td>'+
@@ -1624,7 +1749,9 @@ function renderDevTable(){
       '<td style="padding:7px 10px;border-bottom:1px solid #eee;white-space:nowrap;font-size:11px;font-weight:700;color:#1565c0">'+esc(t.iface)+'</td>'+
       '<td style="padding:7px 10px;border-bottom:1px solid #eee;white-space:nowrap;font-size:11px">'+esc(t.tester||'—')+'</td>'+
       '<td style="padding:7px 10px;border-bottom:1px solid #eee;font-size:11px;color:#555;line-height:1.5">'+esc(t.tNotes)+'</td>'+
-      '<td style="padding:7px 10px;border-bottom:1px solid #eee;white-space:nowrap;font-size:11px">'+esc(t.tStatus||'—')+'</td>'+
+      '<td style="padding:7px 10px;border-bottom:1px solid #eee;white-space:nowrap;font-size:11px">'+esc(t.tStatus||'—')+
+        (t.linkedLaunchId?' <button onclick="jumpToLaunchTask(\''+esc(t.linkedLaunchId)+'\')" title="עבר למשימה המקושרת בטאב עליה לאוויר" style="background:#e65100;color:#fff;border:none;border-radius:4px;padding:2px 6px;cursor:pointer;font-size:10px;font-family:Arial">🚀</button>':'')+
+      '</td>'+
       '<td style="padding:7px 10px;border-bottom:1px solid #eee;white-space:nowrap">'+
         '<button onclick="openEditDevTask('+i+')" style="background:#1565c0;color:#fff;border:none;border-radius:4px;padding:4px 10px;cursor:pointer;font-size:11px;font-family:Arial">עריכה</button>'+
       '</td>'+
@@ -1634,27 +1761,55 @@ function renderDevTable(){
 
 function filterDevTable(){
   var ft=document.getElementById('devFilterTester').value;
-  var fs=document.getElementById('devFilterStatus').value;
+  var fst=document.getElementById('devFilterStatus').value;
+  var fts=document.getElementById('devFilterTStatus').value;
+  var fc=document.getElementById('devFilterComp').value;
+  var fi=document.getElementById('devFilterIface').value;
+  var fv=document.getElementById('devFilterVer').value;
   document.querySelectorAll('#devBody tr').forEach(function(row){
     var tester=row.getAttribute('data-tester')||'';
-    var status=row.getAttribute('data-tstatus')||'';
-    row.style.display=(!ft||tester===ft)&&(!fs||status===fs)?'':'none';
+    var status=row.getAttribute('data-status')||'';
+    var tstatus=row.getAttribute('data-tstatus')||'';
+    var comp=row.getAttribute('data-comp')||'';
+    var iface=row.getAttribute('data-iface')||'';
+    var ver=row.getAttribute('data-ver')||'';
+    row.style.display=(!ft||tester===ft)&&(!fst||status===fst)&&(!fts||tstatus===fts)&&(!fc||comp===fc)&&(!fi||iface===fi)&&(!fv||ver===fv)?'':'none';
   });
 }
 function clearDevFilters(){
-  document.getElementById('devFilterTester').value='';
-  document.getElementById('devFilterStatus').value='';
+  ['devFilterTester','devFilterStatus','devFilterTStatus','devFilterComp','devFilterIface','devFilterVer'].forEach(function(id){
+    var el=document.getElementById(id);
+    if(el) el.value='';
+  });
   filterDevTable();
 }
-function populateDevTesterFilter(){
-  var sel=document.getElementById('devFilterTester');
+function populateDevSelectFromArray(selId, placeholder, values){
+  var sel=document.getElementById(selId);
   if(!sel)return;
-  // Reset and rebuild
-  sel.innerHTML='<option value="">כל הבודקים</option>';
-  ['מתן','עידו','ניר','רבקה'].forEach(function(n){
+  var prev=sel.value;
+  sel.innerHTML='<option value="">'+placeholder+'</option>';
+  values.forEach(function(v){
     var o=document.createElement('option');
-    o.value=n;o.textContent=n;sel.appendChild(o);
+    o.value=v;o.textContent=v;sel.appendChild(o);
   });
+  if(values.indexOf(prev)>-1) sel.value=prev;
+}
+// מרעננים את כל בוררי הסינון בטאב פיתוחים ותיקונים: סטטוס/בודק/סטטוס בדיקה
+// מגיעים מהרשימות הניתנות לעריכה (DEV_LISTS), רכיב/גרסה/ממשק מהערכים שבפועל
+// קיימים כרגע במשימות (אין להם רשימה מנוהלת - שדות חופשיים).
+function populateDevFilters(){
+  populateDevSelectFromArray('devFilterStatus','כל הסטטוסים (פיתוח)', DEV_LISTS.status);
+  populateDevSelectFromArray('devFilterTester','כל הבודקים', DEV_LISTS.tester);
+  populateDevSelectFromArray('devFilterTStatus','כל סטטוסי הבדיקה', DEV_LISTS.tStatus);
+  var comps={}, ifaces={}, vers={};
+  DEV_TASKS.forEach(function(t){
+    if(t.comp) comps[t.comp]=1;
+    if(t.iface) ifaces[t.iface]=1;
+    if(t.ver) vers[t.ver]=1;
+  });
+  populateDevSelectFromArray('devFilterComp','כל הרכיבים', Object.keys(comps).sort());
+  populateDevSelectFromArray('devFilterIface','כל הממשקים', Object.keys(ifaces).sort());
+  populateDevSelectFromArray('devFilterVer','כל הגרסאות', Object.keys(vers).sort());
 }
 
 function openNewDevTask(){
@@ -1714,7 +1869,7 @@ async function saveNewDevTask(){
 
     DEV_TASKS.push(task);
     renderDevTable();
-    populateDevTesterFilter();
+    populateDevFilters();
     closeNewDevModal();
   }catch(e){
     document.getElementById('newDevMsg').style.color='#c62828';
@@ -1724,6 +1879,18 @@ async function saveNewDevTask(){
 
 // עריכת משימת פיתוח - נעשית תמיד דרך מודל עריכה מלא עם כפתור "שמור" מפורש,
 // כדי שלא יהיה מצב של שינוי בשדה שנראה כאילו נשמר אבל בפועל לא נשלח לשרת.
+// ממלאים DROPDOWN מתוך הרשימה הניתנת לעריכה (DEV_LISTS). אם הערך הנוכחי של
+// המשימה כבר לא קיים ברשימה (הוסר ע"י אדמין בינתיים) - עדיין מציגים אותו כאפשרות
+// כדי לא "לאבד" מידע קיים בטופס.
+function populateDevEditSelect(selId, listKey, selectedValue){
+  var sel=document.getElementById(selId);
+  if(!sel)return;
+  var opts=(DEV_LISTS[listKey]||[]).slice();
+  if(selectedValue && opts.indexOf(selectedValue)===-1) opts.push(selectedValue);
+  sel.innerHTML='<option value="">—</option>'+opts.map(function(o){
+    return '<option value="'+esc(o)+'"'+(o===selectedValue?' selected':'')+'>'+esc(o)+'</option>';
+  }).join('');
+}
 function openEditDevTask(idx){
   var t=DEV_TASKS[idx];
   if(!t)return;
@@ -1732,16 +1899,26 @@ function openEditDevTask(idx){
   document.getElementById('devEditIdx').value=t._uid;
   document.getElementById('devEditTaskNum').value=t.id||'';
   document.getElementById('devEditDev').value=t.dev||'';
-  document.getElementById('devEditStatus').value=t.status||'';
+  populateDevEditSelect('devEditStatus','status',t.status||'');
   document.getElementById('devEditDesc').value=t.desc||'';
   document.getElementById('devEditSpecLink').value=t.specLink||'';
   document.getElementById('devEditNotes').value=t.notes||'';
   document.getElementById('devEditComp').value=t.comp||'';
   document.getElementById('devEditVer').value=t.ver||'';
   document.getElementById('devEditIface').value=t.iface||'';
-  document.getElementById('devEditTester').value=t.tester||'';
-  document.getElementById('devEditTStatus').value=t.tStatus||'';
+  populateDevEditSelect('devEditTester','tester',t.tester||'');
+  populateDevEditSelect('devEditTStatus','tStatus',t.tStatus||'');
   document.getElementById('devEditTNotes').value=t.tNotes||'';
+  var linkEl=document.getElementById('devEditLaunchLink');
+  if(linkEl){
+    if(t.linkedLaunchId){
+      linkEl.style.display='block';
+      linkEl.onclick=function(){ jumpToLaunchTask(t.linkedLaunchId); };
+    } else {
+      linkEl.style.display='none';
+      linkEl.onclick=null;
+    }
+  }
   document.getElementById('devEditMsg').textContent='';
   document.getElementById('devEditModal').style.display='flex';
 }
@@ -1794,6 +1971,38 @@ async function saveDevTaskModal(){
 
   try {
     var BASE = 'https://malm-focus-default-rtdb.firebaseio.com';
+    var launchCreated = false;
+
+    // אם סטטוס הבדיקה משתנה ל"לבדיקה בעליה לאוויר" ואין עדיין משימה מקושרת - יוצרים
+    // אוטומטית משימה חדשה בטאב "משימות בעליה לאוויר", מקושרת למשימת הפיתוח הזו (ולא
+    // כפילות עצמאית), כדי שאפשר יהיה לנווט בין השתיים. אם כבר קיים קישור - לא יוצרים שוב.
+    if (newTStatus === 'לבדיקה בעליה לאוויר' && !t.linkedLaunchId) {
+      var launchId = 'launch_' + Date.now() + '_' + Math.random().toString(36).slice(2,9);
+      var launchTask = {
+        id: launchId,
+        task: 'בדיקה בעליה לאוויר — משימת פיתוח ' + (updatedFields.id || '(ללא מספר)') + (updatedFields.desc ? ': ' + updatedFields.desc : ''),
+        status: 'פתוח',
+        notes: '',
+        closedBy: '',
+        closedAt: '',
+        createdAt: new Date().toISOString(),
+        linkedDevUid: taskUid,
+        linkedDevTaskNum: updatedFields.id
+      };
+      var launchPutRes = await fetch(BASE + '/launchTasks/' + launchId + '.json', {
+        method: 'PUT',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(launchTask)
+      });
+      if (!launchPutRes.ok) throw new Error('נכשלה יצירת המשימה המקושרת בטאב עליה לאוויר (סטטוס ' + launchPutRes.status + ')');
+      var launchVerifyRes = await fetch(BASE + '/launchTasks/' + launchId + '.json?t=' + Date.now());
+      var launchVerifyData = (await launchVerifyRes.json()) || {};
+      if (!deepEqual(launchVerifyData, launchTask)) throw new Error('האימות מול השרת נכשל ביצירת המשימה המקושרת בטאב עליה לאוויר.');
+      LAUNCH_TASKS[launchId] = launchTask;
+      updatedFields.linkedLaunchId = launchId;
+      launchCreated = true;
+    }
+
     // sLog הוא יומן שינויים מצטבר - טוענים טרי מהשרת וממזגים איתו, כדי לא לאבד
     // רשומות שנוספו במקביל ע"י יוזר אחר
     var freshRes = await fetch(BASE + '/devTasksByUid/' + encodeURIComponent(taskUid) + '.json?t=' + Date.now());
@@ -1830,10 +2039,10 @@ async function saveDevTaskModal(){
     t.sLog = mergedLog;
 
     document.getElementById('devEditMsg').style.color='#2e7d32';
-    document.getElementById('devEditMsg').textContent='✅ נשמר ואומת מול השרת בהצלחה';
+    document.getElementById('devEditMsg').textContent='✅ נשמר ואומת מול השרת בהצלחה' + (launchCreated ? ' + נוצרה משימה מקושרת בטאב עליה לאוויר' : '');
     renderDevTable();
-    populateDevTesterFilter();
-    setTimeout(closeDevEditModal, 600);
+    populateDevFilters();
+    setTimeout(closeDevEditModal, launchCreated ? 1400 : 600);
   } catch(e) {
     document.getElementById('devEditMsg').style.color='#c62828';
     document.getElementById('devEditMsg').textContent='❌ ' + e.message;
@@ -1842,7 +2051,7 @@ async function saveDevTaskModal(){
   }
 }
 
-var DEV_OVERRIDE_FIELDS = ['tester','tStatus','tNotes','status','sLog','specLink','dev','desc','notes','comp','ver','iface','id'];
+var DEV_OVERRIDE_FIELDS = ['tester','tStatus','tNotes','status','sLog','specLink','dev','desc','notes','comp','ver','iface','id','linkedLaunchId'];
 
 // טוען עדכונים לפי מזהה פנימי יציב (t._uid) - לא לפי מיקום במערך, ולא לפי "מספר משימה"
 // (t.id) שהוא שדה עסקי חופשי שמוזן ע"י המשתמש ולכן יכול להיות ריק, לא ייחודי, או
@@ -2261,8 +2470,9 @@ function renderLaunchTable() {
   tb.innerHTML = tasks.map(function(t, i) {
     var bg = i % 2 ? '#f9f9f9' : '#fff';
     var statusColor = t.status === 'בוצע' ? '#2e7d32' : '#e65100';
-    return '<tr style="background:' + bg + ';vertical-align:top">' +
-      '<td style="padding:8px 10px;border-bottom:1px solid #eee;font-size:12px;line-height:1.5;white-space:pre-wrap">' + esc(t.task) + '</td>' +
+    var linkedBadge = t.linkedDevUid ? '<div style="margin-top:4px"><button onclick="jumpToDevTask(\'' + esc(t.linkedDevUid) + '\')" title="עבר למשימת הפיתוח המקושרת" style="background:#1565c0;color:#fff;border:none;border-radius:10px;padding:2px 8px;cursor:pointer;font-size:10px;font-family:Arial">🔧 מקושר למשימת פיתוח ' + esc(t.linkedDevTaskNum || '') + '</button></div>' : '';
+    return '<tr style="background:' + bg + ';vertical-align:top" data-launch-id="' + esc(t.id) + '">' +
+      '<td style="padding:8px 10px;border-bottom:1px solid #eee;font-size:12px;line-height:1.5;white-space:pre-wrap">' + esc(t.task) + linkedBadge + '</td>' +
       '<td style="padding:8px 10px;border-bottom:1px solid #eee;white-space:nowrap"><span style="color:' + statusColor + ';font-weight:700">' + esc(t.status||'פתוח') + '</span></td>' +
       '<td style="padding:8px 10px;border-bottom:1px solid #eee;font-size:12px;color:#555;line-height:1.5;white-space:pre-wrap">' + esc(t.notes||'') + '</td>' +
       '<td style="padding:8px 10px;border-bottom:1px solid #eee;font-size:11px;white-space:nowrap">' + esc(t.createdAt ? t.createdAt.slice(0,10) : '') + '</td>' +
@@ -2342,6 +2552,32 @@ async function deleteLaunchTask(id) {
   renderLaunchTable();
 }
 
+// ניווט בין משימת פיתוח לבדיקה למשימת "עליה לאוויר" המקושרת אליה, ובחזרה -
+// כדי שלא יהיה צריך לחפש ידנית את המשימה בטאב השני.
+function jumpToLaunchTask(id) {
+  switchTab(5);
+  loadLaunchTab().then(function() {
+    renderLaunchTable();
+    setTimeout(function() {
+      var row = document.querySelector('#launchBody tr[data-launch-id="' + id.replace(/"/g,'\\"') + '"]');
+      if (row) {
+        row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        row.style.outline = '3px solid #1565c0';
+        setTimeout(function(){ row.style.outline=''; }, 2000);
+      }
+    }, 50);
+  });
+}
+function jumpToDevTask(uid) {
+  switchTab(3);
+  Promise.all([loadDevLists(), loadDevTasks()]).then(function() {
+    renderDevTable();
+    populateDevFilters();
+    var idx = DEV_TASKS.findIndex(function(x){ return x._uid === uid; });
+    if (idx > -1) openEditDevTask(idx);
+  });
+}
+
 // פונקציה חד-פעמית להסרת רשומות כפולות (תוכן זהה לחלוטין למעט _id)
 // הופעלה ידנית ע"י מתן לניקוי כפילויות היסטוריות
 async function dedupRecords(sheet) {
@@ -2382,16 +2618,27 @@ async function dedupRecords(sheet) {
   <div style="font-size:16px;font-weight:700;color:#1a1a2e;margin-bottom:14px">&#128295; פיתוחים ותיקונים לבדיקה</div>
   <div class="stats" id="s3"></div>
   <div style="display:flex;gap:10px;margin-bottom:12px;flex-wrap:wrap;align-items:center">
+    <select id="devFilterStatus" onchange="filterDevTable()" style="padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:12px;font-family:Arial;direction:rtl">
+      <option value="">כל הסטטוסים (פיתוח)</option>
+    </select>
     <select id="devFilterTester" onchange="filterDevTable()" style="padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:12px;font-family:Arial;direction:rtl">
       <option value="">כל הבודקים</option>
     </select>
-    <select id="devFilterStatus" onchange="filterDevTable()" style="padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:12px;font-family:Arial;direction:rtl">
-      <option value="">כל הסטטוסים</option>
-      <option value="תקין">תקין</option>
-      <option value="לא תקין">לא תקין</option>
+    <select id="devFilterTStatus" onchange="filterDevTable()" style="padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:12px;font-family:Arial;direction:rtl">
+      <option value="">כל סטטוסי הבדיקה</option>
+    </select>
+    <select id="devFilterComp" onchange="filterDevTable()" style="padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:12px;font-family:Arial;direction:rtl">
+      <option value="">כל הרכיבים</option>
+    </select>
+    <select id="devFilterIface" onchange="filterDevTable()" style="padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:12px;font-family:Arial;direction:rtl">
+      <option value="">כל הממשקים</option>
+    </select>
+    <select id="devFilterVer" onchange="filterDevTable()" style="padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:12px;font-family:Arial;direction:rtl">
+      <option value="">כל הגרסאות</option>
     </select>
     <button onclick="clearDevFilters()" style="padding:6px 12px;border:1px solid #aaa;border-radius:6px;font-size:12px;font-family:Arial;background:#fff;cursor:pointer">נקה סינון</button>
     <button onclick="openStatusReport('dev')" style="padding:6px 12px;background:#1a1a2e;color:#fff;border:none;border-radius:6px;font-size:12px;font-family:Arial;cursor:pointer">📊 דוח שינויי סטטוס</button>
+    <button onclick="openDevListsModal()" style="padding:6px 12px;background:#1a1a2e;color:#fff;border:none;border-radius:6px;font-size:12px;font-family:Arial;cursor:pointer">⚙️ ניהול רשימות</button>
     <button onclick="openNewDevTask()" style="padding:6px 14px;background:#D40511;color:#fff;border:none;border-radius:6px;font-size:12px;font-weight:700;font-family:Arial;cursor:pointer;margin-right:auto">+ משימה חדשה</button>
   </div>
   <div style="overflow-x:auto">
@@ -2631,11 +2878,6 @@ async function dedupRecords(sheet) {
         <label style="font-size:11px;color:#666;font-weight:700;display:block;margin-bottom:3px">סטטוס פיתוח</label>
         <select id="devEditStatus" style="width:100%;padding:8px 10px;border:1.5px solid #ddd;border-radius:6px;font-size:13px;font-family:Arial;direction:rtl">
           <option value="">—</option>
-          <option value="פתוח">פתוח</option>
-          <option value="בפיתוח">בפיתוח</option>
-          <option value="בבדיקה">בבדיקה</option>
-          <option value="נבדק">נבדק</option>
-          <option value="נסגר">נסגר</option>
         </select>
       </div>
     </div>
@@ -2671,18 +2913,12 @@ async function dedupRecords(sheet) {
         <label style="font-size:11px;color:#666;font-weight:700;display:block;margin-bottom:3px">בודק DHL</label>
         <select id="devEditTester" style="width:100%;padding:8px 10px;border:1.5px solid #ddd;border-radius:6px;font-size:13px;font-family:Arial;direction:rtl">
           <option value="">—</option>
-          <option value="מתן">מתן</option>
-          <option value="עידו">עידו</option>
-          <option value="ניר">ניר</option>
-          <option value="רבקה">רבקה</option>
         </select>
       </div>
       <div style="flex:1">
         <label style="font-size:11px;color:#666;font-weight:700;display:block;margin-bottom:3px">סטטוס בדיקה</label>
         <select id="devEditTStatus" style="width:100%;padding:8px 10px;border:1.5px solid #ddd;border-radius:6px;font-size:13px;font-family:Arial">
           <option value="">—</option>
-          <option value="תקין">תקין</option>
-          <option value="לא תקין">לא תקין</option>
         </select>
       </div>
     </div>
@@ -2690,10 +2926,24 @@ async function dedupRecords(sheet) {
       <label style="font-size:11px;color:#666;font-weight:700;display:block;margin-bottom:3px">הערות בודק</label>
       <textarea id="devEditTNotes" rows="2" style="width:100%;padding:8px 10px;border:1.5px solid #ddd;border-radius:6px;font-size:13px;font-family:Arial;direction:rtl;resize:vertical;box-sizing:border-box"></textarea>
     </div>
+    <div id="devEditLaunchLink" style="display:none;margin-bottom:10px;padding:8px 10px;background:#fff3e0;border:1px solid #ffb74d;border-radius:6px;font-size:12px;color:#e65100;cursor:pointer;font-weight:700">🚀 קיימת משימה מקושרת בטאב "משימות בעליה לאוויר" — לחץ/י למעבר</div>
     <div id="devEditMsg" style="margin-bottom:6px;font-size:12px;font-weight:700"></div>
     <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px">
       <button onclick="closeDevEditModal()" style="padding:8px 16px;border:1px solid #ddd;border-radius:6px;cursor:pointer;font-size:13px;font-family:Arial;background:#fff">ביטול</button>
       <button id="devEditSaveBtn" onclick="saveDevTaskModal()" style="padding:8px 16px;background:#D40511;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px;font-weight:700;font-family:Arial">שמור</button>
+    </div>
+  </div>
+</div>
+
+<!-- ניהול רשימות DROPDOWN (סטטוס פיתוח / בודק DHL / סטטוס בדיקה) - אדמין בלבד -->
+<div id="devListsModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9000;align-items:center;justify-content:center">
+  <div style="background:#fff;border-radius:12px;padding:24px;width:90%;max-width:480px;max-height:90vh;overflow-y:auto;direction:rtl">
+    <div style="font-size:15px;font-weight:700;margin-bottom:6px;color:#1a1a2e">⚙️ ניהול רשימות</div>
+    <div style="font-size:11px;color:#888;margin-bottom:16px">הוספה/הסרה של אפשרויות ל-DROPDOWN-ים בטאב פיתוחים ותיקונים לבדיקה. השינויים נשמרים לכולם.</div>
+    <div id="devListsBody"></div>
+    <div id="devListsMsg" style="margin-bottom:6px;font-size:12px;font-weight:700"></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px">
+      <button onclick="closeDevListsModal()" style="padding:8px 16px;border:1px solid #ddd;border-radius:6px;cursor:pointer;font-size:13px;font-family:Arial;background:#fff">סגור</button>
     </div>
   </div>
 </div>

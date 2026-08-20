@@ -656,3 +656,164 @@ test.describe('אדמין יכול לערוך כל שדה שמוצג בטבלא�
     await expect(page.locator('#f_מב')).toHaveCount(0);
   });
 });
+
+test.describe('ניהול רשימות DROPDOWN בטאב פיתוחים ותיקונים לבדיקה', () => {
+  test('אדמין יכול להוסיף אפשרות חדשה לרשימת "סטטוס בדיקה", היא נשמרת בשרת ומופיעה מיד ב-DROPDOWN של מודל העריכה', async ({ page }) => {
+    const { devLists: liveDevLists } = await mockFirebase(page, {});
+    await page.goto('/index.html');
+    await login(page, 'testadmin', 'pw');
+    await page.click('.tab[data-tab="3"]');
+    await expect(page.locator('#devBody')).toContainText('13770');
+
+    await page.click('button[onclick="openDevListsModal()"]');
+    await expect(page.locator('#devListsModal')).toBeVisible();
+    await page.fill('#devListNew_tStatus', 'ממתין לסביבת בדיקה');
+    await page.click('button[onclick="addDevListOption(\'tStatus\')"]');
+    await page.waitForTimeout(150);
+
+    // נשמר בפועל בשרת (לא רק בזיכרון המקומי)
+    expect(liveDevLists.tStatus).toContain('ממתין לסביבת בדיקה');
+    await expect(page.locator('#devListsMsg')).toContainText('נשמר');
+    await page.click('button[onclick="closeDevListsModal()"]');
+
+    // פותחים משימה לעריכה - האפשרות החדשה קיימת ב-DROPDOWN בלי לגעת בקוד
+    const row = page.locator('#devBody tr', { hasText: '13770' });
+    await row.locator('button', { hasText: 'עריכה' }).click();
+    await expect(page.locator('#devEditModal')).toBeVisible();
+    await expect(page.locator('#devEditTStatus option[value="ממתין לסביבת בדיקה"]')).toHaveCount(1);
+  });
+
+  test('אדמין יכול להסיר אפשרות מרשימה קיימת, וההסרה נשמרת בשרת', async ({ page }) => {
+    const { devLists: liveDevLists } = await mockFirebase(page, {});
+    await page.goto('/index.html');
+    await login(page, 'testadmin', 'pw');
+    await page.click('.tab[data-tab="3"]');
+
+    await page.click('button[onclick="openDevListsModal()"]');
+    await expect(page.locator('#devListsModal')).toBeVisible();
+    // מסירים את "ניר" מרשימת בודקי DHL
+    await page.locator('#devListsBody span', { hasText: 'ניר' }).locator('button').click();
+    await page.waitForTimeout(150);
+
+    expect(liveDevLists.tester).not.toContain('ניר');
+    await expect(page.locator('#devListsBody')).not.toContainText('ניר');
+  });
+
+  test('מנהל (לא אדמין) לא רואה כלל את הטאב, ולכן לא יכול לגשת לניהול הרשימות', async ({ page }) => {
+    await mockFirebase(page, {});
+    await page.goto('/index.html');
+    await login(page, 'testmgr', 'pw');
+    await expect(page.locator('#tabDev')).toBeHidden();
+  });
+});
+
+test.describe('סטטוס בדיקה "לבדיקה בעליה לאוויר" - יצירת משימה מקושרת אוטומטית', () => {
+  test('בחירת הסטטוס יוצרת אוטומטית משימה מקושרת בטאב "משימות בעליה לאוויר", עם ניווט הלוך ושוב', async ({ page }) => {
+    const { devTasksByUid: liveDevTasks, launchTasks: liveLaunch } = await mockFirebase(page, {});
+    await page.goto('/index.html');
+    await login(page, 'testadmin', 'pw');
+    await page.click('.tab[data-tab="3"]');
+    await expect(page.locator('#devBody')).toContainText('13770');
+
+    const row = page.locator('#devBody tr', { hasText: '13770' });
+    await row.locator('button', { hasText: 'עריכה' }).click();
+    await expect(page.locator('#devEditModal')).toBeVisible();
+    await page.selectOption('#devEditTStatus', 'לבדיקה בעליה לאוויר');
+    await page.click('button[onclick="saveDevTaskModal()"]');
+    await page.waitForTimeout(300);
+
+    // המשימה נשמרה עם קישור, ונוצרה בפועל משימה חדשה בשרת בטאב עליה לאוויר
+    expect(liveDevTasks['dt_001'].tStatus).toBe('לבדיקה בעליה לאוויר');
+    const launchId = liveDevTasks['dt_001'].linkedLaunchId;
+    expect(launchId).toBeTruthy();
+    expect(liveLaunch[launchId]).toBeTruthy();
+    expect(liveLaunch[launchId].linkedDevUid).toBe('dt_001');
+    expect(liveLaunch[launchId].linkedDevTaskNum).toBe('13770');
+    expect(liveLaunch[launchId].status).toBe('פתוח');
+
+    // כפתור ניווט מטאב הפיתוחים לטאב עליה לאוויר
+    await expect(page.locator('#devBody tr', { hasText: '13770' }).locator('button[title*="עבר למשימה המקושרת"]')).toBeVisible();
+    await page.locator('#devBody tr', { hasText: '13770' }).locator('button[title*="עבר למשימה המקושרת"]').click();
+    await expect(page.locator('.tab[data-tab="5"]')).toHaveClass(/active/);
+    await expect(page.locator('#launchBody')).toContainText('13770');
+
+    // וכפתור ניווט חזרה מטאב עליה לאוויר לטאב הפיתוחים
+    await page.locator('#launchBody button', { hasText: 'מקושר למשימת פיתוח' }).click();
+    await expect(page.locator('.tab[data-tab="3"]')).toHaveClass(/active/);
+    await expect(page.locator('#devEditModal')).toBeVisible();
+    await expect(page.locator('#devEditTaskNum')).toHaveValue('13770');
+  });
+
+  test('שמירה חוזרת כשהסטטוס כבר "לבדיקה בעליה לאוויר" לא יוצרת משימה מקושרת כפולה', async ({ page }) => {
+    const { devTasksByUid: liveDevTasks, launchTasks: liveLaunch } = await mockFirebase(page, {
+      devTasksByUid: { dt_001: { tester: '', tStatus: 'לבדיקה בעליה לאוויר', tNotes: '', status: '', linkedLaunchId: 'launch_existing' } },
+      launchTasks: { launch_existing: { id: 'launch_existing', task: 'קיים כבר', status: 'פתוח', notes: '', closedBy: '', closedAt: '', createdAt: '2026-08-01T00:00:00.000Z', linkedDevUid: 'dt_001', linkedDevTaskNum: '13770' } }
+    });
+    await page.goto('/index.html');
+    await login(page, 'testadmin', 'pw');
+    await page.click('.tab[data-tab="3"]');
+    await expect(page.locator('#devBody')).toContainText('13770');
+
+    const row = page.locator('#devBody tr', { hasText: '13770' });
+    await row.locator('button', { hasText: 'עריכה' }).click();
+    await expect(page.locator('#devEditModal')).toBeVisible();
+    await expect(page.locator('#devEditTStatus')).toHaveValue('לבדיקה בעליה לאוויר');
+    await page.fill('#devEditTNotes', 'הערה נוספת בלי לשנות סטטוס');
+    await page.click('button[onclick="saveDevTaskModal()"]');
+    await page.waitForTimeout(200);
+
+    expect(Object.keys(liveLaunch)).toEqual(['launch_existing']);
+    expect(liveDevTasks['dt_001'].linkedLaunchId).toBe('launch_existing');
+  });
+
+  test('אפשר לבחור גם את הסטטוס החדש "לא רלוונטי" והוא נשמר כרגיל', async ({ page }) => {
+    const { devTasksByUid: liveDevTasks } = await mockFirebase(page, {});
+    await page.goto('/index.html');
+    await login(page, 'testadmin', 'pw');
+    await page.click('.tab[data-tab="3"]');
+    const row = page.locator('#devBody tr', { hasText: '13770' });
+    await row.locator('button', { hasText: 'עריכה' }).click();
+    await expect(page.locator('#devEditModal')).toBeVisible();
+    await page.selectOption('#devEditTStatus', 'לא רלוונטי');
+    await page.click('button[onclick="saveDevTaskModal()"]');
+    await page.waitForTimeout(200);
+
+    expect(liveDevTasks['dt_001'].tStatus).toBe('לא רלוונטי');
+    await expect(page.locator('#devBody tr', { hasText: '13770' })).toContainText('לא רלוונטי');
+  });
+});
+
+test.describe('פילטרים נוספים בטבלת פיתוחים ותיקונים לבדיקה', () => {
+  test('אפשר לסנן לפי סטטוס פיתוח, רכיב, ממשק וגרסה - לא רק לפי בודק/סטטוס בדיקה', async ({ page }) => {
+    // המשימות הקבועות במערכת (85) תמיד מוצגות - לכן לא סופרים סה"כ שורות, אלא בודקים
+    // נוכחות/היעדרות של שתי משימות ספציפיות (13770, 14281) עם ערכים ייחודיים שלא
+    // מתנגשים עם אף אחת מ-85 המשימות הקבועות.
+    await mockFirebase(page, {
+      devTasksByUid: {
+        dt_001: { status: 'בפיתוח', comp: 'ZZFILTERCOMP', ver: '5.1557', iface: 'DCC' },
+        dt_002: { status: 'נסגר', comp: 'ZZFILTERCOMP', ver: '9.9999FILTERVER', iface: 'ZZZ' }
+      }
+    });
+    await page.goto('/index.html');
+    await login(page, 'testadmin', 'pw');
+    await page.click('.tab[data-tab="3"]');
+    await expect(page.locator('#devBody')).toContainText('13770');
+
+    await page.selectOption('#devFilterVer', '9.9999FILTERVER');
+    await expect(page.locator('#devBody tr:visible', { hasText: '14281' })).toHaveCount(1);
+    await expect(page.locator('#devBody tr:visible', { hasText: '13770' })).toHaveCount(0);
+
+    await page.selectOption('#devFilterVer', '');
+    await page.selectOption('#devFilterComp', 'ZZFILTERCOMP');
+    await expect(page.locator('#devBody tr:visible', { hasText: '13770' })).toHaveCount(1);
+    await expect(page.locator('#devBody tr:visible', { hasText: '14281' })).toHaveCount(1);
+
+    await page.selectOption('#devFilterStatus', 'בפיתוח');
+    await expect(page.locator('#devBody tr:visible', { hasText: '13770' })).toHaveCount(1);
+    await expect(page.locator('#devBody tr:visible', { hasText: '14281' })).toHaveCount(0);
+
+    await page.click('button[onclick="clearDevFilters()"]');
+    await expect(page.locator('#devBody tr:visible', { hasText: '13770' })).toHaveCount(1);
+    await expect(page.locator('#devBody tr:visible', { hasText: '14281' })).toHaveCount(1);
+  });
+});
