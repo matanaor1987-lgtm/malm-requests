@@ -263,6 +263,7 @@ tr:hover td{background:#fffbf0}
       <option value="4">4</option><option value="5">5</option>
     </select>
     <button onclick="openStatusReport('rivka')" style="background:#1a1a2e;color:#fff;padding:5px 12px;border-radius:5px;border:none;cursor:pointer;font-size:12px;font-family:Arial">📊 דוח שינויי סטטוס</button>
+    <button id="btnMigrateHandler" onclick="migrateRivkaHandlerAssignments()" style="display:none;background:#6a1b9a;color:#fff;padding:5px 12px;border-radius:5px;border:none;cursor:pointer;font-size:12px;font-family:Arial" title="מתאים אוטומטית שיוכי מטפל ישנים (טקסט חופשי) למשתמשים קיימים במערכת">🔧 תיקון שיוכי מטפל ישנים</button>
   </div>
   <div class="count" id="c2"></div>
   <div class="tbl-wrap">
@@ -425,6 +426,7 @@ function showApp() {
 
   if (isAdmin()) {
     document.getElementById('backupControls').style.display = 'inline';
+    document.getElementById('btnMigrateHandler').style.display = 'inline-block';
     document.getElementById('tabUsers').style.display = 'block';
     document.getElementById('tabDev').style.display = 'block';
     document.getElementById('tabSanity').style.display = 'block';
@@ -599,6 +601,74 @@ async function saveRecord(sheet, idx, rec){
     el.textContent='❌ שגיאה: '+e.message;
     el.style.background='#c62828';
     setTimeout(()=>{el.style.display='none';el.style.background='#1a1a2e';},6000);
+  }
+}
+
+// תיקון חד-פעמי (אפשר להריץ שוב בכל עת) לשיוכי "מטפל" ישנים במשימות רבקה - טקסט
+// חופשי מלפני שהיה מטUid. אותו עיקרון בדיוק כמו migrateDevTesterAssignments:
+// לא מנחשים בשקט - מציגים לאדמין בדיוק מה יתוקן ולאיזה משתמש, וכותבים לשרת רק
+// אחרי אישור מפורש, עם אימות אחרי הכתיבה (לא מסתפקים בתגובת HTTP 200).
+// שדה "מטפל" הוא תצוגה/ניתוב בלבד - לא משפיע על מי רואה איזו משימה (בשונה
+// מ"מבקש", שנשאר כרגע ללא שינוי, ראו שיחה עם המשתמש).
+async function migrateRivkaHandlerAssignments(){
+  if (!isAdmin()) return;
+  var users = DB.users||[];
+  var candidates = (DB.rivka||[]).filter(function(r){ return r.מט && !r.מטUid; });
+  if (!candidates.length) { alert('אין שיוכי מטפל ישנים לתיקון - כל השיוכים כבר מקושרים למשתמשים.'); return; }
+
+  var plan = candidates.map(function(r){ return { r: r, found: findUserMatches(users, r.מט) }; });
+  var autoFix = plan.filter(function(p){ return p.found.matches.length===1; });
+  var needsReview = plan.filter(function(p){ return p.found.matches.length!==1; });
+
+  var summary = 'נמצאו ' + candidates.length + ' משימות רבקה עם שיוך מטפל ישן (טקסט חופשי, לא מקושר למשתמש).\n\n';
+  if (autoFix.length) {
+    summary += '✅ ' + autoFix.length + ' ניתן לתקן אוטומטית:\n' +
+      autoFix.map(function(p){ return '  • "' + (p.r.נ||p.r.כ||'(ללא נושא)') + '": "' + p.r.מט + '" ← ' + p.found.matches[0].name + (p.found.method==='prefix'?' (התאמת שם פרטי)':p.found.method==='alias'?' (כינוי מוגדר)':''); }).join('\n') + '\n';
+  }
+  if (needsReview.length) {
+    summary += '\n⚠️ ' + needsReview.length + ' דורשות תיקון ידני (0 או כמה משתמשים עם שם דומה) - יש לפתוח כל אחת ולבחור את המטפל הנכון:\n' +
+      needsReview.map(function(p){ return '  • "' + (p.r.נ||p.r.כ||'(ללא נושא)') + '": "' + p.r.מט + '"'; }).join('\n') + '\n';
+  }
+  if (!autoFix.length) { alert(summary); return; }
+  summary += '\nלהמשיך ולתקן את ' + autoFix.length + ' המשימות שניתן לתקן אוטומטית?';
+  if (!confirm(summary)) return;
+
+  try {
+    var freshRes = await fetch('https://malm-focus-default-rtdb.firebaseio.com/db/rivka.json?t=' + Date.now());
+    if (!freshRes.ok) throw new Error('שגיאה בטעינה טרייה מהשרת (סטטוס ' + freshRes.status + ')');
+    var freshArr = await freshRes.json() || [];
+    var byId = {};
+    freshArr.forEach(function(r){ if (r._id) byId[r._id] = r; });
+    autoFix.forEach(function(p){
+      var fr = byId[p.r._id];
+      if (!fr) return; // נמחקה בינתיים - מדלגים, לא נוגעים
+      fr.מטUid = p.found.matches[0]._uid;
+      fr.מט = p.found.matches[0].name;
+    });
+
+    var putRes = await fetch('https://malm-focus-default-rtdb.firebaseio.com/db/rivka.json', {
+      method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(freshArr)
+    });
+    if (!putRes.ok) throw new Error('השרת דחה את הכתיבה (סטטוס ' + putRes.status + ')');
+
+    var verifyRes = await fetch('https://malm-focus-default-rtdb.firebaseio.com/db/rivka.json?t=' + Date.now());
+    var verifyArr = await verifyRes.json() || [];
+    var verifyById = {};
+    verifyArr.forEach(function(r){ if (r._id) verifyById[r._id] = r; });
+    var okCount = 0, failCount = 0;
+    autoFix.forEach(function(p){
+      var v = verifyById[p.r._id];
+      if (v && v.מטUid === p.found.matches[0]._uid && v.מט === p.found.matches[0].name) okCount++;
+      else failCount++;
+    });
+
+    DB.rivka = verifyArr;
+    r2();
+    var doneMsg = 'הושלם: ' + okCount + ' משימות תוקנו בהצלחה' + (failCount ? (', ' + failCount + ' נכשלו') : '') + '.';
+    if (needsReview.length) doneMsg += '\n' + needsReview.length + ' משימות עדיין דורשות תיקון ידני - פתח/י כל אחת, בחר/י את המטפל הנכון מה-DROPDOWN, ושמור/י.';
+    alert(doneMsg);
+  } catch(e) {
+    alert('❌ שגיאה: ' + e.message);
   }
 }
 
@@ -833,7 +903,7 @@ function rivkaFields(r={}, isEdit=false){
     <div class="form-row-group">
       <div class="form-row narrow"><label>עדיפות <small style="color:#888;font-weight:normal">(1=גבוהה,5=נמוכה)</small></label><select id="f_ע" onchange="checkCritical(this)"><option value="">—</option><option value="0" ${r.ע==0?'selected':''} style="color:#D40511;font-weight:bold">🚨 0 = קריטי</option>${[1,2,3,4,5].map(n=>`<option ${r.ע==n?'selected':''}>${n}</option>`).join('')}</select></div>
       ${isEdit?`<div class="form-row narrow"><label>סטטוס</label><select id="f_ס">${(isAdmin()?SR_ADMIN:SR).map(s=>`<option ${(r.ס||'פתוח')===s?'selected':''}>${s}</option>`).join('')}</select></div>`:''}
-      ${isEdit && isAdmin()?`<div class="form-row"><label>מטפל</label><input id="f_מט" value="${(r.מט||'').replace(/"/g,'&quot;')}" placeholder="שם מטפל..."></div>`:''}
+      ${isEdit && isAdmin()?`<div class="form-row"><label>מטפל</label><select id="f_מט">${buildUserSelectOptionsHtml(r.מטUid||'', r.מט||'')}</select></div>`:''}
     </div>
     ${isEdit && isAdmin()?`<div class="form-row"><label>מבקש</label><input id="f_מב" value="${(r.מב||'').replace(/"/g,'&quot;')}" placeholder="שם המבקש..."></div>`:''}
     <div class="form-row"><label>בקשה</label><textarea id="f_ב" class="tall">${r.ב||''}</textarea></div>`;
@@ -909,9 +979,16 @@ function saveModal(){
       reads:r?r.reads||{}:{}
     };
   }else{
+    // "מטפל" נבחר ב-DROPDOWN לפי _uid של משתמש אמיתי (ראו buildUserSelectOptionsHtml).
+    // אם עדיין לא נבחר משתמש תואם למשימה ישנה, ה-value הוא "legacy:<שם ישן>" - במקרה
+    // כזה שומרים את השם הישן כמו שהוא (בלי מטUid) ולא דורסים/מוחקים אותו בכוח.
+    var mtEl = document.getElementById('f_מט');
+    var mtUser = mtEl ? (DB.users||[]).find(function(u){ return u._uid===mtEl.value; }) : null;
+    var newMt = mtEl ? (mtUser ? mtUser.name : (mtEl.value.indexOf('legacy:')===0 ? mtEl.value.slice(7) : '')) : (r?r.מט:'');
+    var newMtUid = mtEl ? (mtUser ? mtUser._uid : '') : (r?r.מטUid:'');
     rec={
       נ:g('f_נ'), מב:document.getElementById('f_מב')?g('f_מב'):(r?r.מב:(CU?CU.name:'')), ת:g('f_ת'), כ:g('f_כ'), ב:g('f_ב'),
-      מט:g('f_מט'), ע:g('f_ע'),
+      מט:newMt, מטUid:newMtUid, ע:g('f_ע'),
       ס:r?(g('f_ס')||r.ס):'פתוח',
       ה:r?r.ה||'':'',
       chat:r?r.chat||{}:{},
@@ -1910,43 +1987,49 @@ function populateDevEditSelect(selId, listKey, selectedValue){
     return '<option value="'+esc(o)+'"'+(o===selectedValue?' selected':'')+'>'+esc(o)+'</option>';
   }).join('');
 }
-// "בודק DHL" משויך למשתמש אמיתי במערכת (בדיוק כמו מבצע בדיקת שפיות) - הרשימה
-// מגיעה מ-DB.users, לא מרשימה חופשית. כך אפשר לשלוח מייל לבודק שהשויך אליו
-// (ראו sendDevTesterEmail) ולראות "המשימות שלי" בעתיד באותו אופן שקיים לבדיקות שפיות.
-// מוצא משתמש/ים שמתאימים לשם בודק "ישן" (טקסט חופשי, מלפני שהיה testerUid) -
-// קודם התאמה מדויקת, ואם אין - התאמת שם פרטי (למשל "עידו" מתאים ל"עידו אפרתי").
-// לא מנחשים בין כמה התאמות - במקרה כזה מחזירים אותן כולן ומשאירים לאדמין לבחור.
-function findDevTesterMatches(users, legacyName){
+// שיוכים למשתמש אמיתי (בודק DHL בפיתוחים, מטפל ברבקה, מבצע בדיקת שפיות) מבוססים
+// על _uid, לא על שם - שם יכול להשתנות. מוצא משתמש/ים שמתאימים לשיוך "ישן" (טקסט
+// חופשי, מלפני שהיה Uid) - קודם התאמה מדויקת, אחר כך כינוי מוגדר ידנית (u.aliases,
+// ראו טאב משתמשים - אדם אישר את ההתאמה בעצמו אז זו רמת ביטחון גבוהה), ואחר כך
+// התאמת שם פרטי (למשל "עידו" מתאים ל"עידו אפרתי"). לא מנחשים בין כמה התאמות -
+// במקרה כזה מחזירים אותן כולן ומשאירים לאדמין לבחור.
+function findUserMatches(users, legacyName){
   if(!legacyName) return { matches: [], method: 'none' };
   var exact = users.filter(function(u){ return u.name===legacyName; });
   if(exact.length) return { matches: exact, method: 'exact' };
-  // כינוי מוגדר ידנית (u.aliases, ראו טאב משתמשים) - אדם אישר את ההתאמה בעצמו,
-  // אז זו רמת ביטחון גבוהה, ממש כמו התאמה מדויקת - נבדק לפני ניחוש לפי שם פרטי.
   var alias = users.filter(function(u){ return (u.aliases||[]).indexOf(legacyName)>-1; });
   if(alias.length) return { matches: alias, method: 'alias' };
   var prefix = users.filter(function(u){ return u.name.indexOf(legacyName+' ')===0; });
   if(prefix.length) return { matches: prefix, method: 'prefix' };
   return { matches: [], method: 'none' };
 }
-// "בודק DHL" משויך למשתמש אמיתי לפי _uid (לא לפי שם - שם יכול להשתנות). למשימות
-// ישנות ששויכו לפי טקסט חופשי (t.tester, בלי testerUid) - מנסים להתאים אוטומטית
-// למשתמש קיים (ראו findDevTesterMatches); אם ההתאמה חד-משמעית זה יישמר אוטומטית
-// בשמירה הבאה. אם לא - מוצג השם הישן כאפשרות נפרדת עד שאדמין יבחר ידנית.
-function populateDevTesterSelect(selectedUid, legacyName){
-  var sel=document.getElementById('devEditTester');
-  if(!sel)return;
+// בונה HTML של אפשרויות DROPDOWN מכל משתמשי המערכת, לבחירה לפי _uid. אם עדיין
+// לא נבחר משתמש (selectedUid ריק) אבל יש שם "ישן" (טקסט חופשי, מלפני שהיה Uid) -
+// מנסים להתאים אוטומטית לפי findUserMatches; אם ההתאמה חד-משמעית היא נבחרת
+// מראש (ותישמר בפועל בשמירה הבאה). אם לא - השם הישן מוצג כאפשרות נפרדת ("שיוך
+// ישן") עד שאדמין יבחר ידנית - כדי לא "לאבד" מידע קיים.
+function buildUserSelectOptionsHtml(selectedUid, legacyName){
   var users=(DB.users||[]);
   var effectiveUid = selectedUid || '';
   if(!effectiveUid && legacyName){
-    var found = findDevTesterMatches(users, legacyName);
+    var found = findUserMatches(users, legacyName);
     if(found.matches.length===1) effectiveUid = found.matches[0]._uid;
   }
-  sel.innerHTML='<option value="">—</option>'+users.map(function(u){
+  var html = '<option value="">—</option>'+users.map(function(u){
     return '<option value="'+esc(u._uid)+'"'+(u._uid===effectiveUid?' selected':'')+'>'+esc(u.name)+' ('+esc(u.role||'')+')</option>';
   }).join('');
   if(!effectiveUid && legacyName){
-    sel.insertAdjacentHTML('beforeend', '<option value="legacy:'+esc(legacyName)+'" selected>'+esc(legacyName)+' (שיוך ישן - יש לבחור את המשתמש הנכון ולשמור)</option>');
+    html += '<option value="legacy:'+esc(legacyName)+'" selected>'+esc(legacyName)+' (שיוך ישן - יש לבחור את המשתמש הנכון ולשמור)</option>';
   }
+  return html;
+}
+// "בודק DHL" משויך למשתמש אמיתי במערכת (בדיוק כמו מבצע בדיקת שפיות) - הרשימה
+// מגיעה מ-DB.users, לא מרשימה חופשית. כך אפשר לשלוח מייל לבודק שהשויך אליו
+// (ראו sendDevTesterEmail) ולראות "המשימות שלי" בעתיד באותו אופן שקיים לבדיקות שפיות.
+function populateDevTesterSelect(selectedUid, legacyName){
+  var sel=document.getElementById('devEditTester');
+  if(!sel)return;
+  sel.innerHTML = buildUserSelectOptionsHtml(selectedUid, legacyName);
 }
 function openEditDevTask(idx){
   var t=DEV_TASKS[idx];
@@ -2148,7 +2231,7 @@ async function migrateDevTesterAssignments(){
   var candidates = DEV_TASKS.filter(function(t){ return t.tester && !t.testerUid; });
   if (!candidates.length) { alert('אין שיוכי בודקים ישנים לתיקון - כל השיוכים כבר מקושרים למשתמשים.'); return; }
 
-  var plan = candidates.map(function(t){ return { t: t, found: findDevTesterMatches(users, t.tester) }; });
+  var plan = candidates.map(function(t){ return { t: t, found: findUserMatches(users, t.tester) }; });
   var autoFix = plan.filter(function(p){ return p.found.matches.length===1; });
   var needsReview = plan.filter(function(p){ return p.found.matches.length!==1; });
 

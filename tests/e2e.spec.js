@@ -888,6 +888,88 @@ test.describe('מזהה פנימי יציב (_uid) למשתמשים, ותיקו�
   });
 });
 
+test.describe('שיוך "מטפל" במשימות לרבקה למשתמש אמיתי (אותו מנגנון UID כמו בודק DHL)', () => {
+  test('שדה מטפל הוא DROPDOWN ממשתמשי המערכת, מתאים אוטומטית שיוך ישן ("עידו") לפי כינוי, ושומר Uid+שם', async ({ page }) => {
+    const rec = { _id: 'r1', נ: 'משימה', מב: 'מנהלת בדיקה', מט: 'עידו', ת: '2026-07-01', כ: 'k', ב: 'b', ע: 1, ס: 'פתוח', chat: {} };
+    await mockFirebase(page, {
+      rivka: [rec],
+      users: seedUsers([{ name: 'עדו אפרתי', username: 'edo_a', password: 'pw', role: 'admin', email: 'edo.a@test.local', aliases: ['עידו'] }])
+    });
+    await page.goto('/index.html');
+    await login(page, 'testadmin', 'pw');
+    await page.click('.tab[data-tab="1"]');
+    await page.click('tr:has-text("משימה") .act-btn');
+    await expect(page.locator('#modalBg')).toHaveClass(/open/);
+    // הכינוי ("עידו") מזהה אוטומטית את "עדו אפרתי" ב-DROPDOWN
+    await expect(page.locator('#f_מט option:checked')).toHaveText('עדו אפרתי (admin)');
+    await page.click('button.btn-save');
+    await expect(page.locator('#modalBg')).not.toHaveClass(/open/);
+
+    const saved = await page.evaluate(() => DB.rivka.find(r => r._id === 'r1'));
+    expect(saved.מט).toBe('עדו אפרתי');
+    expect(saved.מטUid).toBeTruthy();
+  });
+
+  test('שיוך מטפל ישן בלי שום התאמה - נשמר לא נוגעים בו אם לא בוחרים ידנית, וגם מנהל שעורך משימה שלו לא מוחק אותו בטעות', async ({ page }) => {
+    const rec = { _id: 'r2', נ: 'משימה 2', מב: 'מנהלת בדיקה', מט: 'שם שלא קיים בכלל', ת: '2026-07-01', כ: 'k', ב: 'b', ע: 1, ס: 'פתוח', chat: {} };
+    await mockFirebase(page, { rivka: [rec] });
+    await page.goto('/index.html');
+    await login(page, 'testadmin', 'pw');
+    await page.click('.tab[data-tab="1"]');
+    await page.click('tr:has-text("משימה 2") .act-btn');
+    await expect(page.locator('#modalBg')).toHaveClass(/open/);
+    await expect(page.locator('#f_מט option', { hasText: 'שיוך ישן' })).toHaveCount(1);
+    await page.click('button.btn-save');
+    await expect(page.locator('#modalBg')).not.toHaveClass(/open/);
+
+    let saved = await page.evaluate(() => DB.rivka.find(r => r._id === 'r2'));
+    expect(saved.מט).toBe('שם שלא קיים בכלל');
+    expect(saved.מטUid || '').toBe('');
+
+    // מנהלת בדיקה (לא אדמין) עורכת את אותה משימה (שהיא ה"מבקש" שלה) - שדה מטפל
+    // כלל לא מוצג לה, וזה בעבר איפס את השדה בשמירה (g('f_מט') על אלמנט לא קיים)
+    await page.click('#btnOut');
+    await login(page, 'testmgr', 'pw');
+    await page.click('tr:has-text("משימה 2") .act-btn');
+    await expect(page.locator('#modalBg')).toHaveClass(/open/);
+    await expect(page.locator('#f_מט')).toHaveCount(0);
+    await page.click('button.btn-save');
+    await expect(page.locator('#modalBg')).not.toHaveClass(/open/);
+
+    saved = await page.evaluate(() => DB.rivka.find(r => r._id === 'r2'));
+    expect(saved.מט).toBe('שם שלא קיים בכלל');
+  });
+
+  test('כפתור "תיקון שיוכי מטפל ישנים" מוצג לאדמין בלבד, ומתקן אוטומטית התאמות חד-משמעיות', async ({ page }) => {
+    const rec1 = { _id: 'r1', נ: 'משימה 1', מב: 'מנהלת בדיקה', מט: 'עידו', ת: '2026-07-01', כ: 'k', ב: 'b', ע: 1, ס: 'פתוח', chat: {} };
+    const rec2 = { _id: 'r2', נ: 'משימה 2', מב: 'מנהלת בדיקה', מט: 'שם שלא קיים בכלל', ת: '2026-07-01', כ: 'k', ב: 'b', ע: 1, ס: 'פתוח', chat: {} };
+    await mockFirebase(page, {
+      rivka: [rec1, rec2],
+      users: seedUsers([{ name: 'עדו אפרתי', username: 'edo_a', password: 'pw', role: 'admin', email: 'edo.a@test.local', aliases: ['עידו'] }])
+    });
+    await page.goto('/index.html');
+    await login(page, 'testmgr', 'pw');
+    await expect(page.locator('#btnMigrateHandler')).toBeHidden();
+    await page.click('#btnOut');
+
+    await login(page, 'testadmin', 'pw');
+    await page.click('.tab[data-tab="1"]');
+    await expect(page.locator('#btnMigrateHandler')).toBeVisible();
+    page.on('dialog', d => d.accept());
+    await page.click('#btnMigrateHandler');
+    await page.waitForTimeout(300);
+
+    const saved = await page.evaluate(() => DB.rivka.map(r => ({ id: r._id, מט: r.מט, מטUid: r.מטUid })));
+    const r1 = saved.find(r => r.id === 'r1');
+    const r2 = saved.find(r => r.id === 'r2');
+    expect(r1.מט).toBe('עדו אפרתי');
+    expect(r1.מטUid).toBeTruthy();
+    // בלי התאמה - לא נוגעים
+    expect(r2.מט).toBe('שם שלא קיים בכלל');
+    expect(r2.מטUid || '').toBe('');
+  });
+});
+
 test.describe('סטטוס בדיקה "לבדיקה בעליה לאוויר" - יצירת משימה מקושרת אוטומטית', () => {
   test('בחירת הסטטוס יוצרת אוטומטית משימה מקושרת בטאב "משימות בעליה לאוויר", עם ניווט הלוך ושוב', async ({ page }) => {
     const { devTasksByUid: liveDevTasks, launchTasks: liveLaunch } = await mockFirebase(page, {});
