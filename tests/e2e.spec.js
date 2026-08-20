@@ -745,7 +745,8 @@ test.describe('שיוך "בודק DHL" למשתמש אמיתי (כמו מבצע 
     const row = page.locator('#devBody tr', { hasText: '13770' });
     await row.locator('button', { hasText: 'עריכה' }).click();
     await expect(page.locator('#devEditModal')).toBeVisible();
-    await page.selectOption('#devEditTester', 'עידו הבודק');
+    // ה-DROPDOWN מציג ערך = _uid של המשתמש (לא השם), לכן בוחרים לפי התווית הנראית
+    await page.selectOption('#devEditTester', { label: 'עידו הבודק (admin)' });
     await page.click('button[onclick="saveDevTaskModal()"]');
     await page.waitForTimeout(200);
 
@@ -757,13 +758,85 @@ test.describe('שיוך "בודק DHL" למשתמש אמיתי (כמו מבצע 
     // שמירה חוזרת בלי לשנות את הבודק - לא אמורה לשלוח מייל שוב
     await row.locator('button', { hasText: 'עריכה' }).click();
     await expect(page.locator('#devEditModal')).toBeVisible();
-    await expect(page.locator('#devEditTester')).toHaveValue('עידו הבודק');
+    await expect(page.locator('#devEditTester option:checked')).toHaveText('עידו הבודק (admin)');
     await page.fill('#devEditTNotes', 'הערה בלי לשנות בודק');
     await page.click('button[onclick="saveDevTaskModal()"]');
     await page.waitForTimeout(200);
 
     calls = await page.evaluate(() => window.__emailCalls);
     expect(calls.length).toBe(1);
+  });
+});
+
+test.describe('מזהה פנימי יציב (_uid) למשתמשים, ותיקון שיוכי בודק DHL ישנים', () => {
+  test('כל משתמש מקבל אוטומטית _uid יציב בטעינה, גם אם לא היה לו קודם', async ({ page }) => {
+    await mockFirebase(page, {}); // seedUsers() ברירת המחדל - בלי _uid
+    await page.goto('/index.html');
+    await login(page, 'testadmin', 'pw');
+    const uids = await page.evaluate(() => DB.users.map(u => u._uid));
+    expect(uids.every(Boolean)).toBe(true);
+    expect(new Set(uids).size).toBe(uids.length); // כולם ייחודיים
+  });
+
+  test('פתיחת משימה עם שיוך בודק ישן ("עידו") שמתאים חד-משמעית למשתמש קיים ("עידו אפרתי") - נבחר אוטומטית ב-DROPDOWN', async ({ page }) => {
+    await mockFirebase(page, {
+      users: seedUsers([{ name: 'עידו אפרתי', username: 'ido_a', password: 'pw', role: 'admin', email: 'ido.a@test.local' }]),
+      devTasksByUid: { dt_001: { tester: 'עידו', tStatus: '', tNotes: '', status: '' } }
+    });
+    await page.goto('/index.html');
+    await login(page, 'testadmin', 'pw');
+    await page.click('.tab[data-tab="3"]');
+    const row = page.locator('#devBody tr', { hasText: '13770' });
+    await row.locator('button', { hasText: 'עריכה' }).click();
+    await expect(page.locator('#devEditModal')).toBeVisible();
+    await expect(page.locator('#devEditTester option:checked')).toHaveText('עידו אפרתי (admin)');
+  });
+
+  test('שיוך ישן ("עידו") בלי שום משתמש תואם - לא נבחר כלום אוטומטית, מוצג כ"שיוך ישן" ולא נמחק אם שומרים בלי לגעת', async ({ page }) => {
+    const { devTasksByUid: liveDevTasks } = await mockFirebase(page, {
+      devTasksByUid: { dt_001: { tester: 'עידו', tStatus: '', tNotes: '', status: '' } }
+    });
+    await page.goto('/index.html');
+    await login(page, 'testadmin', 'pw');
+    await page.click('.tab[data-tab="3"]');
+    const row = page.locator('#devBody tr', { hasText: '13770' });
+    await row.locator('button', { hasText: 'עריכה' }).click();
+    await expect(page.locator('#devEditModal')).toBeVisible();
+    await expect(page.locator('#devEditTester option', { hasText: 'שיוך ישן' })).toHaveCount(1);
+    await page.fill('#devEditTNotes', 'לא נוגעים בבודק');
+    await page.click('button[onclick="saveDevTaskModal()"]');
+    await page.waitForTimeout(150);
+
+    expect(liveDevTasks['dt_001'].tester).toBe('עידו');
+    expect(liveDevTasks['dt_001'].testerUid || '').toBe('');
+  });
+
+  test('כפתור "תיקון שיוכי בודקים ישנים" מתקן אוטומטית התאמות חד-משמעיות (מדויקות ולפי שם פרטי), ומשאיר את השאר לתיקון ידני', async ({ page }) => {
+    const { devTasksByUid: liveDevTasks } = await mockFirebase(page, {
+      users: seedUsers([
+        { name: 'עידו אפרתי', username: 'ido_a', password: 'pw', role: 'admin', email: 'ido.a@test.local' },
+        { name: 'רבקה', username: 'rivka_u', password: 'pw', role: 'admin', email: 'rivka@test.local' }
+      ]),
+      devTasksByUid: {
+        dt_001: { tester: 'עידו', tStatus: '', tNotes: '', status: '' },       // התאמת שם פרטי - יתוקן
+        dt_002: { tester: 'רבקה', tStatus: '', tNotes: '', status: '' },       // התאמה מדויקת - יתוקן
+        dt_003: { tester: 'שם שלא קיים בכלל', tStatus: '', tNotes: '', status: '' } // בלי התאמה - נשאר לתיקון ידני
+      }
+    });
+    await page.goto('/index.html');
+    await login(page, 'testadmin', 'pw');
+    page.on('dialog', d => d.accept());
+    await page.click('.tab[data-tab="3"]');
+    await page.click('button[onclick="migrateDevTesterAssignments()"]');
+    await page.waitForTimeout(300);
+
+    expect(liveDevTasks['dt_001'].tester).toBe('עידו אפרתי');
+    expect(liveDevTasks['dt_001'].testerUid).toBeTruthy();
+    expect(liveDevTasks['dt_002'].tester).toBe('רבקה');
+    expect(liveDevTasks['dt_002'].testerUid).toBeTruthy();
+    // המשימה בלי התאמה נשארת כמו שהיא - לא נוגעים בה בלי אישור אנושי מפורש לכל אחת
+    expect(liveDevTasks['dt_003'].tester).toBe('שם שלא קיים בכלל');
+    expect(liveDevTasks['dt_003'].testerUid || '').toBe('');
   });
 });
 

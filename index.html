@@ -477,6 +477,12 @@ async function ensureIds(){
       if(!rec._id){ rec._id = genId(); changed = true; }
     });
   });
+  // מזהה פנימי יציב לכל משתמש - לא חשוף בממשק, לא ניתן לעריכה, לא חוזר על עצמו,
+  // ולא תלוי בשם התצוגה (אם מישהו משנה שם, הקישורים הקיימים אליו לא נשברים).
+  // בדיוק אותו עיקרון כמו _id לרבקה/מלמ ו-_uid למשימות פיתוח.
+  (DB.users||[]).forEach(function(u){
+    if(!u._uid){ u._uid = genId(); changed = true; }
+  });
   if(changed){
     try{
       await fetch('https://malm-focus-default-rtdb.firebaseio.com/db.json',{
@@ -1069,7 +1075,7 @@ async function addUser() {
   try {
     var em = document.getElementById('nu_email').value.trim();
     var role = document.getElementById('nu_role').value || 'manager';
-    DB.users.push({name:n, username:u, password:p, role:role, email:em});
+    DB.users.push({_uid: genId(), name:n, username:u, password:p, role:role, email:em});
     await saveDB();
     document.getElementById('nu_name').value='';
     document.getElementById('nu_user').value='';
@@ -1849,6 +1855,7 @@ async function saveNewDevTask(){
     iface: document.getElementById('ndtIface').value.trim(),
     specLink: document.getElementById('ndtSpecLink').value.trim(),
     tester: '',
+    testerUid: '',
     tNotes: '',
     tStatus: ''
   };
@@ -1895,16 +1902,35 @@ function populateDevEditSelect(selId, listKey, selectedValue){
 // "בודק DHL" משויך למשתמש אמיתי במערכת (בדיוק כמו מבצע בדיקת שפיות) - הרשימה
 // מגיעה מ-DB.users, לא מרשימה חופשית. כך אפשר לשלוח מייל לבודק שהשויך אליו
 // (ראו sendDevTesterEmail) ולראות "המשימות שלי" בעתיד באותו אופן שקיים לבדיקות שפיות.
-function populateDevTesterSelect(selectedName){
+// מוצא משתמש/ים שמתאימים לשם בודק "ישן" (טקסט חופשי, מלפני שהיה testerUid) -
+// קודם התאמה מדויקת, ואם אין - התאמת שם פרטי (למשל "עידו" מתאים ל"עידו אפרתי").
+// לא מנחשים בין כמה התאמות - במקרה כזה מחזירים אותן כולן ומשאירים לאדמין לבחור.
+function findDevTesterMatches(users, legacyName){
+  if(!legacyName) return { matches: [], method: 'none' };
+  var exact = users.filter(function(u){ return u.name===legacyName; });
+  if(exact.length) return { matches: exact, method: 'exact' };
+  var prefix = users.filter(function(u){ return u.name.indexOf(legacyName+' ')===0; });
+  if(prefix.length) return { matches: prefix, method: 'prefix' };
+  return { matches: [], method: 'none' };
+}
+// "בודק DHL" משויך למשתמש אמיתי לפי _uid (לא לפי שם - שם יכול להשתנות). למשימות
+// ישנות ששויכו לפי טקסט חופשי (t.tester, בלי testerUid) - מנסים להתאים אוטומטית
+// למשתמש קיים (ראו findDevTesterMatches); אם ההתאמה חד-משמעית זה יישמר אוטומטית
+// בשמירה הבאה. אם לא - מוצג השם הישן כאפשרות נפרדת עד שאדמין יבחר ידנית.
+function populateDevTesterSelect(selectedUid, legacyName){
   var sel=document.getElementById('devEditTester');
   if(!sel)return;
-  sel.innerHTML='<option value="">—</option>'+(DB.users||[]).map(function(u){
-    return '<option value="'+esc(u.name)+'"'+(u.name===selectedName?' selected':'')+'>'+esc(u.name)+' ('+esc(u.role||'')+')</option>';
+  var users=(DB.users||[]);
+  var effectiveUid = selectedUid || '';
+  if(!effectiveUid && legacyName){
+    var found = findDevTesterMatches(users, legacyName);
+    if(found.matches.length===1) effectiveUid = found.matches[0]._uid;
+  }
+  sel.innerHTML='<option value="">—</option>'+users.map(function(u){
+    return '<option value="'+esc(u._uid)+'"'+(u._uid===effectiveUid?' selected':'')+'>'+esc(u.name)+' ('+esc(u.role||'')+')</option>';
   }).join('');
-  // אם הבודק הנוכחי כבר לא קיים כמשתמש (נמחק/שונה שם) - עדיין מציגים אותו כאפשרות
-  // כדי לא "לאבד" מידע קיים במשימה.
-  if(selectedName && !(DB.users||[]).some(function(u){return u.name===selectedName;})){
-    sel.insertAdjacentHTML('beforeend', '<option value="'+esc(selectedName)+'" selected>'+esc(selectedName)+' (משתמש לא נמצא)</option>');
+  if(!effectiveUid && legacyName){
+    sel.insertAdjacentHTML('beforeend', '<option value="legacy:'+esc(legacyName)+'" selected>'+esc(legacyName)+' (שיוך ישן - יש לבחור את המשתמש הנכון ולשמור)</option>');
   }
 }
 function openEditDevTask(idx){
@@ -1922,7 +1948,7 @@ function openEditDevTask(idx){
   document.getElementById('devEditComp').value=t.comp||'';
   document.getElementById('devEditVer').value=t.ver||'';
   document.getElementById('devEditIface').value=t.iface||'';
-  populateDevTesterSelect(t.tester||'');
+  populateDevTesterSelect(t.testerUid||'', t.tester||'');
   populateDevEditSelect('devEditTStatus','tStatus',t.tStatus||'');
   document.getElementById('devEditTNotes').value=t.tNotes||'';
   var linkEl=document.getElementById('devEditLaunchLink');
@@ -1960,6 +1986,14 @@ async function saveDevTaskModal(){
   var newStatus=document.getElementById('devEditStatus').value;
   var newTStatus=document.getElementById('devEditTStatus').value;
 
+  // "בודק DHL" נבחר ב-DROPDOWN לפי _uid של משתמש אמיתי (ראו populateDevTesterSelect).
+  // אם עדיין לא נבחר משתמש תואם למשימה ישנה, ה-value הוא "legacy:<שם ישן>" - במקרה
+  // כזה שומרים את השם הישן כמו שהוא (בלי testerUid) ולא דורסים/מוחקים אותו בכוח.
+  var testerSelVal = document.getElementById('devEditTester').value;
+  var testerUser = (DB.users||[]).find(function(u){ return u._uid===testerSelVal; });
+  var newTesterUid = testerUser ? testerUser._uid : '';
+  var newTesterName = testerUser ? testerUser.name : (testerSelVal.indexOf('legacy:')===0 ? testerSelVal.slice(7) : '');
+
   // בונים אובייקט נפרד עם הערכים החדשים - לא נוגעים ב-DEV_TASKS[idx] האמיתי
   // עד שנקבל אישור וודאי (כתיבה + קריאה חוזרת שמאמתת) שהשמירה בשרת הצליחה.
   var updatedFields = {
@@ -1972,7 +2006,8 @@ async function saveDevTaskModal(){
     comp: document.getElementById('devEditComp').value.trim(),
     ver: document.getElementById('devEditVer').value.trim(),
     iface: document.getElementById('devEditIface').value.trim(),
-    tester: document.getElementById('devEditTester').value,
+    tester: newTesterName,
+    testerUid: newTesterUid,
     tStatus: newTStatus,
     tNotes: document.getElementById('devEditTNotes').value.trim()
   };
@@ -2051,15 +2086,14 @@ async function saveDevTaskModal(){
       throw new Error('האימות מול השרת נכשל בשדה "' + badField + '" - השינויים לא הגיעו בפועל לשרת. אל תסגור/י את המסך, נסה/י לשמור שוב.');
     }
 
-    // שולחים מייל לבודק רק כשהשיוך חדש או השתנה - בדיוק כמו בבדיקות שפיות
-    var prevTester = t.tester;
+    // שולחים מייל לבודק רק כשהשיוך (לפי _uid, לא לפי שם) חדש או השתנה - בדיוק כמו בבדיקות שפיות
+    var prevTesterUid = t.testerUid;
 
     Object.assign(t, updatedFields);
     t.sLog = mergedLog;
 
-    if (updatedFields.tester && updatedFields.tester !== prevTester) {
-      var testerUser = (DB.users||[]).find(function(u){ return u.name===updatedFields.tester; });
-      if (testerUser && testerUser.email) sendDevTesterEmail(testerUser, fullRecord);
+    if (newTesterUid && newTesterUid !== prevTesterUid && testerUser && testerUser.email) {
+      sendDevTesterEmail(testerUser, fullRecord);
     }
 
     document.getElementById('devEditMsg').style.color='#2e7d32';
@@ -2088,7 +2122,67 @@ function sendDevTesterEmail(user, task) {
   });
 }
 
-var DEV_OVERRIDE_FIELDS = ['tester','tStatus','tNotes','status','sLog','specLink','dev','desc','notes','comp','ver','iface','id','linkedLaunchId'];
+// תיקון חד-פעמי (אפשר להריץ שוב בכל עת) לשיוכי בודק DHL ישנים - משימות ששויכו
+// לפי טקסט חופשי (t.tester) לפני שהיה testerUid. לא מנחשים בשקט: מציגים לאדמין
+// בדיוק אילו משימות יתוקנו ולאיזה משתמש, ורק אחרי אישור מפורש כותבים לשרת -
+// כל כתיבה מאומתת בנפרד (fetch טרי → merge → PUT → קריאה חוזרת לאימות), בדיוק
+// כמו כל שמירה אחרת במערכת.
+async function migrateDevTesterAssignments(){
+  if (!isAdmin()) return;
+  var users = DB.users||[];
+  var candidates = DEV_TASKS.filter(function(t){ return t.tester && !t.testerUid; });
+  if (!candidates.length) { alert('אין שיוכי בודקים ישנים לתיקון - כל השיוכים כבר מקושרים למשתמשים.'); return; }
+
+  var plan = candidates.map(function(t){ return { t: t, found: findDevTesterMatches(users, t.tester) }; });
+  var autoFix = plan.filter(function(p){ return p.found.matches.length===1; });
+  var needsReview = plan.filter(function(p){ return p.found.matches.length!==1; });
+
+  var summary = 'נמצאו ' + candidates.length + ' משימות עם שיוך בודק ישן (טקסט חופשי, לא מקושר למשתמש).\n\n';
+  if (autoFix.length) {
+    summary += '✅ ' + autoFix.length + ' ניתן לתקן אוטומטית:\n' +
+      autoFix.map(function(p){ return '  • משימה ' + (p.t.id||'(ללא מספר)') + ': "' + p.t.tester + '" ← ' + p.found.matches[0].name + (p.found.method==='prefix'?' (התאמת שם פרטי)':''); }).join('\n') + '\n';
+  }
+  if (needsReview.length) {
+    summary += '\n⚠️ ' + needsReview.length + ' דורשות תיקון ידני (0 או כמה משתמשים עם שם דומה) - יש לפתוח כל אחת ולבחור את הבודק הנכון:\n' +
+      needsReview.map(function(p){ return '  • משימה ' + (p.t.id||'(ללא מספר)') + ': "' + p.t.tester + '"'; }).join('\n') + '\n';
+  }
+  if (!autoFix.length) { alert(summary); return; }
+  summary += '\nלהמשיך ולתקן את ' + autoFix.length + ' המשימות שניתן לתקן אוטומטית?';
+  if (!confirm(summary)) return;
+
+  var BASE = 'https://malm-focus-default-rtdb.firebaseio.com';
+  var okCount = 0, failCount = 0;
+  for (var i=0; i<autoFix.length; i++){
+    var p = autoFix[i];
+    var matchedUser = p.found.matches[0];
+    try {
+      var freshRes = await fetch(BASE + '/devTasksByUid/' + encodeURIComponent(p.t._uid) + '.json?t=' + Date.now());
+      if (!freshRes.ok) throw new Error('http ' + freshRes.status);
+      var fresh = (await freshRes.json()) || {};
+      var updated = Object.assign({}, p.t, fresh, { testerUid: matchedUser._uid, tester: matchedUser.name });
+      var putRes = await fetch(BASE + '/devTasksByUid/' + encodeURIComponent(p.t._uid) + '.json', {
+        method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(updated)
+      });
+      if (!putRes.ok) throw new Error('http ' + putRes.status);
+      var verifyRes = await fetch(BASE + '/devTasksByUid/' + encodeURIComponent(p.t._uid) + '.json?t=' + Date.now());
+      var verifyData = (await verifyRes.json()) || {};
+      if (verifyData.testerUid !== matchedUser._uid || verifyData.tester !== matchedUser.name) throw new Error('אימות נכשל');
+      p.t.testerUid = matchedUser._uid;
+      p.t.tester = matchedUser.name;
+      okCount++;
+    } catch(e) {
+      failCount++;
+      console.warn('migrateDevTesterAssignments failed for', p.t._uid, e);
+    }
+  }
+  renderDevTable();
+  populateDevFilters();
+  var doneMsg = 'הושלם: ' + okCount + ' משימות תוקנו בהצלחה' + (failCount ? (', ' + failCount + ' נכשלו (פרטים בקונסול)') : '') + '.';
+  if (needsReview.length) doneMsg += '\n' + needsReview.length + ' משימות עדיין דורשות תיקון ידני - פתח/י כל אחת, בחר/י את הבודק הנכון מה-DROPDOWN, ושמור/י.';
+  alert(doneMsg);
+}
+
+var DEV_OVERRIDE_FIELDS = ['tester','testerUid','tStatus','tNotes','status','sLog','specLink','dev','desc','notes','comp','ver','iface','id','linkedLaunchId'];
 
 // טוען עדכונים לפי מזהה פנימי יציב (t._uid) - לא לפי מיקום במערך, ולא לפי "מספר משימה"
 // (t.id) שהוא שדה עסקי חופשי שמוזן ע"י המשתמש ולכן יכול להיות ריק, לא ייחודי, או
@@ -2682,6 +2776,7 @@ async function dedupRecords(sheet) {
     <button onclick="clearDevFilters()" style="padding:6px 12px;border:1px solid #aaa;border-radius:6px;font-size:12px;font-family:Arial;background:#fff;cursor:pointer">נקה סינון</button>
     <button onclick="openStatusReport('dev')" style="padding:6px 12px;background:#1a1a2e;color:#fff;border:none;border-radius:6px;font-size:12px;font-family:Arial;cursor:pointer">📊 דוח שינויי סטטוס</button>
     <button onclick="openDevListsModal()" style="padding:6px 12px;background:#1a1a2e;color:#fff;border:none;border-radius:6px;font-size:12px;font-family:Arial;cursor:pointer">⚙️ ניהול רשימות</button>
+    <button onclick="migrateDevTesterAssignments()" style="padding:6px 12px;background:#6a1b9a;color:#fff;border:none;border-radius:6px;font-size:12px;font-family:Arial;cursor:pointer" title="מתאים אוטומטית שיוכי בודק DHL ישנים (טקסט חופשי) למשתמשים קיימים במערכת">🔧 תיקון שיוכי בודקים ישנים</button>
     <button onclick="openNewDevTask()" style="padding:6px 14px;background:#D40511;color:#fff;border:none;border-radius:6px;font-size:12px;font-weight:700;font-family:Arial;cursor:pointer;margin-right:auto">+ משימה חדשה</button>
   </div>
   <div style="overflow-x:auto">
