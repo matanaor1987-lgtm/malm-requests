@@ -1,7 +1,7 @@
 // בדיקות E2E למערכת בקשות מלמ.
 // כל בדיקה עובדת מול Firebase מדומה (ראו helpers.js) - אף בדיקה לא נוגעת בנתונים אמיתיים.
 const { test, expect } = require('@playwright/test');
-const { mockFirebase, login } = require('./helpers');
+const { mockFirebase, seedUsers, login } = require('./helpers');
 
 test.describe('התחברות', () => {
   test('כניסה עם פרטים נכונים מציגה את הלשוניות', async ({ page }) => {
@@ -683,7 +683,7 @@ test.describe('ניהול רשימות DROPDOWN בטאב פיתוחים ותיק
     await expect(page.locator('#devEditTStatus option[value="ממתין לסביבת בדיקה"]')).toHaveCount(1);
   });
 
-  test('אדמין יכול להסיר אפשרות מרשימה קיימת, וההסרה נשמרת בשרת', async ({ page }) => {
+  test('אדמין יכול להסיר אפשרות מרשימה קיימת ("סטטוס פיתוח"), וההסרה נשמרת בשרת', async ({ page }) => {
     const { devLists: liveDevLists } = await mockFirebase(page, {});
     await page.goto('/index.html');
     await login(page, 'testadmin', 'pw');
@@ -691,12 +691,22 @@ test.describe('ניהול רשימות DROPDOWN בטאב פיתוחים ותיק
 
     await page.click('button[onclick="openDevListsModal()"]');
     await expect(page.locator('#devListsModal')).toBeVisible();
-    // מסירים את "ניר" מרשימת בודקי DHL
-    await page.locator('#devListsBody span', { hasText: 'ניר' }).locator('button').click();
+    // מסירים את "נבדק" מרשימת סטטוס פיתוח
+    await page.locator('#devListsBody span', { hasText: 'נבדק' }).locator('button').click();
     await page.waitForTimeout(150);
 
-    expect(liveDevLists.tester).not.toContain('ניר');
-    await expect(page.locator('#devListsBody')).not.toContainText('ניר');
+    expect(liveDevLists.status).not.toContain('נבדק');
+    await expect(page.locator('#devListsBody')).not.toContainText('נבדק');
+  });
+
+  test('"בודק DHL" אינו ברשימה הניתנת לעריכה כאן - הוא מנוהל כשיוך למשתמש (ראו התיאור הבא)', async ({ page }) => {
+    await mockFirebase(page, {});
+    await page.goto('/index.html');
+    await login(page, 'testadmin', 'pw');
+    await page.click('.tab[data-tab="3"]');
+    await page.click('button[onclick="openDevListsModal()"]');
+    await expect(page.locator('#devListsModal')).toBeVisible();
+    await expect(page.locator('#devListsBody')).not.toContainText('בודק DHL');
   });
 
   test('מנהל (לא אדמין) לא רואה כלל את הטאב, ולכן לא יכול לגשת לניהול הרשימות', async ({ page }) => {
@@ -704,6 +714,56 @@ test.describe('ניהול רשימות DROPDOWN בטאב פיתוחים ותיק
     await page.goto('/index.html');
     await login(page, 'testmgr', 'pw');
     await expect(page.locator('#tabDev')).toBeHidden();
+  });
+});
+
+test.describe('שיוך "בודק DHL" למשתמש אמיתי (כמו מבצע בדיקות שפיות) + מייל התראה', () => {
+  test('רשימת בודק DHL במודל העריכה ובפילטר מגיעה ממשתמשי המערכת, לא מרשימה חופשית', async ({ page }) => {
+    await mockFirebase(page, { users: seedUsers([{ name: 'עידו הבודק', username: 'ido_t', password: 'pw', role: 'admin', email: 'ido.tester@test.local' }]) });
+    await page.goto('/index.html');
+    await login(page, 'testadmin', 'pw');
+    await page.click('.tab[data-tab="3"]');
+    await expect(page.locator('#devFilterTester option', { hasText: 'עידו הבודק' })).toHaveCount(1);
+
+    const row = page.locator('#devBody tr', { hasText: '13770' });
+    await row.locator('button', { hasText: 'עריכה' }).click();
+    await expect(page.locator('#devEditModal')).toBeVisible();
+    await expect(page.locator('#devEditTester option', { hasText: 'עידו הבודק' })).toHaveCount(1);
+    await expect(page.locator('#devEditTester option', { hasText: 'מנהל בדיקה' })).toHaveCount(1);
+  });
+
+  test('שיוך בודק חדש שולח מייל התראה למשתמש המשויך, ושמירה חוזרת בלי לשנות בודק לא שולחת שוב', async ({ page }) => {
+    await mockFirebase(page, { users: seedUsers([{ name: 'עידו הבודק', username: 'ido_t', password: 'pw', role: 'admin', email: 'ido.tester@test.local' }]) });
+    await page.goto('/index.html');
+    await login(page, 'testadmin', 'pw');
+    // מדמים את emailjs (חסום ב-CDN בבדיקות) כדי שנוכל לתפוס את הקריאה בלי לגעת ברשת אמיתית
+    await page.evaluate(() => {
+      window.__emailCalls = [];
+      window.emailjs = { send: function(service, template, params) { window.__emailCalls.push(params); return Promise.resolve(); } };
+    });
+    await page.click('.tab[data-tab="3"]');
+    const row = page.locator('#devBody tr', { hasText: '13770' });
+    await row.locator('button', { hasText: 'עריכה' }).click();
+    await expect(page.locator('#devEditModal')).toBeVisible();
+    await page.selectOption('#devEditTester', 'עידו הבודק');
+    await page.click('button[onclick="saveDevTaskModal()"]');
+    await page.waitForTimeout(200);
+
+    let calls = await page.evaluate(() => window.__emailCalls);
+    expect(calls.length).toBe(1);
+    expect(calls[0].to_email).toBe('ido.tester@test.local');
+    expect(calls[0].to_name).toBe('עידו הבודק');
+
+    // שמירה חוזרת בלי לשנות את הבודק - לא אמורה לשלוח מייל שוב
+    await row.locator('button', { hasText: 'עריכה' }).click();
+    await expect(page.locator('#devEditModal')).toBeVisible();
+    await expect(page.locator('#devEditTester')).toHaveValue('עידו הבודק');
+    await page.fill('#devEditTNotes', 'הערה בלי לשנות בודק');
+    await page.click('button[onclick="saveDevTaskModal()"]');
+    await page.waitForTimeout(200);
+
+    calls = await page.evaluate(() => window.__emailCalls);
+    expect(calls.length).toBe(1);
   });
 });
 
@@ -742,6 +802,32 @@ test.describe('סטטוס בדיקה "לבדיקה בעליה לאוויר" - י
     await expect(page.locator('.tab[data-tab="3"]')).toHaveClass(/active/);
     await expect(page.locator('#devEditModal')).toBeVisible();
     await expect(page.locator('#devEditTaskNum')).toHaveValue('13770');
+  });
+
+  test('רגרסיה: עריכה ושמירה של המשימה המקושרת עצמה בטאב "משימות בעליה לאוויר" לא מוחקת את הקישור חזרה למשימת הפיתוח', async ({ page }) => {
+    const { devTasksByUid: liveDevTasks, launchTasks: liveLaunch } = await mockFirebase(page, {
+      devTasksByUid: { dt_001: { tester: '', tStatus: 'לבדיקה בעליה לאוויר', tNotes: '', status: '', linkedLaunchId: 'launch_existing' } },
+      launchTasks: { launch_existing: { id: 'launch_existing', task: 'בדיקה בעליה לאוויר — משימת פיתוח 13770', status: 'פתוח', notes: '', closedBy: '', closedAt: '', createdAt: '2026-08-01T00:00:00.000Z', linkedDevUid: 'dt_001', linkedDevTaskNum: '13770' } }
+    });
+    await page.goto('/index.html');
+    await login(page, 'testadmin', 'pw');
+    await page.click('.tab[data-tab="5"]');
+    await expect(page.locator('#launchBody')).toContainText('13770');
+
+    // עורכים את המשימה בטאב עליה לאוויר עצמו (לא דרך הקישור) - כמו שמנהל היה עושה בפועל
+    await page.click('button[onclick="openEditLaunch(\'launch_existing\')"]');
+    await expect(page.locator('#launchModal')).toBeVisible();
+    await page.fill('#launchNotes', 'עדכנתי הערה על המשימה');
+    await page.selectOption('#launchStatus', 'בוצע');
+    await page.click('button[onclick="saveLaunchTask()"]');
+    await page.waitForTimeout(150);
+
+    // הקישור חזרה למשימת הפיתוח (uid ומספר משימה) חייב להישאר אחרי השמירה
+    expect(liveLaunch['launch_existing'].linkedDevUid).toBe('dt_001');
+    expect(liveLaunch['launch_existing'].linkedDevTaskNum).toBe('13770');
+    expect(liveLaunch['launch_existing'].notes).toBe('עדכנתי הערה על המשימה');
+    expect(liveLaunch['launch_existing'].status).toBe('בוצע');
+    await expect(page.locator('#launchBody button', { hasText: 'מקושר למשימת פיתוח' })).toBeVisible();
   });
 
   test('שמירה חוזרת כשהסטטוס כבר "לבדיקה בעליה לאוויר" לא יוצרת משימה מקושרת כפולה', async ({ page }) => {

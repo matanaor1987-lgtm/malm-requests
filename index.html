@@ -1589,15 +1589,16 @@ document.addEventListener('keydown',e=>{
 
 function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 
-// רשימות האפשרויות ל-3 ה-DROPDOWN-ים בטאב פיתוחים ותיקונים לבדיקה (סטטוס פיתוח,
-// בודק DHL, סטטוס בדיקה). אלו ערכי ברירת מחדל; אדמין יכול לערוך אותן מתוך המערכת
+// רשימות האפשרויות ל-2 ה-DROPDOWN-ים בטאב פיתוחים ותיקונים לבדיקה (סטטוס פיתוח,
+// סטטוס בדיקה). אלו ערכי ברירת מחדל; אדמין יכול לערוך אותן מתוך המערכת
 // (ראו openDevListsModal) - השינויים נשמרים ב-/devLists.json ונטענים מעל ברירת המחדל.
+// "בודק DHL" אינו ברשימה הזו - הוא מנוהל כשיוך למשתמש אמיתי (כמו מבצע בדיקות שפיות),
+// ראו populateDevTesterSelect ו-sendDevTesterEmail.
 var DEV_LISTS = {
   status: ['פתוח','בפיתוח','בבדיקה','נבדק','נסגר'],
-  tester: ['מתן','עידו','ניר','רבקה'],
   tStatus: ['תקין','לא תקין','לבדיקה בעליה לאוויר','לא רלוונטי']
 };
-var DEV_LIST_LABELS = { status: 'סטטוס פיתוח', tester: 'בודק DHL', tStatus: 'סטטוס בדיקה' };
+var DEV_LIST_LABELS = { status: 'סטטוס פיתוח', tStatus: 'סטטוס בדיקה' };
 
 async function loadDevLists() {
   try {
@@ -1794,12 +1795,12 @@ function populateDevSelectFromArray(selId, placeholder, values){
   });
   if(values.indexOf(prev)>-1) sel.value=prev;
 }
-// מרעננים את כל בוררי הסינון בטאב פיתוחים ותיקונים: סטטוס/בודק/סטטוס בדיקה
-// מגיעים מהרשימות הניתנות לעריכה (DEV_LISTS), רכיב/גרסה/ממשק מהערכים שבפועל
-// קיימים כרגע במשימות (אין להם רשימה מנוהלת - שדות חופשיים).
+// מרעננים את כל בוררי הסינון בטאב פיתוחים ותיקונים: סטטוס/סטטוס בדיקה מגיעים
+// מהרשימות הניתנות לעריכה (DEV_LISTS), בודק DHL מגיע ממשתמשי המערכת (DB.users),
+// רכיב/גרסה/ממשק מהערכים שבפועל קיימים כרגע במשימות (אין להם רשימה מנוהלת - שדות חופשיים).
 function populateDevFilters(){
   populateDevSelectFromArray('devFilterStatus','כל הסטטוסים (פיתוח)', DEV_LISTS.status);
-  populateDevSelectFromArray('devFilterTester','כל הבודקים', DEV_LISTS.tester);
+  populateDevSelectFromArray('devFilterTester','כל הבודקים', (DB.users||[]).map(function(u){return u.name;}));
   populateDevSelectFromArray('devFilterTStatus','כל סטטוסי הבדיקה', DEV_LISTS.tStatus);
   var comps={}, ifaces={}, vers={};
   DEV_TASKS.forEach(function(t){
@@ -1891,6 +1892,21 @@ function populateDevEditSelect(selId, listKey, selectedValue){
     return '<option value="'+esc(o)+'"'+(o===selectedValue?' selected':'')+'>'+esc(o)+'</option>';
   }).join('');
 }
+// "בודק DHL" משויך למשתמש אמיתי במערכת (בדיוק כמו מבצע בדיקת שפיות) - הרשימה
+// מגיעה מ-DB.users, לא מרשימה חופשית. כך אפשר לשלוח מייל לבודק שהשויך אליו
+// (ראו sendDevTesterEmail) ולראות "המשימות שלי" בעתיד באותו אופן שקיים לבדיקות שפיות.
+function populateDevTesterSelect(selectedName){
+  var sel=document.getElementById('devEditTester');
+  if(!sel)return;
+  sel.innerHTML='<option value="">—</option>'+(DB.users||[]).map(function(u){
+    return '<option value="'+esc(u.name)+'"'+(u.name===selectedName?' selected':'')+'>'+esc(u.name)+' ('+esc(u.role||'')+')</option>';
+  }).join('');
+  // אם הבודק הנוכחי כבר לא קיים כמשתמש (נמחק/שונה שם) - עדיין מציגים אותו כאפשרות
+  // כדי לא "לאבד" מידע קיים במשימה.
+  if(selectedName && !(DB.users||[]).some(function(u){return u.name===selectedName;})){
+    sel.insertAdjacentHTML('beforeend', '<option value="'+esc(selectedName)+'" selected>'+esc(selectedName)+' (משתמש לא נמצא)</option>');
+  }
+}
 function openEditDevTask(idx){
   var t=DEV_TASKS[idx];
   if(!t)return;
@@ -1906,7 +1922,7 @@ function openEditDevTask(idx){
   document.getElementById('devEditComp').value=t.comp||'';
   document.getElementById('devEditVer').value=t.ver||'';
   document.getElementById('devEditIface').value=t.iface||'';
-  populateDevEditSelect('devEditTester','tester',t.tester||'');
+  populateDevTesterSelect(t.tester||'');
   populateDevEditSelect('devEditTStatus','tStatus',t.tStatus||'');
   document.getElementById('devEditTNotes').value=t.tNotes||'';
   var linkEl=document.getElementById('devEditLaunchLink');
@@ -2035,8 +2051,16 @@ async function saveDevTaskModal(){
       throw new Error('האימות מול השרת נכשל בשדה "' + badField + '" - השינויים לא הגיעו בפועל לשרת. אל תסגור/י את המסך, נסה/י לשמור שוב.');
     }
 
+    // שולחים מייל לבודק רק כשהשיוך חדש או השתנה - בדיוק כמו בבדיקות שפיות
+    var prevTester = t.tester;
+
     Object.assign(t, updatedFields);
     t.sLog = mergedLog;
+
+    if (updatedFields.tester && updatedFields.tester !== prevTester) {
+      var testerUser = (DB.users||[]).find(function(u){ return u.name===updatedFields.tester; });
+      if (testerUser && testerUser.email) sendDevTesterEmail(testerUser, fullRecord);
+    }
 
     document.getElementById('devEditMsg').style.color='#2e7d32';
     document.getElementById('devEditMsg').textContent='✅ נשמר ואומת מול השרת בהצלחה' + (launchCreated ? ' + נוצרה משימה מקושרת בטאב עליה לאוויר' : '');
@@ -2049,6 +2073,19 @@ async function saveDevTaskModal(){
   } finally {
     saveBtn.disabled = false;
   }
+}
+
+function sendDevTesterEmail(user, task) {
+  if (typeof emailjs === 'undefined') return;
+  emailjs.send('service_q2ekmcf', 'template_jylk5i7', {
+    to_email: user.email,
+    cc_email: 'ido.efrati@dhl.com',
+    to_name: user.name,
+    subject: 'משימת פיתוח חדשה שויכה אליך לבדיקה' + (task.id ? ' (' + task.id + ')' : ''),
+    message: 'שלום ' + user.name + ',\n\nשויכה אליך משימת פיתוח לבדיקה במערכת בקשות מלמ.\n\n' + (task.id ? 'מספר משימה: ' + task.id + '\n' : '') + 'תיאור: ' + (task.desc||'—') + '\n\nאנא היכנס למערכת לביצוע הבדיקה.',
+    task_title: task.desc || (task.id || ''),
+    status: 'משימת פיתוח חדשה לבדיקה'
+  });
 }
 
 var DEV_OVERRIDE_FIELDS = ['tester','tStatus','tNotes','status','sLog','specLink','dev','desc','notes','comp','ver','iface','id','linkedLaunchId'];
@@ -2533,6 +2570,12 @@ async function saveLaunchTask() {
     closedAt: statusChangedToDone ? new Date().toISOString() : (status === 'פתוח' ? '' : (existing.closedAt || '')),
     createdAt: existing.createdAt || new Date().toISOString()
   };
+  // אם המשימה נוצרה אוטומטית מקישור למשימת פיתוח לבדיקה - חובה לשמר את הקישור בכל
+  // עריכה, אחרת הוא נעלם (כי rec נבנה מחדש מהטופס בכל שמירה, שלא כולל אותו).
+  if (existing.linkedDevUid) {
+    rec.linkedDevUid = existing.linkedDevUid;
+    rec.linkedDevTaskNum = existing.linkedDevTaskNum;
+  }
 
   await fetch('https://malm-focus-default-rtdb.firebaseio.com/launchTasks/' + id + '.json', {
     method: 'PUT',
