@@ -1021,13 +1021,22 @@ function renderUsers() {
     var uname = document.createElement('span'); uname.style.cssText='color:#888;font-size:12px;min-width:80px'; uname.textContent = u.username;
     var pwd = document.createElement('span'); pwd.style.cssText='color:#aaa;font-size:12px;min-width:80px'; pwd.textContent = u.password;
     var eml = document.createElement('span'); eml.style.cssText='color:#1565c0;font-size:12px;min-width:140px'; eml.textContent = u.email||'—';
+    var aliasBadge = null;
+    if ((u.aliases||[]).length) {
+      aliasBadge = document.createElement('span');
+      aliasBadge.style.cssText='color:#888;font-size:11px;min-width:100px';
+      aliasBadge.title='כינויים - שמות נוספים שמזהים את המשתמש הזה (למשל בשיוכי בודק DHL ישנים)';
+      aliasBadge.textContent = 'גם: ' + u.aliases.join(', ');
+    }
     var editBtn = document.createElement('button');
     editBtn.textContent = '✏️ ערוך';
     editBtn.style.cssText = 'border:1px solid #1565c0;color:#1565c0;background:none;border-radius:5px;padding:3px 10px;cursor:pointer;font-size:11px;font-family:Arial;margin-left:4px';
     var delBtn = document.createElement('button');
     delBtn.textContent = 'מחק';
     delBtn.style.cssText = 'border:1px solid #D40511;color:#D40511;background:none;border-radius:5px;padding:3px 10px;cursor:pointer;font-size:11px;font-family:Arial';
-    display.appendChild(name); display.appendChild(roleBadge); display.appendChild(uname); display.appendChild(pwd); display.appendChild(eml); display.appendChild(editBtn); display.appendChild(delBtn);
+    display.appendChild(name); display.appendChild(roleBadge); display.appendChild(uname); display.appendChild(pwd); display.appendChild(eml);
+    if (aliasBadge) display.appendChild(aliasBadge);
+    display.appendChild(editBtn); display.appendChild(delBtn);
     // Edit form (hidden)
     var editForm = document.createElement('div');
     editForm.style.cssText = 'display:none;padding:10px 14px;background:#f9f9f9;border-top:1px solid #eee;gap:8px;flex-wrap:wrap;align-items:center';
@@ -1036,6 +1045,7 @@ function renderUsers() {
       +'<input class="eu_pass" placeholder="סיסמה..." value="'+u.password+'" style="flex:1;min-width:80px;padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:12px;font-family:Arial;direction:ltr">'
       +'<input class="eu_email" placeholder="אימייל..." value="'+(u.email||'')+'" style="flex:1;min-width:150px;padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:12px;font-family:Arial;direction:ltr">'
       +'<select class="eu_role" style="padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:12px;font-family:Arial;direction:rtl"><option value="manager"'+(u.role!=='admin'?' selected':'')+'>מנהל</option><option value="admin"'+(u.role==='admin'?' selected':'')+'>אדמין</option></select>'
+      +'<input class="eu_aliases" placeholder="כינויים (מופרדים בפסיק) - למשל שם קצר שהיה בשימוש..." value="'+esc((u.aliases||[]).join(', '))+'" title="שמות נוספים שמזהים את המשתמש הזה, למשל בשיוכי בודק DHL ישנים" style="flex:2;min-width:200px;padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:12px;font-family:Arial;direction:rtl">'
       +'<button class="eu_save" style="background:#2e7d32;color:#fff;border:none;border-radius:6px;padding:7px 14px;cursor:pointer;font-size:12px;font-weight:700;font-family:Arial">💾 שמור</button>'
       +'<button class="eu_cancel" style="background:#757575;color:#fff;border:none;border-radius:6px;padding:7px 14px;cursor:pointer;font-size:12px;font-family:Arial">ביטול</button>';
     editForm.style.display = 'none';
@@ -1054,6 +1064,7 @@ function renderUsers() {
       DB.users[idx].password = editForm.querySelector('.eu_pass').value.trim();
       DB.users[idx].email = editForm.querySelector('.eu_email').value.trim();
       DB.users[idx].role = editForm.querySelector('.eu_role').value;
+      DB.users[idx].aliases = editForm.querySelector('.eu_aliases').value.split(',').map(function(s){return s.trim();}).filter(Boolean);
       await saveDB();
       renderUsers();
     }; })(u.username));
@@ -1909,6 +1920,10 @@ function findDevTesterMatches(users, legacyName){
   if(!legacyName) return { matches: [], method: 'none' };
   var exact = users.filter(function(u){ return u.name===legacyName; });
   if(exact.length) return { matches: exact, method: 'exact' };
+  // כינוי מוגדר ידנית (u.aliases, ראו טאב משתמשים) - אדם אישר את ההתאמה בעצמו,
+  // אז זו רמת ביטחון גבוהה, ממש כמו התאמה מדויקת - נבדק לפני ניחוש לפי שם פרטי.
+  var alias = users.filter(function(u){ return (u.aliases||[]).indexOf(legacyName)>-1; });
+  if(alias.length) return { matches: alias, method: 'alias' };
   var prefix = users.filter(function(u){ return u.name.indexOf(legacyName+' ')===0; });
   if(prefix.length) return { matches: prefix, method: 'prefix' };
   return { matches: [], method: 'none' };
@@ -2140,7 +2155,7 @@ async function migrateDevTesterAssignments(){
   var summary = 'נמצאו ' + candidates.length + ' משימות עם שיוך בודק ישן (טקסט חופשי, לא מקושר למשתמש).\n\n';
   if (autoFix.length) {
     summary += '✅ ' + autoFix.length + ' ניתן לתקן אוטומטית:\n' +
-      autoFix.map(function(p){ return '  • משימה ' + (p.t.id||'(ללא מספר)') + ': "' + p.t.tester + '" ← ' + p.found.matches[0].name + (p.found.method==='prefix'?' (התאמת שם פרטי)':''); }).join('\n') + '\n';
+      autoFix.map(function(p){ return '  • משימה ' + (p.t.id||'(ללא מספר)') + ': "' + p.t.tester + '" ← ' + p.found.matches[0].name + (p.found.method==='prefix'?' (התאמת שם פרטי)':p.found.method==='alias'?' (כינוי מוגדר)':''); }).join('\n') + '\n';
   }
   if (needsReview.length) {
     summary += '\n⚠️ ' + needsReview.length + ' דורשות תיקון ידני (0 או כמה משתמשים עם שם דומה) - יש לפתוח כל אחת ולבחור את הבודק הנכון:\n' +

@@ -838,6 +838,54 @@ test.describe('מזהה פנימי יציב (_uid) למשתמשים, ותיקו�
     expect(liveDevTasks['dt_003'].tester).toBe('שם שלא קיים בכלל');
     expect(liveDevTasks['dt_003'].testerUid || '').toBe('');
   });
+
+  test('אדמין יכול להגדיר כינוי (שם נוסף) למשתמש בטאב משתמשים, נשמר ומוצג ברשימה', async ({ page }) => {
+    const { db } = await mockFirebase(page, { users: seedUsers([{ name: 'עדו אפרתי', username: 'edo_a', password: 'pw', role: 'admin', email: 'edo.a@test.local' }]) });
+    await page.goto('/index.html');
+    await login(page, 'testadmin', 'pw');
+    await page.click('.tab[data-tab="2"]');
+    await expect(page.locator('#usersList')).toContainText('עדו אפרתי');
+
+    const row = page.locator('#usersList > div', { hasText: 'עדו אפרתי' });
+    await row.locator('button', { hasText: 'ערוך' }).click();
+    await row.locator('.eu_aliases').fill('עידו, Ido');
+    await row.locator('.eu_save').click();
+    await page.waitForTimeout(150);
+
+    const savedUser = db.users.find(u => u.name === 'עדו אפרתי');
+    expect(savedUser.aliases).toEqual(['עידו', 'Ido']);
+    await expect(page.locator('#usersList')).toContainText('גם: עידו, Ido');
+  });
+
+  test('כינוי מוגדר ("עידו" -> "עדו אפרתי") מזהה אוטומטית משימות עם שיוך בודק ישן, גם בפתיחת משימה בודדת וגם בכפתור התיקון המרוכז', async ({ page }) => {
+    const { devTasksByUid: liveDevTasks } = await mockFirebase(page, {
+      users: seedUsers([{ name: 'עדו אפרתי', username: 'edo_a', password: 'pw', role: 'admin', email: 'edo.a@test.local', aliases: ['עידו'] }]),
+      devTasksByUid: {
+        dt_001: { tester: 'עידו', tStatus: '', tNotes: '', status: '' },
+        dt_002: { tester: 'עידו', tStatus: '', tNotes: '', status: '' }
+      }
+    });
+    await page.goto('/index.html');
+    await login(page, 'testadmin', 'pw');
+    await page.click('.tab[data-tab="3"]');
+
+    // פתיחת משימה בודדת - נבחר אוטומטית לפי הכינוי
+    const row = page.locator('#devBody tr', { hasText: '13770' });
+    await row.locator('button', { hasText: 'עריכה' }).click();
+    await expect(page.locator('#devEditModal')).toBeVisible();
+    await expect(page.locator('#devEditTester option:checked')).toHaveText('עדו אפרתי (admin)');
+    await page.click('button[onclick="closeDevEditModal()"]');
+
+    // וגם כפתור התיקון המרוכז מזהה את הכינוי ומתקן את שתי המשימות
+    page.on('dialog', d => d.accept());
+    await page.click('button[onclick="migrateDevTesterAssignments()"]');
+    await page.waitForTimeout(300);
+
+    expect(liveDevTasks['dt_001'].testerUid).toBeTruthy();
+    expect(liveDevTasks['dt_001'].tester).toBe('עדו אפרתי');
+    expect(liveDevTasks['dt_002'].testerUid).toBeTruthy();
+    expect(liveDevTasks['dt_002'].tester).toBe('עדו אפרתי');
+  });
 });
 
 test.describe('סטטוס בדיקה "לבדיקה בעליה לאוויר" - יצירת משימה מקושרת אוטומטית', () => {
