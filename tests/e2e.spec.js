@@ -23,6 +23,31 @@ test.describe('התחברות', () => {
   });
 });
 
+test.describe('רגרסיה: פריסת התפריט העליון בטאב משתמשים', () => {
+  test('כניסה לטאב "משתמשים" לא מזיזה את התפריט העליון (מיקום #pane2 בדף חייב להיות אחרי #mainTabs)', async ({ page }) => {
+    await mockFirebase(page, {});
+    await page.goto('/index.html');
+    await login(page, 'testadmin', 'pw');
+
+    const tabsBoxBefore = await page.locator('#mainTabs').boundingBox();
+    await page.click('.tab[data-tab="2"]');
+    await expect(page.locator('#pane2')).toHaveClass(/active/);
+    const tabsBoxAfter = await page.locator('#mainTabs').boundingBox();
+
+    // הבאג המקורי הזיז את התפריט מאות פיקסלים למטה (כי #pane2 היה מופיע לפניו ב-DOM
+    // ונדחף מעליו כשהיה פעיל) - סובלנות קטנה כאן היא בגלל גלילה/רינדור, לא סימן לבאג.
+    expect(Math.abs(tabsBoxAfter.y - tabsBoxBefore.y)).toBeLessThan(20);
+
+    // בדיקה מבנית נוספת: #pane2 חייב לבוא אחרי #mainTabs ב-DOM, לא לפניו
+    const mainTabsBeforePane2 = await page.evaluate(() => {
+      const tabs = document.getElementById('mainTabs');
+      const pane2 = document.getElementById('pane2');
+      return !!(tabs.compareDocumentPosition(pane2) & Node.DOCUMENT_POSITION_FOLLOWING);
+    });
+    expect(mainTabsBeforePane2).toBe(true);
+  });
+});
+
 test.describe('משימות לרבקה - יצירה ועריכה', () => {
   test('יצירת משימה חדשה מופיעה ברשימה', async ({ page }) => {
     await mockFirebase(page, {});
@@ -288,6 +313,34 @@ test.describe('בדיקות שפיות - הערות לכולם', () => {
     expect(task.env).toBe('PROD');
     expect(task.status).toBe('נכשל');
     expect(task.closedBy).toBe('מנהל בדיקה');
+  });
+});
+
+test.describe('סינון בטבלת בדיקות שפיות לפי מבצע וסטטוס', () => {
+  const sanity3 = {
+    s1: { id: 's1', name: 'בדיקת מסך א', module: 'מסך א', env: 'טסט', status: 'פתוח', assignee: 'מנהלת בדיקה', notes: '', adminNotes: '' },
+    s2: { id: 's2', name: 'בדיקת מסך ב', module: 'מסך ב', env: 'RDP', status: 'בוצע', assignee: 'מנהל בדיקה', notes: '', adminNotes: '' },
+    s3: { id: 's3', name: 'בדיקת מסך ג', module: 'מסך ג', env: 'טסט', status: 'פתוח', assignee: 'מנהל בדיקה', notes: '', adminNotes: '' },
+  };
+
+  test('אפשר לסנן לפי מבצע ולפי סטטוס, כל אחד בנפרד ובשילוב, ו"נקה סינון" מחזיר הכל', async ({ page }) => {
+    await mockFirebase(page, { sanity: JSON.parse(JSON.stringify(sanity3)) });
+    await page.goto('/index.html');
+    await login(page, 'testadmin', 'pw');
+    await page.click('.tab[data-tab="4"]');
+    await expect(page.locator('#sanityAdminBody')).toContainText('בדיקת מסך א');
+    await expect(page.locator('#sanityAdminBody tr:visible')).toHaveCount(3);
+
+    await page.selectOption('#sanityFilterAssignee', 'מנהל בדיקה');
+    await expect(page.locator('#sanityAdminBody tr:visible')).toHaveCount(2);
+    await expect(page.locator('#sanityAdminBody tr:visible', { hasText: 'בדיקת מסך א' })).toHaveCount(0);
+
+    await page.selectOption('#sanityFilterStatus', 'בוצע');
+    await expect(page.locator('#sanityAdminBody tr:visible')).toHaveCount(1);
+    await expect(page.locator('#sanityAdminBody tr:visible')).toContainText('בדיקת מסך ב');
+
+    await page.click('button[onclick="clearSanityFilters()"]');
+    await expect(page.locator('#sanityAdminBody tr:visible')).toHaveCount(3);
   });
 });
 
@@ -629,7 +682,7 @@ test.describe('אדמין יכול לערוך כל שדה שמוצג בטבלא�
     await expect(page.locator('#devBody')).not.toContainText('13770');
   });
 
-  test('אדמין יכול לערוך את שדה "מבקש" במשימות לרבקה, ומנהל (לא אדמין) לא רואה את השדה הזה', async ({ page }) => {
+  test('אדמין יכול לערוך את שדה "מבקש" (DROPDOWN ממשתמשי המערכת) במשימות לרבקה, ומנהל (לא אדמין) לא רואה את השדה הזה', async ({ page }) => {
     const rec = { _id: 'r1', נ: 'משימה', מב: 'מנהלת בדיקה', ת: '2026-07-01', כ: 'k', ב: 'b', ע: 1, ס: 'פתוח', chat: {} };
     await mockFirebase(page, { rivka: [rec] });
     await page.goto('/index.html');
@@ -637,13 +690,13 @@ test.describe('אדמין יכול לערוך כל שדה שמוצג בטבלא�
     await page.click('.tab[data-tab="1"]');
     await page.click('tr:has-text("משימה") .act-btn');
     await expect(page.locator('#modalBg')).toHaveClass(/open/);
-    await expect(page.locator('#f_מב')).toHaveValue('מנהלת בדיקה');
-    await page.fill('#f_מב', 'מנהל אחר');
+    await expect(page.locator('#f_מב option:checked')).toHaveText('מנהלת בדיקה (manager)');
+    await page.selectOption('#f_מב', { label: 'מנהל בדיקה (admin)' });
     await page.click('button.btn-save');
     await expect(page.locator('#modalBg')).not.toHaveClass(/open/);
 
     const savedMav = await page.evaluate(() => DB.rivka.find(r => r._id === 'r1').מב);
-    expect(savedMav).toBe('מנהל אחר');
+    expect(savedMav).toBe('מנהל בדיקה');
   });
 
   test('מנהל (לא אדמין) לא רואה שדה "מבקש" בעריכה', async ({ page }) => {
@@ -811,34 +864,6 @@ test.describe('מזהה פנימי יציב (_uid) למשתמשים, ותיקו�
     expect(liveDevTasks['dt_001'].testerUid || '').toBe('');
   });
 
-  test('כפתור "תיקון שיוכי בודקים ישנים" מתקן אוטומטית התאמות חד-משמעיות (מדויקות ולפי שם פרטי), ומשאיר את השאר לתיקון ידני', async ({ page }) => {
-    const { devTasksByUid: liveDevTasks } = await mockFirebase(page, {
-      users: seedUsers([
-        { name: 'עידו אפרתי', username: 'ido_a', password: 'pw', role: 'admin', email: 'ido.a@test.local' },
-        { name: 'רבקה', username: 'rivka_u', password: 'pw', role: 'admin', email: 'rivka@test.local' }
-      ]),
-      devTasksByUid: {
-        dt_001: { tester: 'עידו', tStatus: '', tNotes: '', status: '' },       // התאמת שם פרטי - יתוקן
-        dt_002: { tester: 'רבקה', tStatus: '', tNotes: '', status: '' },       // התאמה מדויקת - יתוקן
-        dt_003: { tester: 'שם שלא קיים בכלל', tStatus: '', tNotes: '', status: '' } // בלי התאמה - נשאר לתיקון ידני
-      }
-    });
-    await page.goto('/index.html');
-    await login(page, 'testadmin', 'pw');
-    page.on('dialog', d => d.accept());
-    await page.click('.tab[data-tab="3"]');
-    await page.click('button[onclick="migrateDevTesterAssignments()"]');
-    await page.waitForTimeout(300);
-
-    expect(liveDevTasks['dt_001'].tester).toBe('עידו אפרתי');
-    expect(liveDevTasks['dt_001'].testerUid).toBeTruthy();
-    expect(liveDevTasks['dt_002'].tester).toBe('רבקה');
-    expect(liveDevTasks['dt_002'].testerUid).toBeTruthy();
-    // המשימה בלי התאמה נשארת כמו שהיא - לא נוגעים בה בלי אישור אנושי מפורש לכל אחת
-    expect(liveDevTasks['dt_003'].tester).toBe('שם שלא קיים בכלל');
-    expect(liveDevTasks['dt_003'].testerUid || '').toBe('');
-  });
-
   test('אדמין יכול להגדיר כינוי (שם נוסף) למשתמש בטאב משתמשים, נשמר ומוצג ברשימה', async ({ page }) => {
     const { db } = await mockFirebase(page, { users: seedUsers([{ name: 'עדו אפרתי', username: 'edo_a', password: 'pw', role: 'admin', email: 'edo.a@test.local' }]) });
     await page.goto('/index.html');
@@ -857,12 +882,11 @@ test.describe('מזהה פנימי יציב (_uid) למשתמשים, ותיקו�
     await expect(page.locator('#usersList')).toContainText('גם: עידו, Ido');
   });
 
-  test('כינוי מוגדר ("עידו" -> "עדו אפרתי") מזהה אוטומטית משימות עם שיוך בודק ישן, גם בפתיחת משימה בודדת וגם בכפתור התיקון המרוכז', async ({ page }) => {
+  test('כינוי מוגדר ("עידו" -> "עדו אפרתי") מזהה אוטומטית משימה עם שיוך בודק ישן בפתיחתה, ונשמר בפועל', async ({ page }) => {
     const { devTasksByUid: liveDevTasks } = await mockFirebase(page, {
       users: seedUsers([{ name: 'עדו אפרתי', username: 'edo_a', password: 'pw', role: 'admin', email: 'edo.a@test.local', aliases: ['עידו'] }]),
       devTasksByUid: {
-        dt_001: { tester: 'עידו', tStatus: '', tNotes: '', status: '' },
-        dt_002: { tester: 'עידו', tStatus: '', tNotes: '', status: '' }
+        dt_001: { tester: 'עידו', tStatus: '', tNotes: '', status: '' }
       }
     });
     await page.goto('/index.html');
@@ -874,17 +898,11 @@ test.describe('מזהה פנימי יציב (_uid) למשתמשים, ותיקו�
     await row.locator('button', { hasText: 'עריכה' }).click();
     await expect(page.locator('#devEditModal')).toBeVisible();
     await expect(page.locator('#devEditTester option:checked')).toHaveText('עדו אפרתי (admin)');
-    await page.click('button[onclick="closeDevEditModal()"]');
-
-    // וגם כפתור התיקון המרוכז מזהה את הכינוי ומתקן את שתי המשימות
-    page.on('dialog', d => d.accept());
-    await page.click('button[onclick="migrateDevTesterAssignments()"]');
-    await page.waitForTimeout(300);
+    await page.click('button[onclick="saveDevTaskModal()"]');
+    await page.waitForTimeout(150);
 
     expect(liveDevTasks['dt_001'].testerUid).toBeTruthy();
     expect(liveDevTasks['dt_001'].tester).toBe('עדו אפרתי');
-    expect(liveDevTasks['dt_002'].testerUid).toBeTruthy();
-    expect(liveDevTasks['dt_002'].tester).toBe('עדו אפרתי');
   });
 });
 
@@ -939,34 +957,61 @@ test.describe('שיוך "מטפל" במשימות לרבקה למשתמש אמי
     saved = await page.evaluate(() => DB.rivka.find(r => r._id === 'r2'));
     expect(saved.מט).toBe('שם שלא קיים בכלל');
   });
+});
 
-  test('כפתור "תיקון שיוכי מטפל ישנים" מוצג לאדמין בלבד, ומתקן אוטומטית התאמות חד-משמעיות', async ({ page }) => {
-    const rec1 = { _id: 'r1', נ: 'משימה 1', מב: 'מנהלת בדיקה', מט: 'עידו', ת: '2026-07-01', כ: 'k', ב: 'b', ע: 1, ס: 'פתוח', chat: {} };
-    const rec2 = { _id: 'r2', נ: 'משימה 2', מב: 'מנהלת בדיקה', מט: 'שם שלא קיים בכלל', ת: '2026-07-01', כ: 'k', ב: 'b', ע: 1, ס: 'פתוח', chat: {} };
+test.describe('שיוך "מבקש" במשימות לרבקה למשתמש אמיתי - בלי לגעת אף פעם בערכים לא-תואמים', () => {
+  test('שדה מבקש הוא DROPDOWN ממשתמשי המערכת, מתאים אוטומטית שיוך ישן לפי כינוי, ושומר Uid+שם', async ({ page }) => {
+    const rec = { _id: 'r1', נ: 'משימה', מב: 'עידו', ת: '2026-07-01', כ: 'k', ב: 'b', ע: 1, ס: 'פתוח', chat: {} };
     await mockFirebase(page, {
-      rivka: [rec1, rec2],
+      rivka: [rec],
       users: seedUsers([{ name: 'עדו אפרתי', username: 'edo_a', password: 'pw', role: 'admin', email: 'edo.a@test.local', aliases: ['עידו'] }])
     });
     await page.goto('/index.html');
-    await login(page, 'testmgr', 'pw');
-    await expect(page.locator('#btnMigrateHandler')).toBeHidden();
-    await page.click('#btnOut');
-
     await login(page, 'testadmin', 'pw');
     await page.click('.tab[data-tab="1"]');
-    await expect(page.locator('#btnMigrateHandler')).toBeVisible();
-    page.on('dialog', d => d.accept());
-    await page.click('#btnMigrateHandler');
-    await page.waitForTimeout(300);
+    await page.click('tr:has-text("משימה") .act-btn');
+    await expect(page.locator('#modalBg')).toHaveClass(/open/);
+    await expect(page.locator('#f_מב option:checked')).toHaveText('עדו אפרתי (admin)');
+    await page.click('button.btn-save');
+    await expect(page.locator('#modalBg')).not.toHaveClass(/open/);
 
-    const saved = await page.evaluate(() => DB.rivka.map(r => ({ id: r._id, מט: r.מט, מטUid: r.מטUid })));
-    const r1 = saved.find(r => r.id === 'r1');
-    const r2 = saved.find(r => r.id === 'r2');
-    expect(r1.מט).toBe('עדו אפרתי');
-    expect(r1.מטUid).toBeTruthy();
-    // בלי התאמה - לא נוגעים
-    expect(r2.מט).toBe('שם שלא קיים בכלל');
-    expect(r2.מטUid || '').toBe('');
+    const saved = await page.evaluate(() => DB.rivka.find(r => r._id === 'r1'));
+    expect(saved.מב).toBe('עדו אפרתי');
+    expect(saved.מבUid).toBeTruthy();
+  });
+
+  test('שיוך מבקש ישן בלי שום התאמה לעולם לא נדרס/נמחק - נשאר בדיוק כמו שהיה, גם אחרי שמירה', async ({ page }) => {
+    const rec = { _id: 'r2', נ: 'משימה 2', מב: 'שם שלא קיים בכלל', ת: '2026-07-01', כ: 'k', ב: 'b', ע: 1, ס: 'פתוח', chat: {} };
+    await mockFirebase(page, { rivka: [rec] });
+    await page.goto('/index.html');
+    await login(page, 'testadmin', 'pw');
+    await page.click('.tab[data-tab="1"]');
+    await page.click('tr:has-text("משימה 2") .act-btn');
+    await expect(page.locator('#modalBg')).toHaveClass(/open/);
+    await expect(page.locator('#f_מב option', { hasText: 'שיוך ישן' })).toHaveCount(1);
+    await page.click('button.btn-save');
+    await expect(page.locator('#modalBg')).not.toHaveClass(/open/);
+
+    const saved = await page.evaluate(() => DB.rivka.find(r => r._id === 'r2'));
+    expect(saved.מב).toBe('שם שלא קיים בכלל');
+    expect(saved.מבUid || '').toBe('');
+  });
+
+  test('משימה חדשה שנוצרת ע"י אדמין דרך "+ משימה חדשה" מקבלת מבUid אוטומטית (מה שיפתח מעכשיו כבר מקושר)', async ({ page }) => {
+    await mockFirebase(page, {});
+    await page.goto('/index.html');
+    await login(page, 'testadmin', 'pw');
+    await page.click('.tab[data-tab="1"]');
+    await page.click('#btnAdd');
+    await page.fill('#f_נ', 'משימה חדשה עם מבקש אוטומטי');
+    await page.fill('#f_כ', 'כותרת');
+    await page.fill('#f_ב', 'תוכן');
+    await page.click('button.btn-save');
+    await expect(page.locator('#modalBg')).not.toHaveClass(/open/);
+
+    const saved = await page.evaluate(() => DB.rivka.find(r => r.נ === 'משימה חדשה עם מבקש אוטומטי'));
+    expect(saved.מב).toBe('מנהל בדיקה');
+    expect(saved.מבUid).toBeTruthy();
   });
 });
 

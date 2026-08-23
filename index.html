@@ -162,26 +162,6 @@ tr:hover td{background:#fffbf0}
   </div>
 </div>
 
-<div class="pane" id="pane2" style="padding:14px 20px">
-  <div style="font-size:16px;font-weight:700;color:#1a1a2e;margin-bottom:14px">👥 ניהול משתמשים</div>
-  <div id="usersList"></div>
-  <div style="background:#fff;border:1px solid #e0e0e0;border-radius:10px;padding:16px;margin-top:12px">
-    <div style="font-size:13px;font-weight:700;margin-bottom:12px;color:#1a1a2e">הוסף משתמש חדש</div>
-    <div style="display:flex;gap:8px;flex-wrap:wrap">
-      <input id="nu_name" placeholder="שם מלא..." style="flex:1;min-width:120px;padding:7px 10px;border:1.5px solid #ddd;border-radius:6px;font-size:12px;font-family:Arial;direction:rtl">
-      <input id="nu_user" placeholder="שם משתמש..." style="flex:1;min-width:120px;padding:7px 10px;border:1.5px solid #ddd;border-radius:6px;font-size:12px;font-family:Arial;direction:ltr">
-      <input id="nu_pass" placeholder="סיסמה..." style="flex:1;min-width:100px;padding:7px 10px;border:1.5px solid #ddd;border-radius:6px;font-size:12px;font-family:Arial;direction:ltr">
-      <input id="nu_email" placeholder="אימייל..." style="flex:1;min-width:150px;padding:7px 10px;border:1.5px solid #ddd;border-radius:6px;font-size:12px;font-family:Arial;direction:ltr">
-      <select id="nu_role" style="padding:7px 10px;border:1.5px solid #ddd;border-radius:6px;font-size:12px;font-family:Arial;direction:rtl">
-        <option value="manager">מנהל</option>
-        <option value="admin">אדמין</option>
-      </select>
-      <button onclick="addUser()" style="background:#2e7d32;color:#fff;border:none;border-radius:6px;padding:8px 16px;cursor:pointer;font-size:12px;font-weight:700;font-family:Arial">+ הוסף</button>
-    </div>
-    <div class="saving" id="addUserMsg" style="margin-top:8px"></div>
-  </div>
-</div>
-
 <div class="header">
   <div class="logo">DHL Express</div>
   <div class="subtitle" style="flex:1">דוח משימות בקשות מלמ</div>
@@ -202,6 +182,26 @@ tr:hover td{background:#fffbf0}
   <div class="tab" id="tabSanity" data-tab="4" onclick="switchTab(4)" style="display:none">✅ בדיקות שפיות <span id="sanityBadge" style="display:none;background:#D40511;color:#fff;border-radius:50%;padding:1px 6px;font-size:10px;font-weight:700;margin-right:4px"></span></div>
   <div class="tab" id="tabDev" data-tab="3" onclick="switchTab(3)" style="display:none">🛠️ פיתוחים ותיקונים לבדיקה</div>
   <div class="tab" id="tabLaunch" data-tab="5" onclick="switchTab(5)" style="display:none">🚀 משימות בעליה לאוויר</div>
+</div>
+
+<div class="pane" id="pane2" style="padding:14px 20px">
+  <div style="font-size:16px;font-weight:700;color:#1a1a2e;margin-bottom:14px">👥 ניהול משתמשים</div>
+  <div id="usersList"></div>
+  <div style="background:#fff;border:1px solid #e0e0e0;border-radius:10px;padding:16px;margin-top:12px">
+    <div style="font-size:13px;font-weight:700;margin-bottom:12px;color:#1a1a2e">הוסף משתמש חדש</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <input id="nu_name" placeholder="שם מלא..." style="flex:1;min-width:120px;padding:7px 10px;border:1.5px solid #ddd;border-radius:6px;font-size:12px;font-family:Arial;direction:rtl">
+      <input id="nu_user" placeholder="שם משתמש..." style="flex:1;min-width:120px;padding:7px 10px;border:1.5px solid #ddd;border-radius:6px;font-size:12px;font-family:Arial;direction:ltr">
+      <input id="nu_pass" placeholder="סיסמה..." style="flex:1;min-width:100px;padding:7px 10px;border:1.5px solid #ddd;border-radius:6px;font-size:12px;font-family:Arial;direction:ltr">
+      <input id="nu_email" placeholder="אימייל..." style="flex:1;min-width:150px;padding:7px 10px;border:1.5px solid #ddd;border-radius:6px;font-size:12px;font-family:Arial;direction:ltr">
+      <select id="nu_role" style="padding:7px 10px;border:1.5px solid #ddd;border-radius:6px;font-size:12px;font-family:Arial;direction:rtl">
+        <option value="manager">מנהל</option>
+        <option value="admin">אדמין</option>
+      </select>
+      <button onclick="addUser()" style="background:#2e7d32;color:#fff;border:none;border-radius:6px;padding:8px 16px;cursor:pointer;font-size:12px;font-weight:700;font-family:Arial">+ הוסף</button>
+    </div>
+    <div class="saving" id="addUserMsg" style="margin-top:8px"></div>
+  </div>
 </div>
 
 <div class="pane active" id="pane0">
@@ -263,7 +263,6 @@ tr:hover td{background:#fffbf0}
       <option value="4">4</option><option value="5">5</option>
     </select>
     <button onclick="openStatusReport('rivka')" style="background:#1a1a2e;color:#fff;padding:5px 12px;border-radius:5px;border:none;cursor:pointer;font-size:12px;font-family:Arial">📊 דוח שינויי סטטוס</button>
-    <button id="btnMigrateHandler" onclick="migrateRivkaHandlerAssignments()" style="display:none;background:#6a1b9a;color:#fff;padding:5px 12px;border-radius:5px;border:none;cursor:pointer;font-size:12px;font-family:Arial" title="מתאים אוטומטית שיוכי מטפל ישנים (טקסט חופשי) למשתמשים קיימים במערכת">🔧 תיקון שיוכי מטפל ישנים</button>
   </div>
   <div class="count" id="c2"></div>
   <div class="tbl-wrap">
@@ -426,7 +425,6 @@ function showApp() {
 
   if (isAdmin()) {
     document.getElementById('backupControls').style.display = 'inline';
-    document.getElementById('btnMigrateHandler').style.display = 'inline-block';
     document.getElementById('tabUsers').style.display = 'block';
     document.getElementById('tabDev').style.display = 'block';
     document.getElementById('tabSanity').style.display = 'block';
@@ -601,74 +599,6 @@ async function saveRecord(sheet, idx, rec){
     el.textContent='❌ שגיאה: '+e.message;
     el.style.background='#c62828';
     setTimeout(()=>{el.style.display='none';el.style.background='#1a1a2e';},6000);
-  }
-}
-
-// תיקון חד-פעמי (אפשר להריץ שוב בכל עת) לשיוכי "מטפל" ישנים במשימות רבקה - טקסט
-// חופשי מלפני שהיה מטUid. אותו עיקרון בדיוק כמו migrateDevTesterAssignments:
-// לא מנחשים בשקט - מציגים לאדמין בדיוק מה יתוקן ולאיזה משתמש, וכותבים לשרת רק
-// אחרי אישור מפורש, עם אימות אחרי הכתיבה (לא מסתפקים בתגובת HTTP 200).
-// שדה "מטפל" הוא תצוגה/ניתוב בלבד - לא משפיע על מי רואה איזו משימה (בשונה
-// מ"מבקש", שנשאר כרגע ללא שינוי, ראו שיחה עם המשתמש).
-async function migrateRivkaHandlerAssignments(){
-  if (!isAdmin()) return;
-  var users = DB.users||[];
-  var candidates = (DB.rivka||[]).filter(function(r){ return r.מט && !r.מטUid; });
-  if (!candidates.length) { alert('אין שיוכי מטפל ישנים לתיקון - כל השיוכים כבר מקושרים למשתמשים.'); return; }
-
-  var plan = candidates.map(function(r){ return { r: r, found: findUserMatches(users, r.מט) }; });
-  var autoFix = plan.filter(function(p){ return p.found.matches.length===1; });
-  var needsReview = plan.filter(function(p){ return p.found.matches.length!==1; });
-
-  var summary = 'נמצאו ' + candidates.length + ' משימות רבקה עם שיוך מטפל ישן (טקסט חופשי, לא מקושר למשתמש).\n\n';
-  if (autoFix.length) {
-    summary += '✅ ' + autoFix.length + ' ניתן לתקן אוטומטית:\n' +
-      autoFix.map(function(p){ return '  • "' + (p.r.נ||p.r.כ||'(ללא נושא)') + '": "' + p.r.מט + '" ← ' + p.found.matches[0].name + (p.found.method==='prefix'?' (התאמת שם פרטי)':p.found.method==='alias'?' (כינוי מוגדר)':''); }).join('\n') + '\n';
-  }
-  if (needsReview.length) {
-    summary += '\n⚠️ ' + needsReview.length + ' דורשות תיקון ידני (0 או כמה משתמשים עם שם דומה) - יש לפתוח כל אחת ולבחור את המטפל הנכון:\n' +
-      needsReview.map(function(p){ return '  • "' + (p.r.נ||p.r.כ||'(ללא נושא)') + '": "' + p.r.מט + '"'; }).join('\n') + '\n';
-  }
-  if (!autoFix.length) { alert(summary); return; }
-  summary += '\nלהמשיך ולתקן את ' + autoFix.length + ' המשימות שניתן לתקן אוטומטית?';
-  if (!confirm(summary)) return;
-
-  try {
-    var freshRes = await fetch('https://malm-focus-default-rtdb.firebaseio.com/db/rivka.json?t=' + Date.now());
-    if (!freshRes.ok) throw new Error('שגיאה בטעינה טרייה מהשרת (סטטוס ' + freshRes.status + ')');
-    var freshArr = await freshRes.json() || [];
-    var byId = {};
-    freshArr.forEach(function(r){ if (r._id) byId[r._id] = r; });
-    autoFix.forEach(function(p){
-      var fr = byId[p.r._id];
-      if (!fr) return; // נמחקה בינתיים - מדלגים, לא נוגעים
-      fr.מטUid = p.found.matches[0]._uid;
-      fr.מט = p.found.matches[0].name;
-    });
-
-    var putRes = await fetch('https://malm-focus-default-rtdb.firebaseio.com/db/rivka.json', {
-      method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(freshArr)
-    });
-    if (!putRes.ok) throw new Error('השרת דחה את הכתיבה (סטטוס ' + putRes.status + ')');
-
-    var verifyRes = await fetch('https://malm-focus-default-rtdb.firebaseio.com/db/rivka.json?t=' + Date.now());
-    var verifyArr = await verifyRes.json() || [];
-    var verifyById = {};
-    verifyArr.forEach(function(r){ if (r._id) verifyById[r._id] = r; });
-    var okCount = 0, failCount = 0;
-    autoFix.forEach(function(p){
-      var v = verifyById[p.r._id];
-      if (v && v.מטUid === p.found.matches[0]._uid && v.מט === p.found.matches[0].name) okCount++;
-      else failCount++;
-    });
-
-    DB.rivka = verifyArr;
-    r2();
-    var doneMsg = 'הושלם: ' + okCount + ' משימות תוקנו בהצלחה' + (failCount ? (', ' + failCount + ' נכשלו') : '') + '.';
-    if (needsReview.length) doneMsg += '\n' + needsReview.length + ' משימות עדיין דורשות תיקון ידני - פתח/י כל אחת, בחר/י את המטפל הנכון מה-DROPDOWN, ושמור/י.';
-    alert(doneMsg);
-  } catch(e) {
-    alert('❌ שגיאה: ' + e.message);
   }
 }
 
@@ -905,7 +835,7 @@ function rivkaFields(r={}, isEdit=false){
       ${isEdit?`<div class="form-row narrow"><label>סטטוס</label><select id="f_ס">${(isAdmin()?SR_ADMIN:SR).map(s=>`<option ${(r.ס||'פתוח')===s?'selected':''}>${s}</option>`).join('')}</select></div>`:''}
       ${isEdit && isAdmin()?`<div class="form-row"><label>מטפל</label><select id="f_מט">${buildUserSelectOptionsHtml(r.מטUid||'', r.מט||'')}</select></div>`:''}
     </div>
-    ${isEdit && isAdmin()?`<div class="form-row"><label>מבקש</label><input id="f_מב" value="${(r.מב||'').replace(/"/g,'&quot;')}" placeholder="שם המבקש..."></div>`:''}
+    ${isEdit && isAdmin()?`<div class="form-row"><label>מבקש</label><select id="f_מב">${buildUserSelectOptionsHtml(r.מבUid||'', r.מב||'')}</select></div>`:''}
     <div class="form-row"><label>בקשה</label><textarea id="f_ב" class="tall">${r.ב||''}</textarea></div>`;
 }
 
@@ -979,15 +909,23 @@ function saveModal(){
       reads:r?r.reads||{}:{}
     };
   }else{
-    // "מטפל" נבחר ב-DROPDOWN לפי _uid של משתמש אמיתי (ראו buildUserSelectOptionsHtml).
-    // אם עדיין לא נבחר משתמש תואם למשימה ישנה, ה-value הוא "legacy:<שם ישן>" - במקרה
-    // כזה שומרים את השם הישן כמו שהוא (בלי מטUid) ולא דורסים/מוחקים אותו בכוח.
+    // "מטפל" ו"מבקש" נבחרים ב-DROPDOWN לפי _uid של משתמש אמיתי (ראו buildUserSelectOptionsHtml).
+    // אם עדיין לא נבחר משתמש תואם לשיוך ישן, ה-value הוא "legacy:<שם ישן>" - במקרה
+    // כזה שומרים את השם הישן כמו שהוא (בלי Uid) ולא דורסים/מוחקים אותו בכוח - לא עכשיו
+    // ולא בעתיד. חשוב במיוחד ל"מבקש": השדה הזה קובע אילו מנהלים רואים את המשימה
+    // (ראו r2()/openEdit), וההשוואה שם עדיין לפי שם - לא שינינו את זה כאן.
     var mtEl = document.getElementById('f_מט');
     var mtUser = mtEl ? (DB.users||[]).find(function(u){ return u._uid===mtEl.value; }) : null;
     var newMt = mtEl ? (mtUser ? mtUser.name : (mtEl.value.indexOf('legacy:')===0 ? mtEl.value.slice(7) : '')) : (r?r.מט:'');
     var newMtUid = mtEl ? (mtUser ? mtUser._uid : '') : (r?r.מטUid:'');
+    var mbEl = document.getElementById('f_מב');
+    var mbUser = mbEl ? (DB.users||[]).find(function(u){ return u._uid===mbEl.value; }) : null;
+    // רשומה חדשה (אין r) בלי DROPDOWN מוצג (isEdit=false) - כמו קודם, "מבקש" הוא היוזר
+    // הנוכחי; מוסיפים גם את ה-Uid שלו כדי שרשומות חדשות ייפתחו כבר מקושרות כראוי.
+    var newMb = mbEl ? (mbUser ? mbUser.name : (mbEl.value.indexOf('legacy:')===0 ? mbEl.value.slice(7) : '')) : (r ? r.מב : (CU?CU.name:''));
+    var newMbUid = mbEl ? (mbUser ? mbUser._uid : '') : (r ? r.מבUid : (CU?CU._uid:''));
     rec={
-      נ:g('f_נ'), מב:document.getElementById('f_מב')?g('f_מב'):(r?r.מב:(CU?CU.name:'')), ת:g('f_ת'), כ:g('f_כ'), ב:g('f_ב'),
+      נ:g('f_נ'), מב:newMb, מבUid:newMbUid, ת:g('f_ת'), כ:g('f_כ'), ב:g('f_ב'),
       מט:newMt, מטUid:newMtUid, ע:g('f_ע'),
       ס:r?(g('f_ס')||r.ס):'פתוח',
       ה:r?r.ה||'':'',
@@ -2220,66 +2158,6 @@ function sendDevTesterEmail(user, task) {
   });
 }
 
-// תיקון חד-פעמי (אפשר להריץ שוב בכל עת) לשיוכי בודק DHL ישנים - משימות ששויכו
-// לפי טקסט חופשי (t.tester) לפני שהיה testerUid. לא מנחשים בשקט: מציגים לאדמין
-// בדיוק אילו משימות יתוקנו ולאיזה משתמש, ורק אחרי אישור מפורש כותבים לשרת -
-// כל כתיבה מאומתת בנפרד (fetch טרי → merge → PUT → קריאה חוזרת לאימות), בדיוק
-// כמו כל שמירה אחרת במערכת.
-async function migrateDevTesterAssignments(){
-  if (!isAdmin()) return;
-  var users = DB.users||[];
-  var candidates = DEV_TASKS.filter(function(t){ return t.tester && !t.testerUid; });
-  if (!candidates.length) { alert('אין שיוכי בודקים ישנים לתיקון - כל השיוכים כבר מקושרים למשתמשים.'); return; }
-
-  var plan = candidates.map(function(t){ return { t: t, found: findUserMatches(users, t.tester) }; });
-  var autoFix = plan.filter(function(p){ return p.found.matches.length===1; });
-  var needsReview = plan.filter(function(p){ return p.found.matches.length!==1; });
-
-  var summary = 'נמצאו ' + candidates.length + ' משימות עם שיוך בודק ישן (טקסט חופשי, לא מקושר למשתמש).\n\n';
-  if (autoFix.length) {
-    summary += '✅ ' + autoFix.length + ' ניתן לתקן אוטומטית:\n' +
-      autoFix.map(function(p){ return '  • משימה ' + (p.t.id||'(ללא מספר)') + ': "' + p.t.tester + '" ← ' + p.found.matches[0].name + (p.found.method==='prefix'?' (התאמת שם פרטי)':p.found.method==='alias'?' (כינוי מוגדר)':''); }).join('\n') + '\n';
-  }
-  if (needsReview.length) {
-    summary += '\n⚠️ ' + needsReview.length + ' דורשות תיקון ידני (0 או כמה משתמשים עם שם דומה) - יש לפתוח כל אחת ולבחור את הבודק הנכון:\n' +
-      needsReview.map(function(p){ return '  • משימה ' + (p.t.id||'(ללא מספר)') + ': "' + p.t.tester + '"'; }).join('\n') + '\n';
-  }
-  if (!autoFix.length) { alert(summary); return; }
-  summary += '\nלהמשיך ולתקן את ' + autoFix.length + ' המשימות שניתן לתקן אוטומטית?';
-  if (!confirm(summary)) return;
-
-  var BASE = 'https://malm-focus-default-rtdb.firebaseio.com';
-  var okCount = 0, failCount = 0;
-  for (var i=0; i<autoFix.length; i++){
-    var p = autoFix[i];
-    var matchedUser = p.found.matches[0];
-    try {
-      var freshRes = await fetch(BASE + '/devTasksByUid/' + encodeURIComponent(p.t._uid) + '.json?t=' + Date.now());
-      if (!freshRes.ok) throw new Error('http ' + freshRes.status);
-      var fresh = (await freshRes.json()) || {};
-      var updated = Object.assign({}, p.t, fresh, { testerUid: matchedUser._uid, tester: matchedUser.name });
-      var putRes = await fetch(BASE + '/devTasksByUid/' + encodeURIComponent(p.t._uid) + '.json', {
-        method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(updated)
-      });
-      if (!putRes.ok) throw new Error('http ' + putRes.status);
-      var verifyRes = await fetch(BASE + '/devTasksByUid/' + encodeURIComponent(p.t._uid) + '.json?t=' + Date.now());
-      var verifyData = (await verifyRes.json()) || {};
-      if (verifyData.testerUid !== matchedUser._uid || verifyData.tester !== matchedUser.name) throw new Error('אימות נכשל');
-      p.t.testerUid = matchedUser._uid;
-      p.t.tester = matchedUser.name;
-      okCount++;
-    } catch(e) {
-      failCount++;
-      console.warn('migrateDevTesterAssignments failed for', p.t._uid, e);
-    }
-  }
-  renderDevTable();
-  populateDevFilters();
-  var doneMsg = 'הושלם: ' + okCount + ' משימות תוקנו בהצלחה' + (failCount ? (', ' + failCount + ' נכשלו (פרטים בקונסול)') : '') + '.';
-  if (needsReview.length) doneMsg += '\n' + needsReview.length + ' משימות עדיין דורשות תיקון ידני - פתח/י כל אחת, בחר/י את הבודק הנכון מה-DROPDOWN, ושמור/י.';
-  alert(doneMsg);
-}
-
 var DEV_OVERRIDE_FIELDS = ['tester','testerUid','tStatus','tNotes','status','sLog','specLink','dev','desc','notes','comp','ver','iface','id','linkedLaunchId'];
 
 // טוען עדכונים לפי מזהה פנימי יציב (t._uid) - לא לפי מיקום במערך, ולא לפי "מספר משימה"
@@ -2369,7 +2247,7 @@ function renderSanityAdmin() {
     var closedInfo = (t.status==='בוצע' || t.status==='נכשל') ? ' <span style="font-size:10px;color:#666">(ע"י ' + esc(t.closedBy||'') + ')</span>' : '';
     var envBg = t.env==='RDP' ? '#e3f2fd' : t.env==='טסט' ? '#f3e5f5' : '#fff8e1';
     var envColor = t.env==='RDP' ? '#1565c0' : t.env==='טסט' ? '#6a1b9a' : '#e65100';
-    return '<tr style="background:' + bg + ';vertical-align:top">' +
+    return '<tr style="background:' + bg + ';vertical-align:top" data-assignee="' + esc(t.assignee) + '" data-status="' + esc(t.status||'פתוח') + '">' +
       '<td style="padding:8px 10px;border-bottom:1px solid #eee;font-size:11px;font-weight:700;white-space:nowrap">' + esc(t.module||'') + '</td>' +
       '<td style="padding:8px 10px;border-bottom:1px solid #eee;font-size:11px;line-height:1.5">' + esc(t.name) + '</td>' +
       '<td style="padding:8px 10px;border-bottom:1px solid #eee;text-align:center"><span style="background:' + envBg + ';color:' + envColor + ';padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700">' + esc(t.env||'') + '</span></td>' +
@@ -2384,6 +2262,36 @@ function renderSanityAdmin() {
       '</td>' +
     '</tr>';
   }).join('');
+  populateSanityFilters();
+  filterSanityAdminTable();
+}
+
+function populateSanityFilters(){
+  var sel = document.getElementById('sanityFilterAssignee');
+  if (!sel) return;
+  var prev = sel.value;
+  sel.innerHTML = '<option value="">כל המבצעים</option>' + (DB.users||[]).map(function(u){
+    return '<option value="'+esc(u.name)+'">'+esc(u.name)+'</option>';
+  }).join('');
+  if ((DB.users||[]).some(function(u){ return u.name===prev; })) sel.value = prev;
+}
+function filterSanityAdminTable(){
+  var fa = document.getElementById('sanityFilterAssignee');
+  var fs = document.getElementById('sanityFilterStatus');
+  if (!fa || !fs) return;
+  var faVal = fa.value, fsVal = fs.value;
+  document.querySelectorAll('#sanityAdminBody tr').forEach(function(row){
+    var a = row.getAttribute('data-assignee')||'';
+    var s = row.getAttribute('data-status')||'';
+    row.style.display = (!faVal||a===faVal)&&(!fsVal||s===fsVal) ? '' : 'none';
+  });
+}
+function clearSanityFilters(){
+  var fa = document.getElementById('sanityFilterAssignee');
+  var fs = document.getElementById('sanityFilterStatus');
+  if (fa) fa.value='';
+  if (fs) fs.value='';
+  filterSanityAdminTable();
 }
 
 function renderSanityManager() {
@@ -2874,7 +2782,6 @@ async function dedupRecords(sheet) {
     <button onclick="clearDevFilters()" style="padding:6px 12px;border:1px solid #aaa;border-radius:6px;font-size:12px;font-family:Arial;background:#fff;cursor:pointer">נקה סינון</button>
     <button onclick="openStatusReport('dev')" style="padding:6px 12px;background:#1a1a2e;color:#fff;border:none;border-radius:6px;font-size:12px;font-family:Arial;cursor:pointer">📊 דוח שינויי סטטוס</button>
     <button onclick="openDevListsModal()" style="padding:6px 12px;background:#1a1a2e;color:#fff;border:none;border-radius:6px;font-size:12px;font-family:Arial;cursor:pointer">⚙️ ניהול רשימות</button>
-    <button onclick="migrateDevTesterAssignments()" style="padding:6px 12px;background:#6a1b9a;color:#fff;border:none;border-radius:6px;font-size:12px;font-family:Arial;cursor:pointer" title="מתאים אוטומטית שיוכי בודק DHL ישנים (טקסט חופשי) למשתמשים קיימים במערכת">🔧 תיקון שיוכי בודקים ישנים</button>
     <button onclick="openNewDevTask()" style="padding:6px 14px;background:#D40511;color:#fff;border:none;border-radius:6px;font-size:12px;font-weight:700;font-family:Arial;cursor:pointer;margin-right:auto">+ משימה חדשה</button>
   </div>
   <div style="overflow-x:auto">
@@ -2908,6 +2815,18 @@ async function dedupRecords(sheet) {
       <button onclick="openStatusReport('sanity')" style="background:#1a1a2e;color:#fff;border:none;border-radius:6px;padding:8px 16px;cursor:pointer;font-size:13px;font-weight:700;font-family:Arial">📊 דוח בדיקות שהושלמו</button>
       <button onclick="openNewSanity()" style="background:#D40511;color:#fff;border:none;border-radius:6px;padding:8px 16px;cursor:pointer;font-size:13px;font-weight:700;font-family:Arial">+ בדיקה חדשה</button>
       <button onclick="resetSanityTasks()" style="background:#e65100;color:#fff;border:none;border-radius:6px;padding:8px 16px;cursor:pointer;font-size:13px;font-weight:700;font-family:Arial">🔄 אפס לברירת מחדל</button>
+    </div>
+    <div style="display:flex;gap:10px;margin-bottom:12px;flex-wrap:wrap;align-items:center">
+      <select id="sanityFilterAssignee" onchange="filterSanityAdminTable()" style="padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:12px;font-family:Arial;direction:rtl">
+        <option value="">כל המבצעים</option>
+      </select>
+      <select id="sanityFilterStatus" onchange="filterSanityAdminTable()" style="padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:12px;font-family:Arial;direction:rtl">
+        <option value="">כל הסטטוסים</option>
+        <option value="פתוח">פתוח</option>
+        <option value="בוצע">בוצע</option>
+        <option value="נכשל">נכשל</option>
+      </select>
+      <button onclick="clearSanityFilters()" style="padding:6px 12px;border:1px solid #aaa;border-radius:6px;font-size:12px;font-family:Arial;background:#fff;cursor:pointer">נקה סינון</button>
     </div>
     <table style="width:100%;border-collapse:collapse;font-size:12px">
       <thead><tr style="background:#1a1a2e;color:#fff">
