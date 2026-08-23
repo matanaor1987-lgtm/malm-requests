@@ -222,11 +222,18 @@ tr:hover td{background:#fffbf0}
       </div>
     </div>
     <select id="dm1" onchange="r1()"><option value="">כל התחומים</option></select>
-    <select id="pr1" onchange="r1()">
-      <option value="">כל העדיפויות</option>
-      <option value="1">1</option><option value="2">2</option><option value="3">3</option>
-      <option value="4">4</option><option value="5">5</option>
-    </select>
+    <div id="msf_malmPr_wrap" style="position:relative;display:inline-block">
+      <button type="button" onclick="msfToggle('malmPr')" id="msf_malmPr_btn" data-all="כל העדיפויות" data-none="ללא עדיפות" data-unit="עדיפויות" style="padding:5px 12px;border:1px solid #ddd;border-radius:5px;background:#fff;cursor:pointer;font-size:12px;font-family:Arial;min-width:130px;text-align:right;direction:rtl">כל העדיפויות ▾</button>
+      <div id="msf_malmPr_dd" style="display:none;position:absolute;top:100%;right:0;background:#fff;border:1px solid #ddd;border-radius:6px;box-shadow:0 4px 12px rgba(0,0,0,0.12);z-index:999;min-width:160px;padding:6px 0">
+        <label style="display:flex;align-items:center;gap:8px;padding:5px 12px;cursor:pointer;font-size:12px;font-family:Arial;direction:rtl"><input type="checkbox" id="msf_malmPr_all" checked onchange="msfToggleAll('malmPr',this)"> <span>כל העדיפויות</span></label>
+        <hr style="margin:4px 0;border:none;border-top:1px solid #eee">
+        <label style="display:flex;align-items:center;gap:8px;padding:5px 12px;cursor:pointer;font-size:12px;font-family:Arial;direction:rtl"><input type="checkbox" class="msfcb_malmPr" value="1" onchange="msfChange('malmPr')" checked> <span>1</span></label>
+        <label style="display:flex;align-items:center;gap:8px;padding:5px 12px;cursor:pointer;font-size:12px;font-family:Arial;direction:rtl"><input type="checkbox" class="msfcb_malmPr" value="2" onchange="msfChange('malmPr')" checked> <span>2</span></label>
+        <label style="display:flex;align-items:center;gap:8px;padding:5px 12px;cursor:pointer;font-size:12px;font-family:Arial;direction:rtl"><input type="checkbox" class="msfcb_malmPr" value="3" onchange="msfChange('malmPr')" checked> <span>3</span></label>
+        <label style="display:flex;align-items:center;gap:8px;padding:5px 12px;cursor:pointer;font-size:12px;font-family:Arial;direction:rtl"><input type="checkbox" class="msfcb_malmPr" value="4" onchange="msfChange('malmPr')" checked> <span>4</span></label>
+        <label style="display:flex;align-items:center;gap:8px;padding:5px 12px;cursor:pointer;font-size:12px;font-family:Arial;direction:rtl"><input type="checkbox" class="msfcb_malmPr" value="5" onchange="msfChange('malmPr')" checked> <span>5</span></label>
+      </div>
+    </div>
     <button onclick="openStatusReport('malm')" style="background:#1a1a2e;color:#fff;padding:5px 12px;border-radius:5px;border:none;cursor:pointer;font-size:12px;font-family:Arial">📊 דוח שינויי סטטוס</button>
   </div>
   <div class="count" id="c1"></div>
@@ -257,11 +264,18 @@ tr:hover td{background:#fffbf0}
     <label style="display:flex;align-items:center;gap:8px;padding:5px 12px;cursor:pointer;font-size:12px;font-family:Arial;direction:rtl"><input type="checkbox" class="st2cb" value="בוצע" onchange="onStatusChange()"> <span class="badge s-בוצע">בוצע</span></label>
   </div>
 </div>
-    <select id="pr2" onchange="r2()">
-      <option value="">כל העדיפויות</option>
-      <option value="1">1</option><option value="2">2</option><option value="3">3</option>
-      <option value="4">4</option><option value="5">5</option>
-    </select>
+    <div id="msf_rivkaPr_wrap" style="position:relative;display:inline-block">
+      <button type="button" onclick="msfToggle('rivkaPr')" id="msf_rivkaPr_btn" data-all="כל העדיפויות" data-none="ללא עדיפות" data-unit="עדיפויות" style="padding:5px 12px;border:1px solid #ddd;border-radius:5px;background:#fff;cursor:pointer;font-size:12px;font-family:Arial;min-width:130px;text-align:right;direction:rtl">כל העדיפויות ▾</button>
+      <div id="msf_rivkaPr_dd" style="display:none;position:absolute;top:100%;right:0;background:#fff;border:1px solid #ddd;border-radius:6px;box-shadow:0 4px 12px rgba(0,0,0,0.12);z-index:999;min-width:160px;padding:6px 0">
+        <label style="display:flex;align-items:center;gap:8px;padding:5px 12px;cursor:pointer;font-size:12px;font-family:Arial;direction:rtl"><input type="checkbox" id="msf_rivkaPr_all" checked onchange="msfToggleAll('rivkaPr',this)"> <span>כל העדיפויות</span></label>
+        <hr style="margin:4px 0;border:none;border-top:1px solid #eee">
+        <label style="display:flex;align-items:center;gap:8px;padding:5px 12px;cursor:pointer;font-size:12px;font-family:Arial;direction:rtl"><input type="checkbox" class="msfcb_rivkaPr" value="1" onchange="msfChange('rivkaPr')" checked> <span>1</span></label>
+        <label style="display:flex;align-items:center;gap:8px;padding:5px 12px;cursor:pointer;font-size:12px;font-family:Arial;direction:rtl"><input type="checkbox" class="msfcb_rivkaPr" value="2" onchange="msfChange('rivkaPr')" checked> <span>2</span></label>
+        <label style="display:flex;align-items:center;gap:8px;padding:5px 12px;cursor:pointer;font-size:12px;font-family:Arial;direction:rtl"><input type="checkbox" class="msfcb_rivkaPr" value="3" onchange="msfChange('rivkaPr')" checked> <span>3</span></label>
+        <label style="display:flex;align-items:center;gap:8px;padding:5px 12px;cursor:pointer;font-size:12px;font-family:Arial;direction:rtl"><input type="checkbox" class="msfcb_rivkaPr" value="4" onchange="msfChange('rivkaPr')" checked> <span>4</span></label>
+        <label style="display:flex;align-items:center;gap:8px;padding:5px 12px;cursor:pointer;font-size:12px;font-family:Arial;direction:rtl"><input type="checkbox" class="msfcb_rivkaPr" value="5" onchange="msfChange('rivkaPr')" checked> <span>5</span></label>
+      </div>
+    </div>
     <button onclick="openStatusReport('rivka')" style="background:#1a1a2e;color:#fff;padding:5px 12px;border-radius:5px;border:none;cursor:pointer;font-size:12px;font-family:Arial">📊 דוח שינויי סטטוס</button>
   </div>
   <div class="count" id="c2"></div>
@@ -642,18 +656,18 @@ function r1(){
   const selectedStatuses=[...st1cbs].filter(cb=>cb.checked).map(cb=>cb.value);
   const allChecked=st1cbs.length===0||selectedStatuses.length===st1cbs.length;
   const dm=document.getElementById('dm1').value;
-  const pr=document.getElementById('pr1').value;
+  const prSel=msfGetSelected('malmPr');
   buildStats(DB.malm.filter(r=>!r.deleted),document.getElementById('s1'));
   let f=DB.malm.filter(r=>{
     if(r.deleted)return false;
     if(!allChecked&&!selectedStatuses.includes(r.ס||'פתוח'))return false;
     if(dm&&r.ד!==dm)return false;
-    if(pr&&String(r.ע)!==pr)return false;
+    if(!prSel.allChecked&&!prSel.selected.includes(String(r.ע)))return false;
     if(q&&!(r.מ+r.ד+r.א+(r.dhl||'')+r.ה).toLowerCase().includes(q))return false;
     return true;
   });
   document.getElementById('c1').textContent=`מציג ${f.length} מתוך ${DB.malm.length}`;
-  const filterKey1=q+'|'+selectedStatuses.join(',')+'|'+dm+'|'+pr;
+  const filterKey1=q+'|'+selectedStatuses.join(',')+'|'+dm+'|'+prSel.selected.join(',');
   if(filterKey1!==lastFilterKey1){page1=1;lastFilterKey1=filterKey1;}
   const totalPages1=Math.max(1,Math.ceil(f.length/PAGE_SIZE));
   if(page1>totalPages1)page1=totalPages1;
@@ -684,20 +698,20 @@ function r2(){
   const st2cbs=document.querySelectorAll('.st2cb');
   const selectedStatuses=[...st2cbs].filter(cb=>cb.checked).map(cb=>cb.value);
   const allChecked=st2cbs.length===0||selectedStatuses.length===st2cbs.length;
-  const pr=document.getElementById('pr2').value;
+  const prSel=msfGetSelected('rivkaPr');
   const rivkaOwn = (isAdmin() ? DB.rivka : DB.rivka.filter(r=>r.מב===(CU?CU.name:''))).filter(r=>!r.deleted);
   buildStats(rivkaOwn,document.getElementById('s2'));
   let f=DB.rivka.filter(r=>{
     if(r.deleted)return false;
     if(!isAdmin() && r.מב !== (CU?CU.name:'')) return false;
     if(!allChecked&&!selectedStatuses.includes(r.ס||'פתוח'))return false;
-    if(pr&&String(r.ע)!==pr)return false;
+    if(!prSel.allChecked&&!prSel.selected.includes(String(r.ע)))return false;
     if(q&&!(r.נ+r.מב+r.כ+r.ב+r.מט+r.ה).toLowerCase().includes(q))return false;
     return true;
   });
   if(sortCol2){f.sort((a,b)=>{let av=a[sortCol2]??'',bv=b[sortCol2]??'';if(sortCol2==='ת'){return sortDir2*(av<bv?-1:av>bv?1:0);}if(sortCol2==='ע'){return sortDir2*((av===''?99:Number(av))-(bv===''?99:Number(bv)));}return sortDir2*String(av).localeCompare(String(bv),'he');});}
   document.getElementById('c2').textContent=`מציג ${f.length} מתוך ${DB.rivka.length}`;
-  const filterKey2=q+'|'+selectedStatuses.join(',')+'|'+pr;
+  const filterKey2=q+'|'+selectedStatuses.join(',')+'|'+prSel.selected.join(',');
   if(filterKey2!==lastFilterKey2){page2=1;lastFilterKey2=filterKey2;}
   const totalPages2=Math.max(1,Math.ceil(f.length/PAGE_SIZE));
   if(page2>totalPages2)page2=totalPages2;
@@ -1793,9 +1807,9 @@ function renderDevTable(){
 }
 
 function filterDevTable(){
-  var ft=document.getElementById('devFilterTester').value;
-  var fst=document.getElementById('devFilterStatus').value;
-  var fts=document.getElementById('devFilterTStatus').value;
+  var ftSel=msfGetSelected('devTester');
+  var fstSel=msfGetSelected('devStatus');
+  var ftsSel=msfGetSelected('devTStatus');
   var fc=document.getElementById('devFilterComp').value;
   var fi=document.getElementById('devFilterIface').value;
   var fv=document.getElementById('devFilterVer').value;
@@ -1806,14 +1820,15 @@ function filterDevTable(){
     var comp=row.getAttribute('data-comp')||'';
     var iface=row.getAttribute('data-iface')||'';
     var ver=row.getAttribute('data-ver')||'';
-    row.style.display=(!ft||tester===ft)&&(!fst||status===fst)&&(!fts||tstatus===fts)&&(!fc||comp===fc)&&(!fi||iface===fi)&&(!fv||ver===fv)?'':'none';
+    row.style.display=(ftSel.allChecked||ftSel.selected.includes(tester))&&(fstSel.allChecked||fstSel.selected.includes(status))&&(ftsSel.allChecked||ftsSel.selected.includes(tstatus))&&(!fc||comp===fc)&&(!fi||iface===fi)&&(!fv||ver===fv)?'':'none';
   });
 }
 function clearDevFilters(){
-  ['devFilterTester','devFilterStatus','devFilterTStatus','devFilterComp','devFilterIface','devFilterVer'].forEach(function(id){
+  ['devFilterComp','devFilterIface','devFilterVer'].forEach(function(id){
     var el=document.getElementById(id);
     if(el) el.value='';
   });
+  ['devTester','devStatus','devTStatus'].forEach(msfCheckAll);
   filterDevTable();
 }
 function populateDevSelectFromArray(selId, placeholder, values){
@@ -1831,9 +1846,9 @@ function populateDevSelectFromArray(selId, placeholder, values){
 // מהרשימות הניתנות לעריכה (DEV_LISTS), בודק DHL מגיע ממשתמשי המערכת (DB.users),
 // רכיב/גרסה/ממשק מהערכים שבפועל קיימים כרגע במשימות (אין להם רשימה מנוהלת - שדות חופשיים).
 function populateDevFilters(){
-  populateDevSelectFromArray('devFilterStatus','כל הסטטוסים (פיתוח)', DEV_LISTS.status);
-  populateDevSelectFromArray('devFilterTester','כל הבודקים', (DB.users||[]).map(function(u){return u.name;}));
-  populateDevSelectFromArray('devFilterTStatus','כל סטטוסי הבדיקה', DEV_LISTS.tStatus);
+  msfSetOptions('devStatus', DEV_LISTS.status);
+  msfSetOptions('devTester', (DB.users||[]).map(function(u){return u.name;}));
+  msfSetOptions('devTStatus', DEV_LISTS.tStatus);
   var comps={}, ifaces={}, vers={};
   DEV_TASKS.forEach(function(t){
     if(t.comp) comps[t.comp]=1;
@@ -2267,30 +2282,19 @@ function renderSanityAdmin() {
 }
 
 function populateSanityFilters(){
-  var sel = document.getElementById('sanityFilterAssignee');
-  if (!sel) return;
-  var prev = sel.value;
-  sel.innerHTML = '<option value="">כל המבצעים</option>' + (DB.users||[]).map(function(u){
-    return '<option value="'+esc(u.name)+'">'+esc(u.name)+'</option>';
-  }).join('');
-  if ((DB.users||[]).some(function(u){ return u.name===prev; })) sel.value = prev;
+  msfSetOptions('sanityAssignee', (DB.users||[]).map(function(u){return u.name;}));
 }
 function filterSanityAdminTable(){
-  var fa = document.getElementById('sanityFilterAssignee');
-  var fs = document.getElementById('sanityFilterStatus');
-  if (!fa || !fs) return;
-  var faVal = fa.value, fsVal = fs.value;
+  var faSel = msfGetSelected('sanityAssignee');
+  var fsSel = msfGetSelected('sanityStatus');
   document.querySelectorAll('#sanityAdminBody tr').forEach(function(row){
     var a = row.getAttribute('data-assignee')||'';
     var s = row.getAttribute('data-status')||'';
-    row.style.display = (!faVal||a===faVal)&&(!fsVal||s===fsVal) ? '' : 'none';
+    row.style.display = (faSel.allChecked||faSel.selected.includes(a))&&(fsSel.allChecked||fsSel.selected.includes(s)) ? '' : 'none';
   });
 }
 function clearSanityFilters(){
-  var fa = document.getElementById('sanityFilterAssignee');
-  var fs = document.getElementById('sanityFilterStatus');
-  if (fa) fa.value='';
-  if (fs) fs.value='';
+  ['sanityAssignee','sanityStatus'].forEach(msfCheckAll);
   filterSanityAdminTable();
 }
 
@@ -2571,6 +2575,93 @@ document.addEventListener('click', function(e){
   });
 });
 
+// ══════════════════════════════════════
+// MSF - תפריט סינון גנרי לבחירה מרובה (checkboxes), כמו הסטטוסים למעלה
+// (st1/st2) אבל לא קשור לשם/רשימה ספציפית - כל שדה סינון לפי שם/סטטוס/עדיפות
+// במערכת (עדיפות במלמ/רבקה, סטטוס פיתוח/בדיקה ובודק DHL בפיתוחים, מבצע
+// וסטטוס בבדיקות שפיות) בנוי עליו, כדי לא לשכפל את אותו קוד שוב ושוב.
+// 'key' הוא מזהה ייחודי לכל תפריט: msf_{key}_wrap/btn/dd/all/list, ותיבות
+// הסימון עצמן הן class="msfcb_{key}".
+function msfToggle(key){
+  var dd = document.getElementById('msf_'+key+'_dd');
+  if(dd) dd.style.display = dd.style.display==='none' ? 'block' : 'none';
+}
+function msfUpdateBtn(key){
+  var cbs=[...document.querySelectorAll('.msfcb_'+key)];
+  var checked=cbs.filter(function(c){return c.checked;});
+  var btn=document.getElementById('msf_'+key+'_btn');
+  if(!btn) return;
+  var allLabel=btn.dataset.all||'הכל', noneLabel=btn.dataset.none||'ללא', unit=btn.dataset.unit||'נבחרו';
+  if(cbs.length===0||checked.length===cbs.length) btn.textContent=allLabel+' ▾';
+  else if(checked.length===0) btn.textContent=noneLabel+' ▾';
+  else if(checked.length===1) btn.textContent=checked[0].value+' ▾';
+  else btn.textContent=checked.length+' '+unit+' ▾';
+}
+function msfToggleAll(key, cb){
+  document.querySelectorAll('.msfcb_'+key).forEach(function(c){ c.checked = cb.checked; });
+  msfUpdateBtn(key);
+  if(MSF_RENDER[key]) MSF_RENDER[key]();
+}
+function msfChange(key){
+  var cbs = document.querySelectorAll('.msfcb_'+key);
+  var allCb = document.getElementById('msf_'+key+'_all');
+  if(allCb) allCb.checked = [...cbs].every(function(c){ return c.checked; });
+  msfUpdateBtn(key);
+  if(MSF_RENDER[key]) MSF_RENDER[key]();
+}
+// מחזיר את הערכים המסומנים כרגע, ודגל allChecked (= "אין סינון בפועל", כמו
+// SELECT ריק בגרסה הישנה) - כדי שהתנהגות ברירת המחדל (הכל מוצג) תישמר.
+function msfGetSelected(key){
+  var cbs=document.querySelectorAll('.msfcb_'+key);
+  var selected=[...cbs].filter(function(c){return c.checked;}).map(function(c){return c.value;});
+  var allChecked = cbs.length===0 || selected.length===cbs.length;
+  return {selected:selected, allChecked:allChecked};
+}
+// בונה/מרעננת את רשימת האפשרויות בתוך תפריט מסוים (למשל שמות משתמשים,
+// שמשתנים בזמן ריצה). שומרת על הבחירה הקיימת של המשתמש; בפעם הראשונה
+// שמאכלסים תפריט - הכל מסומן כברירת מחדל (=בלי סינון בפועל).
+function msfSetOptions(key, values){
+  var container = document.getElementById('msf_'+key+'_list');
+  if(!container) return;
+  var existingCbs = document.querySelectorAll('.msfcb_'+key);
+  var hadAny = existingCbs.length>0;
+  var prevChecked = new Set([...existingCbs].filter(function(c){return c.checked;}).map(function(c){return c.value;}));
+  container.innerHTML = values.map(function(v){
+    var isChecked = hadAny ? prevChecked.has(v) : true;
+    return '<label style="display:flex;align-items:center;gap:8px;padding:5px 12px;cursor:pointer;font-size:12px;font-family:Arial;direction:rtl"><input type="checkbox" class="msfcb_'+key+'" value="'+esc(v)+'" onchange="msfChange(\''+key+'\')" '+(isChecked?'checked':'')+'> <span>'+esc(v)+'</span></label>';
+  }).join('');
+  var allCb = document.getElementById('msf_'+key+'_all');
+  if(allCb) allCb.checked = values.every(function(v){ return hadAny ? prevChecked.has(v) : true; });
+  msfUpdateBtn(key);
+}
+// כל מפתח (key) רשום כאן עם פונקציית ה-render שיש להריץ מחדש כשהבחירה שלו
+// משתנה - כדי שהטבלה המתאימה תסונן מחדש מיד.
+var MSF_RENDER = {
+  malmPr: function(){ r1(); },
+  rivkaPr: function(){ r2(); },
+  devStatus: function(){ filterDevTable(); },
+  devTester: function(){ filterDevTable(); },
+  devTStatus: function(){ filterDevTable(); },
+  sanityAssignee: function(){ filterSanityAdminTable(); },
+  sanityStatus: function(){ filterSanityAdminTable(); }
+};
+// מנקה סינון (=מסמן הכל, כלומר "בלי סינון בפועל" - לא מנקה ל"כלום לא מסומן")
+function msfCheckAll(key){
+  document.querySelectorAll('.msfcb_'+key).forEach(function(c){ c.checked = true; });
+  var allCb = document.getElementById('msf_'+key+'_all');
+  if(allCb) allCb.checked = true;
+  msfUpdateBtn(key);
+}
+// Close MSF dropdowns on outside click
+document.addEventListener('click', function(e){
+  document.querySelectorAll('[id^="msf_"][id$="_wrap"]').forEach(function(wrap){
+    if(!wrap.contains(e.target)){
+      var dd = wrap.querySelector('[id$="_dd"]');
+      if(dd) dd.style.display='none';
+    }
+  });
+});
+
 // עדכון שדה הערות בודדת (notes או adminNotes) - כל מי שרואה את מסך הבדיקה יכול לעדכן,
 // לא רק אדמין. עדכון ישיר לפי id (הבדיקות שמורות כאובייקט לפי id, אז זה בטוח מטבעו).
 async function updateSanityField(id, field, val) {
@@ -2761,15 +2852,30 @@ async function dedupRecords(sheet) {
   <div style="font-size:16px;font-weight:700;color:#1a1a2e;margin-bottom:14px">&#128295; פיתוחים ותיקונים לבדיקה</div>
   <div class="stats" id="s3"></div>
   <div style="display:flex;gap:10px;margin-bottom:12px;flex-wrap:wrap;align-items:center">
-    <select id="devFilterStatus" onchange="filterDevTable()" style="padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:12px;font-family:Arial;direction:rtl">
-      <option value="">כל הסטטוסים (פיתוח)</option>
-    </select>
-    <select id="devFilterTester" onchange="filterDevTable()" style="padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:12px;font-family:Arial;direction:rtl">
-      <option value="">כל הבודקים</option>
-    </select>
-    <select id="devFilterTStatus" onchange="filterDevTable()" style="padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:12px;font-family:Arial;direction:rtl">
-      <option value="">כל סטטוסי הבדיקה</option>
-    </select>
+    <div id="msf_devStatus_wrap" style="position:relative;display:inline-block">
+      <button type="button" onclick="msfToggle('devStatus')" id="msf_devStatus_btn" data-all="כל הסטטוסים (פיתוח)" data-none="ללא סטטוס" data-unit="סטטוסים" style="padding:6px 10px;border:1px solid #ddd;border-radius:6px;background:#fff;cursor:pointer;font-size:12px;font-family:Arial;min-width:130px;text-align:right;direction:rtl">כל הסטטוסים (פיתוח) ▾</button>
+      <div id="msf_devStatus_dd" style="display:none;position:absolute;top:100%;right:0;background:#fff;border:1px solid #ddd;border-radius:6px;box-shadow:0 4px 12px rgba(0,0,0,0.12);z-index:999;min-width:180px;padding:6px 0;max-height:280px;overflow-y:auto">
+        <label style="display:flex;align-items:center;gap:8px;padding:5px 12px;cursor:pointer;font-size:12px;font-family:Arial;direction:rtl"><input type="checkbox" id="msf_devStatus_all" checked onchange="msfToggleAll('devStatus',this)"> <span>כל הסטטוסים</span></label>
+        <hr style="margin:4px 0;border:none;border-top:1px solid #eee">
+        <div id="msf_devStatus_list"></div>
+      </div>
+    </div>
+    <div id="msf_devTester_wrap" style="position:relative;display:inline-block">
+      <button type="button" onclick="msfToggle('devTester')" id="msf_devTester_btn" data-all="כל הבודקים" data-none="ללא בודק" data-unit="בודקים" style="padding:6px 10px;border:1px solid #ddd;border-radius:6px;background:#fff;cursor:pointer;font-size:12px;font-family:Arial;min-width:130px;text-align:right;direction:rtl">כל הבודקים ▾</button>
+      <div id="msf_devTester_dd" style="display:none;position:absolute;top:100%;right:0;background:#fff;border:1px solid #ddd;border-radius:6px;box-shadow:0 4px 12px rgba(0,0,0,0.12);z-index:999;min-width:180px;padding:6px 0;max-height:280px;overflow-y:auto">
+        <label style="display:flex;align-items:center;gap:8px;padding:5px 12px;cursor:pointer;font-size:12px;font-family:Arial;direction:rtl"><input type="checkbox" id="msf_devTester_all" checked onchange="msfToggleAll('devTester',this)"> <span>כל הבודקים</span></label>
+        <hr style="margin:4px 0;border:none;border-top:1px solid #eee">
+        <div id="msf_devTester_list"></div>
+      </div>
+    </div>
+    <div id="msf_devTStatus_wrap" style="position:relative;display:inline-block">
+      <button type="button" onclick="msfToggle('devTStatus')" id="msf_devTStatus_btn" data-all="כל סטטוסי הבדיקה" data-none="ללא סטטוס בדיקה" data-unit="סטטוסים" style="padding:6px 10px;border:1px solid #ddd;border-radius:6px;background:#fff;cursor:pointer;font-size:12px;font-family:Arial;min-width:130px;text-align:right;direction:rtl">כל סטטוסי הבדיקה ▾</button>
+      <div id="msf_devTStatus_dd" style="display:none;position:absolute;top:100%;right:0;background:#fff;border:1px solid #ddd;border-radius:6px;box-shadow:0 4px 12px rgba(0,0,0,0.12);z-index:999;min-width:180px;padding:6px 0;max-height:280px;overflow-y:auto">
+        <label style="display:flex;align-items:center;gap:8px;padding:5px 12px;cursor:pointer;font-size:12px;font-family:Arial;direction:rtl"><input type="checkbox" id="msf_devTStatus_all" checked onchange="msfToggleAll('devTStatus',this)"> <span>כל סטטוסי הבדיקה</span></label>
+        <hr style="margin:4px 0;border:none;border-top:1px solid #eee">
+        <div id="msf_devTStatus_list"></div>
+      </div>
+    </div>
     <select id="devFilterComp" onchange="filterDevTable()" style="padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:12px;font-family:Arial;direction:rtl">
       <option value="">כל הרכיבים</option>
     </select>
@@ -2817,15 +2923,24 @@ async function dedupRecords(sheet) {
       <button onclick="resetSanityTasks()" style="background:#e65100;color:#fff;border:none;border-radius:6px;padding:8px 16px;cursor:pointer;font-size:13px;font-weight:700;font-family:Arial">🔄 אפס לברירת מחדל</button>
     </div>
     <div style="display:flex;gap:10px;margin-bottom:12px;flex-wrap:wrap;align-items:center">
-      <select id="sanityFilterAssignee" onchange="filterSanityAdminTable()" style="padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:12px;font-family:Arial;direction:rtl">
-        <option value="">כל המבצעים</option>
-      </select>
-      <select id="sanityFilterStatus" onchange="filterSanityAdminTable()" style="padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:12px;font-family:Arial;direction:rtl">
-        <option value="">כל הסטטוסים</option>
-        <option value="פתוח">פתוח</option>
-        <option value="בוצע">בוצע</option>
-        <option value="נכשל">נכשל</option>
-      </select>
+      <div id="msf_sanityAssignee_wrap" style="position:relative;display:inline-block">
+        <button type="button" onclick="msfToggle('sanityAssignee')" id="msf_sanityAssignee_btn" data-all="כל המבצעים" data-none="ללא מבצע" data-unit="מבצעים" style="padding:6px 10px;border:1px solid #ddd;border-radius:6px;background:#fff;cursor:pointer;font-size:12px;font-family:Arial;min-width:130px;text-align:right;direction:rtl">כל המבצעים ▾</button>
+        <div id="msf_sanityAssignee_dd" style="display:none;position:absolute;top:100%;right:0;background:#fff;border:1px solid #ddd;border-radius:6px;box-shadow:0 4px 12px rgba(0,0,0,0.12);z-index:999;min-width:180px;padding:6px 0;max-height:280px;overflow-y:auto">
+          <label style="display:flex;align-items:center;gap:8px;padding:5px 12px;cursor:pointer;font-size:12px;font-family:Arial;direction:rtl"><input type="checkbox" id="msf_sanityAssignee_all" checked onchange="msfToggleAll('sanityAssignee',this)"> <span>כל המבצעים</span></label>
+          <hr style="margin:4px 0;border:none;border-top:1px solid #eee">
+          <div id="msf_sanityAssignee_list"></div>
+        </div>
+      </div>
+      <div id="msf_sanityStatus_wrap" style="position:relative;display:inline-block">
+        <button type="button" onclick="msfToggle('sanityStatus')" id="msf_sanityStatus_btn" data-all="כל הסטטוסים" data-none="ללא סטטוס" data-unit="סטטוסים" style="padding:6px 10px;border:1px solid #ddd;border-radius:6px;background:#fff;cursor:pointer;font-size:12px;font-family:Arial;min-width:130px;text-align:right;direction:rtl">כל הסטטוסים ▾</button>
+        <div id="msf_sanityStatus_dd" style="display:none;position:absolute;top:100%;right:0;background:#fff;border:1px solid #ddd;border-radius:6px;box-shadow:0 4px 12px rgba(0,0,0,0.12);z-index:999;min-width:160px;padding:6px 0">
+          <label style="display:flex;align-items:center;gap:8px;padding:5px 12px;cursor:pointer;font-size:12px;font-family:Arial;direction:rtl"><input type="checkbox" id="msf_sanityStatus_all" checked onchange="msfToggleAll('sanityStatus',this)"> <span>כל הסטטוסים</span></label>
+          <hr style="margin:4px 0;border:none;border-top:1px solid #eee">
+          <label style="display:flex;align-items:center;gap:8px;padding:5px 12px;cursor:pointer;font-size:12px;font-family:Arial;direction:rtl"><input type="checkbox" class="msfcb_sanityStatus" value="פתוח" onchange="msfChange('sanityStatus')" checked> <span>פתוח</span></label>
+          <label style="display:flex;align-items:center;gap:8px;padding:5px 12px;cursor:pointer;font-size:12px;font-family:Arial;direction:rtl"><input type="checkbox" class="msfcb_sanityStatus" value="בוצע" onchange="msfChange('sanityStatus')" checked> <span>בוצע</span></label>
+          <label style="display:flex;align-items:center;gap:8px;padding:5px 12px;cursor:pointer;font-size:12px;font-family:Arial;direction:rtl"><input type="checkbox" class="msfcb_sanityStatus" value="נכשל" onchange="msfChange('sanityStatus')" checked> <span>נכשל</span></label>
+        </div>
+      </div>
       <button onclick="clearSanityFilters()" style="padding:6px 12px;border:1px solid #aaa;border-radius:6px;font-size:12px;font-family:Arial;background:#fff;cursor:pointer">נקה סינון</button>
     </div>
     <table style="width:100%;border-collapse:collapse;font-size:12px">

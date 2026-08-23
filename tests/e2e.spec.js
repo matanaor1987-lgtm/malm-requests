@@ -1,7 +1,7 @@
 // בדיקות E2E למערכת בקשות מלמ.
 // כל בדיקה עובדת מול Firebase מדומה (ראו helpers.js) - אף בדיקה לא נוגעת בנתונים אמיתיים.
 const { test, expect } = require('@playwright/test');
-const { mockFirebase, seedUsers, login } = require('./helpers');
+const { mockFirebase, seedUsers, login, msfSelectOnly, msfSelectAll } = require('./helpers');
 
 test.describe('התחברות', () => {
   test('כניסה עם פרטים נכונים מציגה את הלשוניות', async ({ page }) => {
@@ -45,6 +45,47 @@ test.describe('רגרסיה: פריסת התפריט העליון בטאב מש�
       return !!(tabs.compareDocumentPosition(pane2) & Node.DOCUMENT_POSITION_FOLLOWING);
     });
     expect(mainTabsBeforePane2).toBe(true);
+  });
+});
+
+test.describe('סינון עדיפות בבחירה מרובה (מלמ ורבקה)', () => {
+  test('טאב מלמ כולל: אפשר לבחור כמה עדיפויות בו-זמנית, ו"נקה" (הכל מסומן) מחזיר הכל', async ({ page }) => {
+    const malm = [
+      { _id: 'm1', ת: '2026-07-01', ד: 'תחום א', מ: 'משימת עדיפות 1', ע: 1, ס: 'פתוח', dhl: '', א: '', ה: '', chat: {}, reads: {} },
+      { _id: 'm2', ת: '2026-07-01', ד: 'תחום א', מ: 'משימת עדיפות 3', ע: 3, ס: 'פתוח', dhl: '', א: '', ה: '', chat: {}, reads: {} },
+      { _id: 'm3', ת: '2026-07-01', ד: 'תחום א', מ: 'משימת עדיפות 5', ע: 5, ס: 'פתוח', dhl: '', א: '', ה: '', chat: {}, reads: {} },
+    ];
+    await mockFirebase(page, { malm });
+    await page.goto('/index.html');
+    await login(page, 'testadmin', 'pw');
+    await page.click('.tab[data-tab="0"]');
+    await expect(page.locator('#b1')).toContainText('משימת עדיפות 1');
+
+    await msfSelectOnly(page, 'malmPr', ['1', '3']);
+    await expect(page.locator('#b1')).toContainText('משימת עדיפות 1');
+    await expect(page.locator('#b1')).toContainText('משימת עדיפות 3');
+    await expect(page.locator('#b1')).not.toContainText('משימת עדיפות 5');
+    await expect(page.locator('#msf_malmPr_btn')).toHaveText('2 עדיפויות ▾');
+
+    await msfSelectAll(page, 'malmPr');
+    await expect(page.locator('#b1')).toContainText('משימת עדיפות 5');
+    await expect(page.locator('#msf_malmPr_btn')).toHaveText('כל העדיפויות ▾');
+  });
+
+  test('טאב משימות לרבקה: אפשר לבחור כמה עדיפויות בו-זמנית', async ({ page }) => {
+    const rivka = [
+      { _id: 'r1', נ: 'משימה עדיפות 2', מב: 'מנהל בדיקה', ת: '2026-07-01', כ: 'k', ב: 'b', ע: 2, ס: 'פתוח', chat: {} },
+      { _id: 'r2', נ: 'משימה עדיפות 4', מב: 'מנהל בדיקה', ת: '2026-07-01', כ: 'k', ב: 'b', ע: 4, ס: 'פתוח', chat: {} },
+    ];
+    await mockFirebase(page, { rivka });
+    await page.goto('/index.html');
+    await login(page, 'testadmin', 'pw');
+    await expect(page.locator('#b2')).toContainText('משימה עדיפות 2');
+
+    await msfSelectOnly(page, 'rivkaPr', ['4']);
+    await expect(page.locator('#b2')).not.toContainText('משימה עדיפות 2');
+    await expect(page.locator('#b2')).toContainText('משימה עדיפות 4');
+    await expect(page.locator('#msf_rivkaPr_btn')).toHaveText('4 ▾');
   });
 });
 
@@ -331,16 +372,32 @@ test.describe('סינון בטבלת בדיקות שפיות לפי מבצע ו�
     await expect(page.locator('#sanityAdminBody')).toContainText('בדיקת מסך א');
     await expect(page.locator('#sanityAdminBody tr:visible')).toHaveCount(3);
 
-    await page.selectOption('#sanityFilterAssignee', 'מנהל בדיקה');
+    await msfSelectOnly(page, 'sanityAssignee', ['מנהל בדיקה']);
     await expect(page.locator('#sanityAdminBody tr:visible')).toHaveCount(2);
     await expect(page.locator('#sanityAdminBody tr:visible', { hasText: 'בדיקת מסך א' })).toHaveCount(0);
 
-    await page.selectOption('#sanityFilterStatus', 'בוצע');
+    await msfSelectOnly(page, 'sanityStatus', ['בוצע']);
     await expect(page.locator('#sanityAdminBody tr:visible')).toHaveCount(1);
     await expect(page.locator('#sanityAdminBody tr:visible')).toContainText('בדיקת מסך ב');
 
     await page.click('button[onclick="clearSanityFilters()"]');
     await expect(page.locator('#sanityAdminBody tr:visible')).toHaveCount(3);
+  });
+
+  test('אפשר לבחור כמה מבצעים בו-זמנית (בחירה מרובה)', async ({ page }) => {
+    await mockFirebase(page, { sanity: JSON.parse(JSON.stringify(sanity3)) });
+    await page.goto('/index.html');
+    await login(page, 'testadmin', 'pw');
+    await page.click('.tab[data-tab="4"]');
+    await expect(page.locator('#sanityAdminBody')).toContainText('בדיקת מסך א');
+
+    await msfSelectOnly(page, 'sanityAssignee', ['מנהלת בדיקה', 'מנהל בדיקה']);
+    await expect(page.locator('#sanityAdminBody tr:visible')).toHaveCount(3);
+    await expect(page.locator('#msf_sanityAssignee_btn')).toHaveText('כל המבצעים ▾');
+
+    await msfSelectOnly(page, 'sanityAssignee', []);
+    await expect(page.locator('#sanityAdminBody tr:visible')).toHaveCount(0);
+    await expect(page.locator('#msf_sanityAssignee_btn')).toHaveText('ללא מבצע ▾');
   });
 });
 
@@ -776,7 +833,7 @@ test.describe('שיוך "בודק DHL" למשתמש אמיתי (כמו מבצע 
     await page.goto('/index.html');
     await login(page, 'testadmin', 'pw');
     await page.click('.tab[data-tab="3"]');
-    await expect(page.locator('#devFilterTester option', { hasText: 'עידו הבודק' })).toHaveCount(1);
+    await expect(page.locator('.msfcb_devTester[value="עידו הבודק"]')).toHaveCount(1);
 
     const row = page.locator('#devBody tr', { hasText: '13770' });
     await row.locator('button', { hasText: 'עריכה' }).click();
@@ -1142,12 +1199,40 @@ test.describe('פילטרים נוספים בטבלת פיתוחים ותיקו�
     await expect(page.locator('#devBody tr:visible', { hasText: '13770' })).toHaveCount(1);
     await expect(page.locator('#devBody tr:visible', { hasText: '14281' })).toHaveCount(1);
 
-    await page.selectOption('#devFilterStatus', 'בפיתוח');
+    // סטטוס פיתוח הוא עכשיו סינון בבחירה מרובה (checkboxes) - בוחרים רק "בפיתוח"
+    await msfSelectOnly(page, 'devStatus', ['בפיתוח']);
     await expect(page.locator('#devBody tr:visible', { hasText: '13770' })).toHaveCount(1);
     await expect(page.locator('#devBody tr:visible', { hasText: '14281' })).toHaveCount(0);
 
     await page.click('button[onclick="clearDevFilters()"]');
     await expect(page.locator('#devBody tr:visible', { hasText: '13770' })).toHaveCount(1);
     await expect(page.locator('#devBody tr:visible', { hasText: '14281' })).toHaveCount(1);
+  });
+
+  test('סטטוס פיתוח, בודק DHL וסטטוס בדיקה ניתנים לסינון בבחירה מרובה (כמה ערכים בו-זמנית)', async ({ page }) => {
+    await mockFirebase(page, {
+      users: seedUsers([{ name: 'עידו הבודק', username: 'ido_t', password: 'pw', role: 'admin', email: 'ido.t@test.local' }]),
+      devTasksByUid: {
+        dt_001: { status: 'בפיתוח', tester: 'עידו הבודק', tStatus: 'תקין' },
+        dt_002: { status: 'נבדק', tester: 'עידו הבודק', tStatus: 'לא תקין' },
+        dt_003: { status: 'נסגר', tester: '', tStatus: '' }
+      }
+    });
+    await page.goto('/index.html');
+    await login(page, 'testadmin', 'pw');
+    await page.click('.tab[data-tab="3"]');
+    await expect(page.locator('#devBody')).toContainText('13770');
+
+    // בוחרים שני סטטוסי פיתוח בו-זמנית ("בפיתוח" ו-"נבדק") - שתי המשימות הראשונות מוצגות, השלישית לא
+    await msfSelectOnly(page, 'devStatus', ['בפיתוח', 'נבדק']);
+    await expect(page.locator('#devBody tr:visible', { hasText: '13770' })).toHaveCount(1);
+    await expect(page.locator('#devBody tr:visible', { hasText: '14281' })).toHaveCount(1);
+    const dt3Id = await page.evaluate(() => DEV_TASKS.find(t => t._uid === 'dt_003').id);
+    await expect(page.locator('#devBody tr:visible', { hasText: dt3Id })).toHaveCount(0);
+    await expect(page.locator('#msf_devStatus_btn')).toHaveText('2 סטטוסים ▾');
+
+    await msfSelectAll(page, 'devStatus');
+    await expect(page.locator('#msf_devStatus_btn')).toHaveText('כל הסטטוסים (פיתוח) ▾');
+    await expect(page.locator('#devBody tr:visible', { hasText: dt3Id })).toHaveCount(1);
   });
 });

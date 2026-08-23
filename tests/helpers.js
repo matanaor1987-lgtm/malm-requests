@@ -120,4 +120,22 @@ async function login(page, username, password) {
   await page.waitForSelector('#mainTabs', { state: 'visible' });
 }
 
-module.exports = { mockFirebase, seedUsers, login };
+// עוזרים לתפריטי סינון בבחירה מרובה (MSF, ראו msfToggle/msfChange/msfCheckAll
+// ב-index.html) - מפעילים ישירות את מנגנון האפליקציה (בלי תלות בפתיחת ה-
+// dropdown הנפתח, כדי שהבדיקה תישאר יציבה ומהירה).
+async function msfSelectOnly(page, key, values) {
+  await page.evaluate(({ key, values }) => {
+    document.querySelectorAll('.msfcb_' + key).forEach(function(cb) {
+      cb.checked = values.includes(cb.value);
+    });
+    msfChange(key);
+  }, { key, values });
+}
+async function msfSelectAll(page, key) {
+  await page.evaluate((key) => {
+    document.querySelectorAll('.msfcb_' + key).forEach(function(cb) { cb.checked = true; });
+    msfChange(key);
+  }, key);
+}
+
+module.exports = { mockFirebase, seedUsers, login, msfSelectOnly, msfSelectAll };
