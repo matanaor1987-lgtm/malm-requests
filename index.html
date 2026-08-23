@@ -1846,9 +1846,9 @@ function populateDevSelectFromArray(selId, placeholder, values){
 // מהרשימות הניתנות לעריכה (DEV_LISTS), בודק DHL מגיע ממשתמשי המערכת (DB.users),
 // רכיב/גרסה/ממשק מהערכים שבפועל קיימים כרגע במשימות (אין להם רשימה מנוהלת - שדות חופשיים).
 function populateDevFilters(){
-  msfSetOptions('devStatus', DEV_LISTS.status);
+  msfSetOptions('devStatus', DEV_LISTS.status, 'ללא סטטוס');
   msfSetOptions('devTester', (DB.users||[]).map(function(u){return u.name;}));
-  msfSetOptions('devTStatus', DEV_LISTS.tStatus);
+  msfSetOptions('devTStatus', DEV_LISTS.tStatus, 'ללא סטטוס בדיקה');
   var comps={}, ifaces={}, vers={};
   DEV_TASKS.forEach(function(t){
     if(t.comp) comps[t.comp]=1;
@@ -2594,7 +2594,10 @@ function msfUpdateBtn(key){
   var allLabel=btn.dataset.all||'הכל', noneLabel=btn.dataset.none||'ללא', unit=btn.dataset.unit||'נבחרו';
   if(cbs.length===0||checked.length===cbs.length) btn.textContent=allLabel+' ▾';
   else if(checked.length===0) btn.textContent=noneLabel+' ▾';
-  else if(checked.length===1) btn.textContent=checked[0].value+' ▾';
+  // מציגים את הטקסט הנראה (מה-span שליד ה-checkbox), לא checked[0].value -
+  // כי לערך "ריק" (ראו msfSetOptions emptyLabel, למשל "ללא סטטוס") אין תווית
+  // משלו ב-value, ורק ה-span מציג את הטקסט האמיתי.
+  else if(checked.length===1) btn.textContent=(checked[0].nextElementSibling?checked[0].nextElementSibling.textContent:checked[0].value)+' ▾';
   else btn.textContent=checked.length+' '+unit+' ▾';
 }
 function msfToggleAll(key, cb){
@@ -2620,18 +2623,23 @@ function msfGetSelected(key){
 // בונה/מרעננת את רשימת האפשרויות בתוך תפריט מסוים (למשל שמות משתמשים,
 // שמשתנים בזמן ריצה). שומרת על הבחירה הקיימת של המשתמש; בפעם הראשונה
 // שמאכלסים תפריט - הכל מסומן כברירת מחדל (=בלי סינון בפועל).
-function msfSetOptions(key, values){
+// emptyLabel (אופציונלי): אם ניתן, מוסיפים בראש הרשימה אפשרות לערך ריק
+// ("" - למשל משימה בלי סטטוס עדיין) עם הטקסט הזה כתווית (הערך עצמו ריק,
+// לכן צריך תווית נפרדת ולא אפשר פשוט להציג אותו כמו שאר הערכים).
+function msfSetOptions(key, values, emptyLabel){
   var container = document.getElementById('msf_'+key+'_list');
   if(!container) return;
   var existingCbs = document.querySelectorAll('.msfcb_'+key);
   var hadAny = existingCbs.length>0;
   var prevChecked = new Set([...existingCbs].filter(function(c){return c.checked;}).map(function(c){return c.value;}));
-  container.innerHTML = values.map(function(v){
+  var allValues = emptyLabel ? [''].concat(values) : values;
+  container.innerHTML = allValues.map(function(v){
     var isChecked = hadAny ? prevChecked.has(v) : true;
-    return '<label style="display:flex;align-items:center;gap:8px;padding:5px 12px;cursor:pointer;font-size:12px;font-family:Arial;direction:rtl"><input type="checkbox" class="msfcb_'+key+'" value="'+esc(v)+'" onchange="msfChange(\''+key+'\')" '+(isChecked?'checked':'')+'> <span>'+esc(v)+'</span></label>';
+    var label = (v===''&&emptyLabel) ? emptyLabel : v;
+    return '<label style="display:flex;align-items:center;gap:8px;padding:5px 12px;cursor:pointer;font-size:12px;font-family:Arial;direction:rtl"><input type="checkbox" class="msfcb_'+key+'" value="'+esc(v)+'" onchange="msfChange(\''+key+'\')" '+(isChecked?'checked':'')+'> <span>'+esc(label)+'</span></label>';
   }).join('');
   var allCb = document.getElementById('msf_'+key+'_all');
-  if(allCb) allCb.checked = values.every(function(v){ return hadAny ? prevChecked.has(v) : true; });
+  if(allCb) allCb.checked = allValues.every(function(v){ return hadAny ? prevChecked.has(v) : true; });
   msfUpdateBtn(key);
 }
 // כל מפתח (key) רשום כאן עם פונקציית ה-render שיש להריץ מחדש כשהבחירה שלו

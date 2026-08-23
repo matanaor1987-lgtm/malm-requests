@@ -1235,4 +1235,32 @@ test.describe('פילטרים נוספים בטבלת פיתוחים ותיקו�
     await expect(page.locator('#msf_devStatus_btn')).toHaveText('כל הסטטוסים (פיתוח) ▾');
     await expect(page.locator('#devBody tr:visible', { hasText: dt3Id })).toHaveCount(1);
   });
+
+  test('אפשר לסנן לפי "ללא סטטוס" / "ללא סטטוס בדיקה" - למשימות שעדיין לא קיבלו סטטוס בכלל', async ({ page }) => {
+    // dt_001 (13770) מקבל סטטוסים מפורשים; dt_002 (14281) נשאר עם ברירת המחדל
+    // הקבועה בקוד - status/tStatus ריקים, בדיוק כמו משימה "טרייה" שעוד לא טופלה.
+    await mockFirebase(page, {
+      devTasksByUid: {
+        dt_001: { status: 'בפיתוח', tStatus: 'תקין' }
+      }
+    });
+    await page.goto('/index.html');
+    await login(page, 'testadmin', 'pw');
+    await page.click('.tab[data-tab="3"]');
+    await expect(page.locator('#devBody')).toContainText('13770');
+
+    await expect(page.locator('.msfcb_devStatus[value=""]')).toHaveCount(1);
+    await expect(page.locator('.msfcb_devTStatus[value=""]')).toHaveCount(1);
+
+    await msfSelectOnly(page, 'devStatus', ['']);
+    await expect(page.locator('#devBody tr:visible', { hasText: '14281' })).toHaveCount(1);
+    await expect(page.locator('#devBody tr:visible', { hasText: '13770' })).toHaveCount(0);
+    await expect(page.locator('#msf_devStatus_btn')).toHaveText('ללא סטטוס ▾');
+    await msfSelectAll(page, 'devStatus');
+
+    await msfSelectOnly(page, 'devTStatus', ['']);
+    await expect(page.locator('#devBody tr:visible', { hasText: '14281' })).toHaveCount(1);
+    await expect(page.locator('#devBody tr:visible', { hasText: '13770' })).toHaveCount(0);
+    await expect(page.locator('#msf_devTStatus_btn')).toHaveText('ללא סטטוס בדיקה ▾');
+  });
 });
