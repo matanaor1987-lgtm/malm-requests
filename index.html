@@ -1845,18 +1845,20 @@ function populateDevSelectFromArray(selId, placeholder, values){
   if(values.indexOf(prev)>-1) sel.value=prev;
 }
 // מרעננים את כל בוררי הסינון בטאב פיתוחים ותיקונים: סטטוס/סטטוס בדיקה מגיעים
-// מהרשימות הניתנות לעריכה (DEV_LISTS), בודק DHL מגיע ממשתמשי המערכת (DB.users),
-// רכיב/גרסה/ממשק מהערכים שבפועל קיימים כרגע במשימות (אין להם רשימה מנוהלת - שדות חופשיים).
+// מהרשימות הניתנות לעריכה (DEV_LISTS); בודק DHL/רכיב/גרסה/ממשק מגיעים מהערכים
+// שבפועל קיימים כרגע במשימות (לא מכל משתמשי המערכת) - כדי שהרשימה בפילטר תציג
+// רק מי שבאמת רלוונטי, לא כל מי שקיים בטאב משתמשים.
 function populateDevFilters(){
   msfSetOptions('devStatus', DEV_LISTS.status, 'ללא סטטוס');
-  msfSetOptions('devTester', (DB.users||[]).map(function(u){return u.name;}));
-  msfSetOptions('devTStatus', DEV_LISTS.tStatus, 'ללא סטטוס בדיקה');
-  var comps={}, ifaces={}, vers={};
+  var testers={}, comps={}, ifaces={}, vers={};
   DEV_TASKS.forEach(function(t){
+    if(t.tester) testers[t.tester]=1;
     if(t.comp) comps[t.comp]=1;
     if(t.iface) ifaces[t.iface]=1;
     if(t.ver) vers[t.ver]=1;
   });
+  msfSetOptions('devTester', Object.keys(testers).sort());
+  msfSetOptions('devTStatus', DEV_LISTS.tStatus, 'ללא סטטוס בדיקה');
   populateDevSelectFromArray('devFilterComp','כל הרכיבים', Object.keys(comps).sort());
   populateDevSelectFromArray('devFilterIface','כל הממשקים', Object.keys(ifaces).sort());
   populateDevSelectFromArray('devFilterVer','כל הגרסאות', Object.keys(vers).sort());
@@ -2286,8 +2288,12 @@ function renderSanityAdmin() {
   filterSanityAdminTable();
 }
 
+// "מבצע" בפילטר מגיע מהמשתמשים שבפועל משויכים לבדיקה כלשהי כרגע - לא מכל
+// משתמשי המערכת - כדי שהרשימה תציג רק מי שבאמת רלוונטי.
 function populateSanityFilters(){
-  msfSetOptions('sanityAssignee', (DB.users||[]).map(function(u){return u.name;}));
+  var assignees={};
+  Object.values(SANITY_TASKS).forEach(function(t){ if(t.assignee) assignees[t.assignee]=1; });
+  msfSetOptions('sanityAssignee', Object.keys(assignees).sort());
 }
 function filterSanityAdminTable(){
   var faSel = msfGetSelected('sanityAssignee');

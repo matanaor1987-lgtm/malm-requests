@@ -399,6 +399,26 @@ test.describe('סינון בטבלת בדיקות שפיות לפי מבצע ו�
     await expect(page.locator('#sanityAdminBody tr:visible')).toHaveCount(0);
     await expect(page.locator('#msf_sanityAssignee_btn')).toHaveText('ללא מבצע ▾');
   });
+
+  test('רשימת "מבצע" בפילטר מציגה רק משתמשים שבפועל משויכים לבדיקה כלשהי - לא את כל משתמשי המערכת', async ({ page }) => {
+    await mockFirebase(page, {
+      users: seedUsers([{ name: 'משתמש בלי אף בדיקה', username: 'nobody', password: 'pw', role: 'admin', email: 'nobody@test.local' }]),
+      sanity: JSON.parse(JSON.stringify(sanity3))
+    });
+    await page.goto('/index.html');
+    await login(page, 'testadmin', 'pw');
+    await page.click('.tab[data-tab="4"]');
+    await expect(page.locator('#sanityAdminBody')).toContainText('בדיקת מסך א');
+
+    await expect(page.locator('.msfcb_sanityAssignee[value="מנהל בדיקה"]')).toHaveCount(1);
+    await expect(page.locator('.msfcb_sanityAssignee[value="מנהלת בדיקה"]')).toHaveCount(1);
+    await expect(page.locator('.msfcb_sanityAssignee[value="משתמש בלי אף בדיקה"]')).toHaveCount(0);
+
+    // לעומת זאת, ה-DROPDOWN של שיוך מבצע בטופס הבדיקה עצמו כן מציג את כולם - כדי שאפשר יהיה לשייך אליו בדיקה
+    await page.click('button[onclick="openEditSanity(\'s1\')"]');
+    await expect(page.locator('#sanityModal')).toBeVisible();
+    await expect(page.locator('#sanityAssignee option', { hasText: 'משתמש בלי אף בדיקה' })).toHaveCount(1);
+  });
 });
 
 test.describe('רגרסיה: דריסת שדות בעריכת בדיקת שפיות (staleness, לא בעיית זהות)', () => {
@@ -828,12 +848,11 @@ test.describe('ניהול רשימות DROPDOWN בטאב פיתוחים ותיק
 });
 
 test.describe('שיוך "בודק DHL" למשתמש אמיתי (כמו מבצע בדיקות שפיות) + מייל התראה', () => {
-  test('רשימת בודק DHL במודל העריכה ובפילטר מגיעה ממשתמשי המערכת, לא מרשימה חופשית', async ({ page }) => {
+  test('רשימת בודק DHL במודל העריכה מגיעה מכל משתמשי המערכת (אפשר לשייך משימה לכל אחד), לא מרשימה חופשית', async ({ page }) => {
     await mockFirebase(page, { users: seedUsers([{ name: 'עידו הבודק', username: 'ido_t', password: 'pw', role: 'admin', email: 'ido.tester@test.local' }]) });
     await page.goto('/index.html');
     await login(page, 'testadmin', 'pw');
     await page.click('.tab[data-tab="3"]');
-    await expect(page.locator('.msfcb_devTester[value="עידו הבודק"]')).toHaveCount(1);
 
     const row = page.locator('#devBody tr', { hasText: '13770' });
     await row.locator('button', { hasText: 'עריכה' }).click();
@@ -1352,8 +1371,10 @@ test.describe('פילטרים נוספים בטבלת פיתוחים ותיקו�
     await mockFirebase(page, {
       users: seedUsers([{ name: 'עידו הבודק', username: 'ido_t', password: 'pw', role: 'admin', email: 'ido.t@test.local' }]),
       devTasksByUid: {
-        dt_001: { tester: 'עידו הבודק' }
-        // dt_002 (14281) נשאר בלי בודק - אמור להישאר מוסתר לאורך כל הבדיקה
+        dt_001: { tester: 'עידו הבודק' },
+        // dt_002 (14281) משויך לבודק אחר - כדי שבחירת "רק עידו הבודק" בפילטר (שמכיל
+        // עכשיו רק בודקים שבפועל משויכים למשימה) תישאר סינון משמעותי, לא "הכל מסומן"
+        dt_002: { tester: 'מנהל בדיקה' }
       }
     });
     await page.goto('/index.html');
@@ -1377,5 +1398,27 @@ test.describe('פילטרים נוספים בטבלת פיתוחים ותיקו�
     await expect(page.locator('#msf_devTester_btn')).toHaveText('עידו הבודק ▾');
     await expect(page.locator('#devBody tr:visible', { hasText: '13770' })).toHaveCount(1);
     await expect(page.locator('#devBody tr:visible', { hasText: '14281' })).toHaveCount(0);
+  });
+
+  test('רשימת "בודק DHL" בפילטר מציגה רק מי שבפועל משויך למשימה כלשהי - לא את כל משתמשי המערכת', async ({ page }) => {
+    await mockFirebase(page, {
+      users: seedUsers([{ name: 'עידו הבודק', username: 'ido_t', password: 'pw', role: 'admin', email: 'ido.t@test.local' }]),
+      devTasksByUid: { dt_001: { tester: 'עידו הבודק' } }
+      // "מנהל בדיקה" ו"מנהלת בדיקה" (המשתמשים הרגילים) לא משויכים לאף משימה - לא אמורים להופיע בפילטר
+    });
+    await page.goto('/index.html');
+    await login(page, 'testadmin', 'pw');
+    await page.click('.tab[data-tab="3"]');
+    await expect(page.locator('#devBody')).toContainText('13770');
+
+    await expect(page.locator('.msfcb_devTester[value="עידו הבודק"]')).toHaveCount(1);
+    await expect(page.locator('.msfcb_devTester[value="מנהל בדיקה"]')).toHaveCount(0);
+    await expect(page.locator('.msfcb_devTester[value="מנהלת בדיקה"]')).toHaveCount(0);
+
+    // לעומת זאת, ה-DROPDOWN של שיוך בודק במודל העריכה כן מציג את כולם - כדי שאפשר יהיה לשייך אליו משימה
+    const row = page.locator('#devBody tr', { hasText: '13770' });
+    await row.locator('button', { hasText: 'עריכה' }).click();
+    await expect(page.locator('#devEditModal')).toBeVisible();
+    await expect(page.locator('#devEditTester option', { hasText: 'מנהל בדיקה' })).toHaveCount(1);
   });
 });
