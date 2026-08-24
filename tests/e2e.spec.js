@@ -1263,4 +1263,35 @@ test.describe('פילטרים נוספים בטבלת פיתוחים ותיקו�
     await expect(page.locator('#devBody tr:visible', { hasText: '13770' })).toHaveCount(0);
     await expect(page.locator('#msf_devTStatus_btn')).toHaveText('ללא סטטוס בדיקה ▾');
   });
+
+  test('רגרסיה: שמירת משימה בזמן שיש סינון פעיל לא מאפסת את הסינון בתצוגה (הטבלה נשארת מסוננת, לא רק ה-DROPDOWN)', async ({ page }) => {
+    await mockFirebase(page, {
+      users: seedUsers([{ name: 'עידו הבודק', username: 'ido_t', password: 'pw', role: 'admin', email: 'ido.t@test.local' }]),
+      devTasksByUid: {
+        dt_001: { tester: 'עידו הבודק' }
+        // dt_002 (14281) נשאר בלי בודק - אמור להישאר מוסתר לאורך כל הבדיקה
+      }
+    });
+    await page.goto('/index.html');
+    await login(page, 'testadmin', 'pw');
+    await page.click('.tab[data-tab="3"]');
+    await expect(page.locator('#devBody')).toContainText('13770');
+
+    await msfSelectOnly(page, 'devTester', ['עידו הבודק']);
+    await expect(page.locator('#devBody tr:visible', { hasText: '13770' })).toHaveCount(1);
+    await expect(page.locator('#devBody tr:visible', { hasText: '14281' })).toHaveCount(0);
+
+    // עורכים ושומרים משימה שכן תואמת לסינון (בדיוק כמו שהמשתמש דיווח)
+    const row = page.locator('#devBody tr', { hasText: '13770' });
+    await row.locator('button', { hasText: 'עריכה' }).click();
+    await expect(page.locator('#devEditModal')).toBeVisible();
+    await page.fill('#devEditNotes', 'עדכון תוך כדי סינון פעיל');
+    await page.click('button[onclick="saveDevTaskModal()"]');
+    await page.waitForTimeout(300);
+
+    // אחרי השמירה: הסינון עדיין חייב להיות מיושם בפועל על הטבלה, לא רק בכפתור
+    await expect(page.locator('#msf_devTester_btn')).toHaveText('עידו הבודק ▾');
+    await expect(page.locator('#devBody tr:visible', { hasText: '13770' })).toHaveCount(1);
+    await expect(page.locator('#devBody tr:visible', { hasText: '14281' })).toHaveCount(0);
+  });
 });

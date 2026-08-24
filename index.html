@@ -1195,7 +1195,7 @@ function switchTab(i) {
   var ba=document.getElementById('btnAdd');
   if(ba){ ba.style.display=(i===2||i===3||i===4||i===5)?'none':'block'; if(i===0)ba.textContent='+ משימה חדשה (מלמ)'; if(i===1)ba.textContent='+ משימה חדשה (רבקה)'; }
   if(i===2)renderUsers();
-  if(i===3){Promise.all([loadDevLists(),loadDevTasks()]).then(function(){renderDevTable();populateDevFilters();});}
+  if(i===3){Promise.all([loadDevLists(),loadDevTasks()]).then(function(){renderDevTable();populateDevFilters();filterDevTable();});}
   if(i===4)loadSanityTab();
   if(i===5){loadLaunchTab().then(function(){renderLaunchTable();});}
 }
@@ -1719,6 +1719,7 @@ async function addDevListOption(key){
     document.getElementById('devListsMsg').textContent='✅ נשמר';
     renderDevListsModalBody();
     populateDevFilters();
+    filterDevTable();
   }catch(e){
     DEV_LISTS[key]=prev;
     document.getElementById('devListsMsg').style.color='#c62828';
@@ -1740,6 +1741,7 @@ async function removeDevListOption(key, idx){
     document.getElementById('devListsMsg').textContent='✅ נשמר';
     renderDevListsModalBody();
     populateDevFilters();
+    filterDevTable();
   }catch(e){
     DEV_LISTS[key]=prev;
     document.getElementById('devListsMsg').style.color='#c62828';
@@ -1919,6 +1921,7 @@ async function saveNewDevTask(){
     DEV_TASKS.push(task);
     renderDevTable();
     populateDevFilters();
+    filterDevTable();
     closeNewDevModal();
   }catch(e){
     document.getElementById('newDevMsg').style.color='#c62828';
@@ -2151,6 +2154,7 @@ async function saveDevTaskModal(){
     document.getElementById('devEditMsg').textContent='✅ נשמר ואומת מול השרת בהצלחה' + (launchCreated ? ' + נוצרה משימה מקושרת בטאב עליה לאוויר' : '');
     renderDevTable();
     populateDevFilters();
+    filterDevTable();
     setTimeout(closeDevEditModal, launchCreated ? 1400 : 600);
   } catch(e) {
     document.getElementById('devEditMsg').style.color='#c62828';
@@ -2815,6 +2819,7 @@ function jumpToDevTask(uid) {
   Promise.all([loadDevLists(), loadDevTasks()]).then(function() {
     renderDevTable();
     populateDevFilters();
+    filterDevTable();
     var idx = DEV_TASKS.findIndex(function(x){ return x._uid === uid; });
     if (idx > -1) openEditDevTask(idx);
   });
