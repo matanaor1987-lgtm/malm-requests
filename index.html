@@ -2262,8 +2262,9 @@ function renderSanityAdmin() {
   }
   tb.innerHTML = tasks.map(function(t, i) {
     var bg = i%2 ? '#f9f9f9' : '#fff';
-    var statusColor = t.status==='בוצע' ? '#2e7d32' : t.status==='נכשל' ? '#c62828' : t.status==='פתוח' ? '#e65100' : '#888';
+    var statusColor = t.status==='בוצע' ? '#2e7d32' : t.status==='נכשל' ? '#c62828' : t.status==='לבדיקה בעליה לאוויר' ? '#6a1b9a' : t.status==='פתוח' ? '#e65100' : '#888';
     var closedInfo = (t.status==='בוצע' || t.status==='נכשל') ? ' <span style="font-size:10px;color:#666">(ע"י ' + esc(t.closedBy||'') + ')</span>' : '';
+    var launchLink = t.linkedLaunchId ? ' <button onclick="jumpToLaunchTask(\'' + esc(t.linkedLaunchId) + '\')" title="עבר למשימה המקושרת בטאב עליה לאוויר" style="background:#e65100;color:#fff;border:none;border-radius:4px;padding:2px 6px;cursor:pointer;font-size:10px;font-family:Arial">🚀</button>' : '';
     var envBg = t.env==='RDP' ? '#e3f2fd' : t.env==='טסט' ? '#f3e5f5' : '#fff8e1';
     var envColor = t.env==='RDP' ? '#1565c0' : t.env==='טסט' ? '#6a1b9a' : '#e65100';
     return '<tr style="background:' + bg + ';vertical-align:top" data-assignee="' + esc(t.assignee) + '" data-status="' + esc(t.status||'פתוח') + '">' +
@@ -2271,7 +2272,7 @@ function renderSanityAdmin() {
       '<td style="padding:8px 10px;border-bottom:1px solid #eee;font-size:11px;line-height:1.5">' + esc(t.name) + '</td>' +
       '<td style="padding:8px 10px;border-bottom:1px solid #eee;text-align:center"><span style="background:' + envBg + ';color:' + envColor + ';padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700">' + esc(t.env||'') + '</span></td>' +
       '<td style="padding:8px 10px;border-bottom:1px solid #eee;white-space:nowrap">' + esc(t.assignee||'—') + '</td>' +
-      '<td style="padding:8px 10px;border-bottom:1px solid #eee;white-space:nowrap"><span style="color:' + statusColor + ';font-weight:700">' + esc(t.status||'פתוח') + '</span>' + closedInfo + '</td>' +
+      '<td style="padding:8px 10px;border-bottom:1px solid #eee;white-space:nowrap"><span style="color:' + statusColor + ';font-weight:700">' + esc(t.status||'פתוח') + '</span>' + closedInfo + launchLink + '</td>' +
       '<td style="padding:7px 10px;border-bottom:1px solid #eee"><textarea data-sid="' + t.id + '" onchange="updateSanityField(this.dataset.sid,\'notes\',this.value)" rows="2" style="width:120px;border:1px solid #ddd;border-radius:4px;padding:3px 5px;font-size:11px;font-family:Arial;direction:rtl;resize:vertical">' + esc(t.notes||'') + '</textarea></td>' +
       '<td style="padding:7px 10px;border-bottom:1px solid #eee"><textarea data-sid="' + t.id + '" onchange="updateSanityField(this.dataset.sid,\'adminNotes\',this.value)" rows="2" style="width:120px;border:1px solid #ddd;border-radius:4px;padding:3px 5px;font-size:11px;font-family:Arial;direction:rtl;resize:vertical">' + esc(t.adminNotes||'') + '</textarea></td>' +
       '<td style="padding:8px 10px;border-bottom:1px solid #eee;font-size:11px;white-space:nowrap">' + esc(t.closedAt ? t.closedAt.slice(0,10) : '') + '</td>' +
@@ -2341,6 +2342,9 @@ function openNewSanity() {
   document.getElementById('sanityModalTitle').textContent = 'בדיקה חדשה';
   // Populate assignee dropdown from ALL users
   populateSanityAssignee(document.getElementById('sanityAssignee'), '');
+  var linkEl = document.getElementById('sanityEditLaunchLink');
+  if (linkEl) { linkEl.style.display = 'none'; linkEl.onclick = null; }
+  document.getElementById('sanityEditMsg').textContent = '';
   document.getElementById('sanityModal').style.display = 'flex';
 }
 
@@ -2366,6 +2370,17 @@ function openEditSanity(id) {
   document.getElementById('sanityModalTitle').textContent = 'עריכת בדיקה';
   var sel = document.getElementById('sanityAssignee');
   populateSanityAssignee(sel, t.assignee || '');
+  var linkEl = document.getElementById('sanityEditLaunchLink');
+  if (linkEl) {
+    if (t.linkedLaunchId) {
+      linkEl.style.display = 'block';
+      linkEl.onclick = function(){ jumpToLaunchTask(t.linkedLaunchId); };
+    } else {
+      linkEl.style.display = 'none';
+      linkEl.onclick = null;
+    }
+  }
+  document.getElementById('sanityEditMsg').textContent = '';
   document.getElementById('sanityModal').style.display = 'flex';
 }
 
@@ -2396,28 +2411,74 @@ async function saveSanityTask() {
     } catch (e) { existing = SANITY_TASKS[editId] || {}; }
   }
   var statusChangedToClosed = status !== existing.status && (status === 'בוצע' || status === 'נכשל');
-  var task = {
-    id: id,
-    name: name,
-    desc: desc,
-    assignee: assignee,
-    module: module,
-    env: env,
-    status: status,
-    notes: existing.notes || '',
-    closedBy: statusChangedToClosed ? (CU ? CU.name : '') : (status === 'פתוח' ? '' : (existing.closedBy || '')),
-    closedAt: statusChangedToClosed ? new Date().toISOString() : (status === 'פתוח' ? '' : (existing.closedAt || '')),
-    adminNotes: existing.adminNotes || '',
-    createdAt: existing.createdAt || new Date().toISOString()
-  };
 
-  await fetch('https://malm-focus-default-rtdb.firebaseio.com/sanity/' + id + '.json', {
-    method: 'PUT',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify(task)
-  });
+  var saveBtn = document.getElementById('sanitySaveBtn');
+  var msgEl = document.getElementById('sanityEditMsg');
+  if (saveBtn) saveBtn.disabled = true;
+  if (msgEl) { msgEl.style.color = '#666'; msgEl.textContent = 'שומר...'; }
 
-  SANITY_TASKS[id] = task;
+  var BASE = 'https://malm-focus-default-rtdb.firebaseio.com';
+  var launchId = existing.linkedLaunchId || '';
+  try {
+    // אם סטטוס הבדיקה משתנה ל"לבדיקה בעליה לאוויר" ואין עדיין משימה מקושרת - יוצרים
+    // אוטומטית משימה חדשה בטאב "משימות בעליה לאוויר", מקושרת לבדיקת השפיות הזו (ולא
+    // כפילות עצמאית), בדיוק כמו שקורה בטאב פיתוחים ותיקונים לבדיקה. אם כבר קיים
+    // קישור - לא יוצרים שוב.
+    if (status === 'לבדיקה בעליה לאוויר' && !launchId) {
+      launchId = 'launch_' + Date.now() + '_' + Math.random().toString(36).slice(2,9);
+      var launchTask = {
+        id: launchId,
+        task: 'בדיקה בעליה לאוויר — בדיקת שפיות: ' + name,
+        status: 'פתוח',
+        notes: '',
+        closedBy: '',
+        closedAt: '',
+        createdAt: new Date().toISOString(),
+        linkedSanityId: id,
+        linkedSanityName: name
+      };
+      var launchPutRes = await fetch(BASE + '/launchTasks/' + launchId + '.json', {
+        method: 'PUT',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(launchTask)
+      });
+      if (!launchPutRes.ok) throw new Error('נכשלה יצירת המשימה המקושרת בטאב עליה לאוויר (סטטוס ' + launchPutRes.status + ')');
+      var launchVerifyRes = await fetch(BASE + '/launchTasks/' + launchId + '.json?t=' + Date.now());
+      var launchVerifyData = (await launchVerifyRes.json()) || {};
+      if (!deepEqual(launchVerifyData, launchTask)) throw new Error('האימות מול השרת נכשל ביצירת המשימה המקושרת בטאב עליה לאוויר.');
+      LAUNCH_TASKS[launchId] = launchTask;
+    }
+
+    var task = {
+      id: id,
+      name: name,
+      desc: desc,
+      assignee: assignee,
+      module: module,
+      env: env,
+      status: status,
+      notes: existing.notes || '',
+      closedBy: statusChangedToClosed ? (CU ? CU.name : '') : (status === 'פתוח' ? '' : (existing.closedBy || '')),
+      closedAt: statusChangedToClosed ? new Date().toISOString() : (status === 'פתוח' ? '' : (existing.closedAt || '')),
+      adminNotes: existing.adminNotes || '',
+      createdAt: existing.createdAt || new Date().toISOString(),
+      linkedLaunchId: launchId
+    };
+
+    await fetch(BASE + '/sanity/' + id + '.json', {
+      method: 'PUT',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(task)
+    });
+
+    SANITY_TASKS[id] = task;
+  } catch (e) {
+    if (msgEl) { msgEl.style.color = '#c62828'; msgEl.textContent = '❌ ' + e.message; }
+    if (saveBtn) saveBtn.disabled = false;
+    return;
+  }
+  if (saveBtn) saveBtn.disabled = false;
+  if (msgEl) msgEl.textContent = '';
 
   // Send email only on NEW assignment or changed assignee
   if (assignee && (isNew || assignee !== prevAssignee)) {
@@ -2710,7 +2771,12 @@ function renderLaunchTable() {
   tb.innerHTML = tasks.map(function(t, i) {
     var bg = i % 2 ? '#f9f9f9' : '#fff';
     var statusColor = t.status === 'בוצע' ? '#2e7d32' : '#e65100';
-    var linkedBadge = t.linkedDevUid ? '<div style="margin-top:4px"><button onclick="jumpToDevTask(\'' + esc(t.linkedDevUid) + '\')" title="עבר למשימת הפיתוח המקושרת" style="background:#1565c0;color:#fff;border:none;border-radius:10px;padding:2px 8px;cursor:pointer;font-size:10px;font-family:Arial">🔧 מקושר למשימת פיתוח ' + esc(t.linkedDevTaskNum || '') + '</button></div>' : '';
+    var linkedBadge = '';
+    if (t.linkedDevUid) {
+      linkedBadge = '<div style="margin-top:4px"><button onclick="jumpToDevTask(\'' + esc(t.linkedDevUid) + '\')" title="עבר למשימת הפיתוח המקושרת" style="background:#1565c0;color:#fff;border:none;border-radius:10px;padding:2px 8px;cursor:pointer;font-size:10px;font-family:Arial">🔧 מקושר למשימת פיתוח ' + esc(t.linkedDevTaskNum || '') + '</button></div>';
+    } else if (t.linkedSanityId) {
+      linkedBadge = '<div style="margin-top:4px"><button onclick="jumpToSanityTask(\'' + esc(t.linkedSanityId) + '\')" title="עבר לבדיקת השפיות המקושרת" style="background:#6a1b9a;color:#fff;border:none;border-radius:10px;padding:2px 8px;cursor:pointer;font-size:10px;font-family:Arial">🧪 מקושר לבדיקת שפיות: ' + esc(t.linkedSanityName || '') + '</button></div>';
+    }
     return '<tr style="background:' + bg + ';vertical-align:top" data-launch-id="' + esc(t.id) + '">' +
       '<td style="padding:8px 10px;border-bottom:1px solid #eee;font-size:12px;line-height:1.5;white-space:pre-wrap">' + esc(t.task) + linkedBadge + '</td>' +
       '<td style="padding:8px 10px;border-bottom:1px solid #eee;white-space:nowrap"><span style="color:' + statusColor + ';font-weight:700">' + esc(t.status||'פתוח') + '</span></td>' +
@@ -2773,11 +2839,16 @@ async function saveLaunchTask() {
     closedAt: statusChangedToDone ? new Date().toISOString() : (status === 'פתוח' ? '' : (existing.closedAt || '')),
     createdAt: existing.createdAt || new Date().toISOString()
   };
-  // אם המשימה נוצרה אוטומטית מקישור למשימת פיתוח לבדיקה - חובה לשמר את הקישור בכל
-  // עריכה, אחרת הוא נעלם (כי rec נבנה מחדש מהטופס בכל שמירה, שלא כולל אותו).
+  // אם המשימה נוצרה אוטומטית מקישור למשימת פיתוח לבדיקה או לבדיקת שפיות - חובה
+  // לשמר את הקישור בכל עריכה, אחרת הוא נעלם (כי rec נבנה מחדש מהטופס בכל שמירה,
+  // שלא כולל אותו).
   if (existing.linkedDevUid) {
     rec.linkedDevUid = existing.linkedDevUid;
     rec.linkedDevTaskNum = existing.linkedDevTaskNum;
+  }
+  if (existing.linkedSanityId) {
+    rec.linkedSanityId = existing.linkedSanityId;
+    rec.linkedSanityName = existing.linkedSanityName;
   }
 
   await fetch('https://malm-focus-default-rtdb.firebaseio.com/launchTasks/' + id + '.json', {
@@ -2822,6 +2893,13 @@ function jumpToDevTask(uid) {
     filterDevTable();
     var idx = DEV_TASKS.findIndex(function(x){ return x._uid === uid; });
     if (idx > -1) openEditDevTask(idx);
+  });
+}
+// ניווט ממשימת "עליה לאוויר" שנוצרה מקישור לבדיקת שפיות, בחזרה לבדיקה עצמה.
+function jumpToSanityTask(id) {
+  switchTab(4);
+  loadSanityTab().then(function() {
+    if (isAdmin()) openEditSanity(id);
   });
 }
 
@@ -2952,6 +3030,7 @@ async function dedupRecords(sheet) {
           <label style="display:flex;align-items:center;gap:8px;padding:5px 12px;cursor:pointer;font-size:12px;font-family:Arial;direction:rtl"><input type="checkbox" class="msfcb_sanityStatus" value="פתוח" onchange="msfChange('sanityStatus')" checked> <span>פתוח</span></label>
           <label style="display:flex;align-items:center;gap:8px;padding:5px 12px;cursor:pointer;font-size:12px;font-family:Arial;direction:rtl"><input type="checkbox" class="msfcb_sanityStatus" value="בוצע" onchange="msfChange('sanityStatus')" checked> <span>בוצע</span></label>
           <label style="display:flex;align-items:center;gap:8px;padding:5px 12px;cursor:pointer;font-size:12px;font-family:Arial;direction:rtl"><input type="checkbox" class="msfcb_sanityStatus" value="נכשל" onchange="msfChange('sanityStatus')" checked> <span>נכשל</span></label>
+          <label style="display:flex;align-items:center;gap:8px;padding:5px 12px;cursor:pointer;font-size:12px;font-family:Arial;direction:rtl"><input type="checkbox" class="msfcb_sanityStatus" value="לבדיקה בעליה לאוויר" onchange="msfChange('sanityStatus')" checked> <span>לבדיקה בעליה לאוויר</span></label>
         </div>
       </div>
       <button onclick="clearSanityFilters()" style="padding:6px 12px;border:1px solid #aaa;border-radius:6px;font-size:12px;font-family:Arial;background:#fff;cursor:pointer">נקה סינון</button>
@@ -3023,11 +3102,14 @@ async function dedupRecords(sheet) {
           <option value="פתוח">פתוח</option>
           <option value="בוצע">בוצע (עבר)</option>
           <option value="נכשל">נכשל</option>
+          <option value="לבדיקה בעליה לאוויר">לבדיקה בעליה לאוויר</option>
         </select>
       </div>
+      <div id="sanityEditLaunchLink" style="display:none;margin-bottom:10px;padding:8px 10px;background:#fff3e0;border:1px solid #ffb74d;border-radius:6px;font-size:12px;color:#e65100;cursor:pointer;font-weight:700">🚀 קיימת משימה מקושרת בטאב "משימות בעליה לאוויר" — לחץ/י למעבר</div>
+      <div id="sanityEditMsg" style="margin-bottom:6px;font-size:12px;font-weight:700"></div>
       <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
         <button onclick="closeSanityModal()" style="padding:8px 16px;border:1px solid #ddd;border-radius:6px;cursor:pointer;font-size:13px;font-family:Arial;background:#fff">ביטול</button>
-        <button onclick="saveSanityTask()" style="padding:8px 16px;background:#D40511;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px;font-weight:700;font-family:Arial">שמור</button>
+        <button id="sanitySaveBtn" onclick="saveSanityTask()" style="padding:8px 16px;background:#D40511;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px;font-weight:700;font-family:Arial">שמור</button>
       </div>
     </div>
   </div>

@@ -1174,6 +1174,90 @@ test.describe('סטטוס בדיקה "לבדיקה בעליה לאוויר" - י
   });
 });
 
+test.describe('סטטוס "לבדיקה בעליה לאוויר" בבדיקות שפיות - יצירת משימה מקושרת אוטומטית (כמו בפיתוחים ותיקונים)', () => {
+  const sanitySeed = {
+    s1: { id: 's1', name: 'בדיקת מסך א', module: 'מסך א', env: 'טסט', status: 'פתוח', assignee: 'מנהלת בדיקה', notes: '', adminNotes: '' },
+  };
+
+  test('בחירת הסטטוס יוצרת אוטומטית משימה מקושרת בטאב "משימות בעליה לאוויר", עם ניווט הלוך ושוב', async ({ page }) => {
+    const { sanity: liveSanity, launchTasks: liveLaunch } = await mockFirebase(page, { sanity: JSON.parse(JSON.stringify(sanitySeed)) });
+    await page.goto('/index.html');
+    await login(page, 'testadmin', 'pw');
+    await page.click('.tab[data-tab="4"]');
+    await expect(page.locator('#sanityAdminBody')).toContainText('בדיקת מסך א');
+
+    await page.click('button[onclick="openEditSanity(\'s1\')"]');
+    await expect(page.locator('#sanityModal')).toBeVisible();
+    await page.selectOption('#sanityStatus', 'לבדיקה בעליה לאוויר');
+    await page.click('button[onclick="saveSanityTask()"]');
+    await page.waitForTimeout(200);
+
+    expect(liveSanity.s1.status).toBe('לבדיקה בעליה לאוויר');
+    const launchId = liveSanity.s1.linkedLaunchId;
+    expect(launchId).toBeTruthy();
+    expect(liveLaunch[launchId]).toBeTruthy();
+    expect(liveLaunch[launchId].linkedSanityId).toBe('s1');
+    expect(liveLaunch[launchId].linkedSanityName).toBe('בדיקת מסך א');
+    expect(liveLaunch[launchId].status).toBe('פתוח');
+
+    // כפתור ניווט מטאב בדיקות שפיות לטאב עליה לאוויר
+    const row = page.locator('#sanityAdminBody tr', { hasText: 'בדיקת מסך א' });
+    await expect(row.locator('button[title*="עבר למשימה המקושרת"]')).toBeVisible();
+    await row.locator('button[title*="עבר למשימה המקושרת"]').click();
+    await expect(page.locator('.tab[data-tab="5"]')).toHaveClass(/active/);
+    await expect(page.locator('#launchBody')).toContainText('בדיקת מסך א');
+
+    // וכפתור ניווט חזרה מטאב עליה לאוויר לטאב בדיקות שפיות
+    await page.locator('#launchBody button', { hasText: 'מקושר לבדיקת שפיות' }).click();
+    await expect(page.locator('.tab[data-tab="4"]')).toHaveClass(/active/);
+    await expect(page.locator('#sanityModal')).toBeVisible();
+    await expect(page.locator('#sanityName')).toHaveValue('בדיקת מסך א');
+  });
+
+  test('שמירה חוזרת כשהסטטוס כבר "לבדיקה בעליה לאוויר" לא יוצרת משימה מקושרת כפולה', async ({ page }) => {
+    const { sanity: liveSanity, launchTasks: liveLaunch } = await mockFirebase(page, {
+      sanity: { s1: Object.assign({}, sanitySeed.s1, { status: 'לבדיקה בעליה לאוויר', linkedLaunchId: 'launch_existing' }) },
+      launchTasks: { launch_existing: { id: 'launch_existing', task: 'קיים כבר', status: 'פתוח', notes: '', closedBy: '', closedAt: '', createdAt: '2026-08-01T00:00:00.000Z', linkedSanityId: 's1', linkedSanityName: 'בדיקת מסך א' } }
+    });
+    await page.goto('/index.html');
+    await login(page, 'testadmin', 'pw');
+    await page.click('.tab[data-tab="4"]');
+    await page.click('button[onclick="openEditSanity(\'s1\')"]');
+    await expect(page.locator('#sanityModal')).toBeVisible();
+    await expect(page.locator('#sanityStatus')).toHaveValue('לבדיקה בעליה לאוויר');
+    await page.fill('#sanityDesc', 'עדכון תיאור בלי לשנות סטטוס');
+    await page.click('button[onclick="saveSanityTask()"]');
+    await page.waitForTimeout(200);
+
+    expect(Object.keys(liveLaunch)).toEqual(['launch_existing']);
+    expect(liveSanity.s1.linkedLaunchId).toBe('launch_existing');
+  });
+
+  test('רגרסיה: עריכה ושמירה של המשימה המקושרת עצמה בטאב "משימות בעליה לאוויר" לא מוחקת את הקישור חזרה לבדיקת השפיות', async ({ page }) => {
+    const { sanity: liveSanity, launchTasks: liveLaunch } = await mockFirebase(page, {
+      sanity: { s1: Object.assign({}, sanitySeed.s1, { status: 'לבדיקה בעליה לאוויר', linkedLaunchId: 'launch_existing' }) },
+      launchTasks: { launch_existing: { id: 'launch_existing', task: 'בדיקה בעליה לאוויר — בדיקת שפיות: בדיקת מסך א', status: 'פתוח', notes: '', closedBy: '', closedAt: '', createdAt: '2026-08-01T00:00:00.000Z', linkedSanityId: 's1', linkedSanityName: 'בדיקת מסך א' } }
+    });
+    await page.goto('/index.html');
+    await login(page, 'testadmin', 'pw');
+    await page.click('.tab[data-tab="5"]');
+    await expect(page.locator('#launchBody')).toContainText('בדיקת מסך א');
+
+    await page.click('button[onclick="openEditLaunch(\'launch_existing\')"]');
+    await expect(page.locator('#launchModal')).toBeVisible();
+    await page.fill('#launchNotes', 'עדכנתי הערה על המשימה');
+    await page.selectOption('#launchStatus', 'בוצע');
+    await page.click('button[onclick="saveLaunchTask()"]');
+    await page.waitForTimeout(150);
+
+    expect(liveLaunch['launch_existing'].linkedSanityId).toBe('s1');
+    expect(liveLaunch['launch_existing'].linkedSanityName).toBe('בדיקת מסך א');
+    expect(liveLaunch['launch_existing'].notes).toBe('עדכנתי הערה על המשימה');
+    expect(liveLaunch['launch_existing'].status).toBe('בוצע');
+    await expect(page.locator('#launchBody button', { hasText: 'מקושר לבדיקת שפיות' })).toBeVisible();
+  });
+});
+
 test.describe('פילטרים נוספים בטבלת פיתוחים ותיקונים לבדיקה', () => {
   test('אפשר לסנן לפי סטטוס פיתוח, רכיב, ממשק וגרסה - לא רק לפי בודק/סטטוס בדיקה', async ({ page }) => {
     // המשימות הקבועות במערכת (85) תמיד מוצגות - לכן לא סופרים סה"כ שורות, אלא בודקים
