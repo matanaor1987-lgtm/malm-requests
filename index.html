@@ -359,7 +359,7 @@ tr:hover td{background:#fffbf0}
 <script src="config.js"></script>
 <script>
 const OWNER=window.APP_CONFIG.owner,REPO=window.APP_CONFIG.repo,TOKEN=window.APP_CONFIG.token;
-let DB={malm:[],rivka:[]},currentTab=0,editIdx=-1,editSheet='',editRecId=null,sortCol2='ע',sortDir2=1,sortCol1='',sortDir1=1;
+let DB={malm:[],rivka:[]},currentTab=0,editIdx=-1,editSheet='',editRecId=null,sortCol2='ע',sortDir2=1,sortCol1='',sortDir1=1,transferSourceRivkaId=null;
 let formSnapshot=null;
 const PAGE_SIZE=100;
 let page1=1,page2=1,lastFilterKey1='',lastFilterKey2='';
@@ -718,9 +718,10 @@ function r2(){
   const pageItems2=f.slice((page2-1)*PAGE_SIZE,page2*PAGE_SIZE);
   document.getElementById('b2').innerHTML=pageItems2.length
     ?pageItems2.map(r=>{const idx=DB.rivka.indexOf(r);const eb=canEditRow(r)?'<button class="act-btn" onclick="openEdit(\'rivka\','+idx+')" title="עריכה">✏️</button>':'';
+        const tb2=isAdmin()?'<button class="act-btn" onclick="openTransferToMalm('+idx+')" title="העבר למלמ כולל" style="color:#1565c0">🔀</button>':'';
         const db2=isAdmin()?'<button class="act-btn" onclick="deleteRec(\'rivka\','+idx+')" title="מחק" style="color:#D40511">🗑️</button>':'';
         return`<tr>
-      <td style="white-space:nowrap">${eb}${db2}</td>
+      <td style="white-space:nowrap">${eb}${tb2}${db2}</td>
       <td>${m(r.נ)}</td><td>${m(r.מב)}</td>
       <td style="color:#888;font-size:11px">${r.ת||''}</td>
       <td>${r.כ?`<strong>${r.כ}</strong><br>`:''} ${r.ב||''}</td>
@@ -893,6 +894,25 @@ function openEdit(sheet,idx){
   formSnapshot=getFormSnapshot();
 }
 
+// פותח את משימת מלמ החדשה כשהיא ממופה ("מוצע") מתוך משימת רבקה - אדמין עדיין
+// יכול/צריך למלא את השדות שאין להם מקבילה ברבקה (תחום, DHL, אחראי) לפני שמירה.
+// שומרים את ה-_id היציב של המשימה המקורית (לא את idx - יכול להשתנות עד השמירה
+// בפועל), כדי שברגע שההעברה מאומתת בשרת אפשר יהיה למחוק (רך) את המקור בביטחון.
+function openTransferToMalm(idx){
+  if(!CU || !isAdmin()) return;
+  var r = DB.rivka[idx];
+  if(!r || r.deleted) return;
+  transferSourceRivkaId = r._id;
+  editIdx=-1; editSheet='malm'; editRecId=null;
+  document.getElementById('modalTitle').textContent='🔀 העברת משימה למלמ כולל';
+  var taskText = [r.נ, (r.כ && r.כ!==r.נ ? r.כ : ''), r.ב].filter(Boolean).join('\n');
+  var mapped = { ת: r.ת || '', ד: '', ע: r.ע, ס: r.ס || 'פתוח', dhl: '', א: r.מט || '', מ: taskText };
+  document.getElementById('modalFields').innerHTML = malmFields(mapped);
+  document.getElementById('chatSection').style.display = 'none';
+  document.getElementById('modalBg').classList.add('open');
+  formSnapshot=getFormSnapshot();
+}
+
 function getFormSnapshot(){
   const fields=[...document.querySelectorAll('#modalFields input, #modalFields select, #modalFields textarea')].map(el=>el.value);
   const chatEl=document.getElementById('chatInput');
@@ -902,12 +922,16 @@ function closeModal(force){
   if(!force && formSnapshot!==null && getFormSnapshot()!==formSnapshot){
     if(!confirm('יש שינויים שלא נשמרו. לצאת בלי לשמור?'))return;
   }
+  transferSourceRivkaId = null;
   formSnapshot=null;
   document.getElementById('modalBg').classList.remove('open');
 }
 function g(id){const el=document.getElementById(id);return el?el.value.trim():''}
 
 function saveModal(){
+  // העברה מרבקה למלמ עוברת בזרימה נפרדת (יצירה במלמ, ורק אם היא מאומתת בשרת -
+  // מחיקה רכה של המקור ברבקה) - לא הזרימה הרגילה, כי היא כותבת לשני גיליונות.
+  if(transferSourceRivkaId){ saveTransferToMalm(); return; }
   // שולפים לפי _id יציב (לא לפי מיקום במערך) — המערך עלול להתחלף/להתסדר מחדש
   // בזמן שהחלון פתוח (למשל בעקבות markRead של משימה אחרת), ומיקום ישן יכול
   // להצביע בטעות על רשומה אחרת ולגרום לדליפת chat/reads בין משימות.
@@ -999,6 +1023,68 @@ function saveModal(){
   initFilters();
   if(savedSheet==='malm')r1();else r2();
   saveRecord(savedSheet, savedIdx, rec);
+}
+
+// יוצר את משימת המלמ החדשה (עם אימות מול השרת, כמו כל שמירה אחרת במערכת) ורק
+// אם זה הצליח בוודאות - מסיר (מחיקה רכה, ניתנת לביטול) את משימת המקור ברבקה.
+// אם היצירה במלמ נכשלת - לא נוגעים ברבקה בכלל, כדי שלעולם לא ניצור מצב שבו
+// המשימה נעלמה משני המקומות או קיימת בשניהם בלי שהאדמין יודע.
+async function saveTransferToMalm(){
+  var sourceId = transferSourceRivkaId;
+  var sourceIdx = DB.rivka.findIndex(function(x){ return x._id===sourceId; });
+  if(sourceIdx===-1){
+    alert('המשימה המקורית ברבקה לא נמצאה - ייתכן שהיא כבר הועברה או נמחקה. רענן/י ונסה/י שוב.');
+    return;
+  }
+  var taskText = g('f_מ');
+  if(!taskText){ alert('חובה למלא תוכן משימה'); return; }
+  var rec = {
+    _id: genId(),
+    ת: g('f_ת'), ד: g('f_ד'), מ: taskText, ע: g('f_ע'),
+    ס: g('f_ס') || 'פתוח',
+    dhl: g('f_dhl'), א: g('f_א'),
+    ה: '', chat: {}, reads: {}
+  };
+
+  var el=document.getElementById('savingMsg');
+  el.style.display='block'; el.style.background='#1a1a2e'; el.textContent='⏳ מעביר למלמ...';
+  var BASE='https://malm-focus-default-rtdb.firebaseio.com';
+  try{
+    var freshRes = await fetch(BASE+'/db/malm.json?t='+Date.now());
+    if(!freshRes.ok) throw new Error('שגיאה בטעינה טרייה מהשרת (סטטוס '+freshRes.status+')');
+    var arr = (await freshRes.json()) || [];
+    arr.unshift(rec);
+    var putRes = await fetch(BASE+'/db/malm.json', {
+      method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(arr)
+    });
+    if(!putRes.ok) throw new Error('השרת דחה את הכתיבה (סטטוס '+putRes.status+')');
+    var verifyRes = await fetch(BASE+'/db/malm.json?t='+Date.now());
+    var verifyArr = (await verifyRes.json()) || [];
+    var saved = verifyArr.find(function(x){ return x._id===rec._id; });
+    if(!saved || !deepEqual(saved, rec)) throw new Error('האימות מול השרת נכשל - המשימה לא נשמרה בפועל במלמ. נסה/י שוב.');
+    DB.malm = verifyArr;
+  }catch(e){
+    el.textContent='❌ שגיאה בהעברה למלמ: '+e.message;
+    el.style.background='#c62828';
+    setTimeout(()=>{el.style.display='none';el.style.background='#1a1a2e';},6000);
+    return;
+  }
+
+  transferSourceRivkaId = null;
+  closeModal(true);
+  initFilters(); r1();
+
+  // המשימה במלמ אומתה בשרת - עכשיו אפשר להסיר בבטחה את המקור ברבקה. מחיקה רכה
+  // (לא לצמיתות) עם אפשרות ביטול, בדיוק כמו deleteRec רגיל - רק בלי אישור נוסף,
+  // כי מילוי הטופס והלחיצה על "שמור" כבר היו האישור להעברה.
+  var sourceRec = DB.rivka[sourceIdx];
+  if(sourceRec){
+    var sourceRecId = sourceRec._id;
+    sourceRec.deleted = true;
+    r2();
+    showUndoToast('rivka', sourceRecId, sourceRec.נ || sourceRec.כ || 'המשימה');
+    saveDeletedFlag('rivka', sourceRecId, true);
+  }
 }
 
 // Smart tooltip positioning

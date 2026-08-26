@@ -1422,3 +1422,82 @@ test.describe('פילטרים נוספים בטבלת פיתוחים ותיקו�
     await expect(page.locator('#devEditTester option', { hasText: 'מנהל בדיקה' })).toHaveCount(1);
   });
 });
+
+test.describe('העברת משימה מרבקה למלמ כולל', () => {
+  test('אדמין רואה כפתור העברה, והפתיחה ממפה נכון את השדות מרבקה למלמ', async ({ page }) => {
+    const rec = { _id: 'r_tr_1', נ: 'נושא מקור', מב: 'מנהלת בדיקה', ת: '2026-07-05', כ: 'כותרת מקור', ב: 'תוכן הבקשה המקורי', מט: 'דני הבודק', ע: 2, ס: 'בטיפול', chat: {} };
+    await mockFirebase(page, { rivka: [rec] });
+    await page.goto('/index.html');
+    await login(page, 'testadmin', 'pw');
+    await page.click('.tab[data-tab="1"]');
+    await expect(page.locator('#b2')).toContainText('נושא מקור');
+
+    await expect(page.locator('tr:has-text("נושא מקור") .act-btn[title="העבר למלמ כולל"]')).toBeVisible();
+    await page.click('tr:has-text("נושא מקור") .act-btn[title="העבר למלמ כולל"]');
+    await expect(page.locator('#modalBg')).toHaveClass(/open/);
+    await expect(page.locator('#modalTitle')).toContainText('העברת משימה למלמ');
+
+    // שדות שיש להם מקבילה ברבקה ממופים אוטומטית
+    await expect(page.locator('#f_ת')).toHaveValue('2026-07-05');
+    await expect(page.locator('#f_ע')).toHaveValue('2');
+    await expect(page.locator('#f_ס')).toHaveValue('בטיפול');
+    await expect(page.locator('#f_א')).toHaveValue('דני הבודק'); // "מטפל" ברבקה -> "אחראי מלמ"
+    await expect(page.locator('#f_מ')).toHaveValue('נושא מקור\nכותרת מקור\nתוכן הבקשה המקורי');
+    // שדות שאין להם מקבילה ברבקה (תחום, DHL) נשארים ריקים למילוי ידני
+    await expect(page.locator('#f_ד')).toHaveValue('');
+    await expect(page.locator('#f_dhl')).toHaveValue('');
+    // אין למשימת מלמ צ'אט משלה עדיין (עוד לא נשמרה) - לא מציגים את הסקשן
+    await expect(page.locator('#chatSection')).toBeHidden();
+  });
+
+  test('השלמת ההעברה יוצרת משימת מלמ עם השדות הנכונים, ומסירה (מחיקה רכה) את המקור ברבקה; ביטול משחזר את המקור', async ({ page }) => {
+    const rec = { _id: 'r_tr_2', נ: 'משימה להעברה', מב: 'מנהלת בדיקה', ת: '2026-07-06', כ: 'כותרת', ב: 'תוכן', מט: 'רותם הבודקת', ע: 1, ס: 'פתוח', chat: { malm: [{ sender: 'x', text: 'הערה ברבקה', ts: 1, time: 't' }], dhl: [] } };
+    await mockFirebase(page, { rivka: [rec] });
+    await page.goto('/index.html');
+    await login(page, 'testadmin', 'pw');
+    await page.click('.tab[data-tab="1"]');
+    await page.click('tr:has-text("משימה להעברה") .act-btn[title="העבר למלמ כולל"]');
+    await expect(page.locator('#modalBg')).toHaveClass(/open/);
+
+    await page.fill('#f_ד', 'תחום שהושלם ידנית');
+    await page.fill('#f_dhl', 'DHL בדיקה');
+    await page.click('button.btn-save');
+    await expect(page.locator('#modalBg')).not.toHaveClass(/open/);
+
+    // המשימה החדשה נוצרה במלמ עם המיפוי הנכון
+    await page.click('.tab[data-tab="0"]');
+    await expect(page.locator('#b1')).toContainText('משימה להעברה');
+    const malmRec = await page.evaluate(() => DB.malm.find(x => (x.מ || '').includes('משימה להעברה')));
+    expect(malmRec).toBeTruthy();
+    expect(malmRec.ת).toBe('2026-07-06');
+    expect(malmRec.ע).toBe('1');
+    expect(malmRec.ס).toBe('פתוח');
+    expect(malmRec.א).toBe('רותם הבודקת');
+    expect(malmRec.ד).toBe('תחום שהושלם ידנית');
+    expect(malmRec.dhl).toBe('DHL בדיקה');
+
+    // המקור ברבקה הוסר (מחיקה רכה - נשאר במערך עם deleted:true, לא נמחק לצמיתות)
+    await page.click('.tab[data-tab="1"]');
+    await expect(page.locator('#b2')).not.toContainText('משימה להעברה');
+    const rivkaAfter = await page.evaluate(() => DB.rivka.find(x => x._id === 'r_tr_2'));
+    expect(rivkaAfter.deleted).toBe(true);
+    expect(rivkaAfter.chat.malm[0].text).toBe('הערה ברבקה'); // מחיקה רכה לא מוחקת נתונים אחרים של הרשומה
+
+    // ואפשר לבטל את ההסרה מרבקה (המשימה במלמ שנוצרה כבר לא מתבטלת - היא רשומה עצמאית שכבר אומתה בשרת)
+    await expect(page.locator('#savingMsg')).toContainText('ביטול');
+    await page.click('#savingMsg a');
+    await expect(page.locator('#b2')).toContainText('משימה להעברה');
+    const rivkaUndone = await page.evaluate(() => DB.rivka.find(x => x._id === 'r_tr_2'));
+    expect(rivkaUndone.deleted).toBeFalsy(); // undoDelete/saveDeletedFlag מסירים את הדגל לגמרי (לא false מפורש) - כמו בכל ביטול מחיקה אחר במערכת
+  });
+
+  test('מנהל (לא אדמין) לא רואה את כפתור ההעברה', async ({ page }) => {
+    const rec = { _id: 'r_tr_3', נ: 'משימה של מנהל', מב: 'מנהלת בדיקה', ת: '2026-07-07', כ: 'k', ב: 'b', ע: 1, ס: 'פתוח', chat: {} };
+    await mockFirebase(page, { rivka: [rec] });
+    await page.goto('/index.html');
+    await login(page, 'testmgr', 'pw');
+    await page.click('.tab[data-tab="1"]');
+    await expect(page.locator('#b2')).toContainText('משימה של מנהל');
+    await expect(page.locator('tr:has-text("משימה של מנהל") .act-btn[title="העבר למלמ כולל"]')).toHaveCount(0);
+  });
+});
