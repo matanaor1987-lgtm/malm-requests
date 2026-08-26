@@ -471,16 +471,40 @@ function showApp() {
 
 function genId(){ return 'r_'+Date.now()+'_'+Math.random().toString(36).slice(2,9); }
 
+// מסיר רקורסיבית שדות עם ערך "ריק" (אובייקט/מערך בלי תוכן, null, undefined) - כי
+// Firebase Realtime Database לא באמת שומר צמתים ריקים: כתיבת {} או [] לנתיב שקולה
+// למחיקתו, כך שכשקוראים בחזרה מהשרת השדה פשוט לא קיים. בלי הנירמול הזה, כל שמירה
+// שיוצרת רשומה חדשה עם שדות ריקים כמו chat:{} / reads:{} הייתה נכשלת תמיד באימות
+// מול השרת, למרות שהכתיבה בפועל הצליחה.
+function pruneEmpty(v){
+  if(v===null || v===undefined || typeof v!=='object') return v;
+  if(Array.isArray(v)){
+    return v.map(pruneEmpty).filter(function(x){ return x!==undefined; });
+  }
+  const out={};
+  Object.keys(v).forEach(function(k){
+    const pv=pruneEmpty(v[k]);
+    if(pv===null || pv===undefined) return;
+    if(typeof pv==='object' && Object.keys(pv).length===0) return;
+    out[k]=pv;
+  });
+  return out;
+}
 // השוואת שוויון עמוקה, לא תלוית סדר מפתחות - JSON.stringify רגיל לא בטוח להשוואה
-// כי Firebase לא מבטיח לשמור על אותו סדר מפתחות שנשלח בכתיבה.
+// כי Firebase לא מבטיח לשמור על אותו סדר מפתחות שנשלח בכתיבה. מנרמל קודם עם
+// pruneEmpty כדי שהשוואה מול נתונים שחזרו בפועל מהשרת (אחרי גיזום צמתים ריקים)
+// לא תיכשל בטעות.
 function deepEqual(a, b){
+  return _deepEqualRaw(pruneEmpty(a), pruneEmpty(b));
+}
+function _deepEqualRaw(a, b){
   if(a===b) return true;
   if(typeof a!==typeof b || a===null || b===null) return false;
   if(typeof a!=='object') return false;
   if(Array.isArray(a)!==Array.isArray(b)) return false;
   const ak=Object.keys(a), bk=Object.keys(b);
   if(ak.length!==bk.length) return false;
-  return ak.every(function(k){ return deepEqual(a[k], b[k]); });
+  return ak.every(function(k){ return _deepEqualRaw(a[k], b[k]); });
 }
 
 // מבטיח שלכל רשומה יש _id ייחודי. אם חסר — מוסיף ושומר בחזרה ל-Firebase.

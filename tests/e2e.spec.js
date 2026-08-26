@@ -125,6 +125,44 @@ test.describe('משימות לרבקה - יצירה ועריכה', () => {
   });
 });
 
+test.describe('רגרסיה: אימות שמירה מול שרת שמגזם צמתים ריקים (כמו Firebase אמיתי)', () => {
+  // תקלה ותיקה: Firebase Realtime Database לא שומר צומת עם ערך {} - כתיבתו שקולה
+  // למחיקתו. ברשומה חדשה יש שדות ריקים כאלה (chat:{}, reads:{}), כך שהשוואת
+  // deepEqual בין מה שכתבנו למה שחזר מהשרת נכשלה תמיד גם כשהכתיבה בפועל הצליחה -
+  // "שגיאה: האימות מול השרת נכשל" מופיע בכל שמירה, למרות שהמשימה כן נשמרה.
+  // helpers.js מדמה עכשיו את הגיזום הזה (firebasePrune) כדי שהבדיקות יתפסו את זה.
+  test('שמירת משימת מלמ חדשה לא מציגה שגיאת אימות שווא', async ({ page }) => {
+    await mockFirebase(page, {});
+    await page.goto('/index.html');
+    await login(page, 'testadmin', 'pw');
+    await page.click('.tab[data-tab="0"]');
+    await page.click('#btnAdd');
+    await page.fill('#f_ד', 'תחום בדיקה');
+    await page.fill('#f_מ', 'משימת מלמ חדשה לבדיקת אימות');
+    await page.click('button.btn-save');
+    await expect(page.locator('#modalBg')).not.toHaveClass(/open/);
+    await expect(page.locator('#b1')).toContainText('משימת מלמ חדשה לבדיקת אימות');
+    await expect(page.locator('#savingMsg')).toContainText('נשמר');
+    await expect(page.locator('#savingMsg')).not.toContainText('שגיאה');
+  });
+
+  test('שמירת משימה חדשה ברבקה לא מציגה שגיאת אימות שווא', async ({ page }) => {
+    await mockFirebase(page, {});
+    await page.goto('/index.html');
+    await login(page, 'testadmin', 'pw');
+    await page.click('.tab[data-tab="1"]');
+    await page.click('#btnAdd');
+    await page.fill('#f_נ', 'משימה חדשה לבדיקת אימות');
+    await page.fill('#f_כ', 'כותרת');
+    await page.fill('#f_ב', 'תוכן');
+    await page.click('button.btn-save');
+    await expect(page.locator('#modalBg')).not.toHaveClass(/open/);
+    await expect(page.locator('#b2')).toContainText('משימה חדשה לבדיקת אימות');
+    await expect(page.locator('#savingMsg')).toContainText('נשמר');
+    await expect(page.locator('#savingMsg')).not.toContainText('שגיאה');
+  });
+});
+
 test.describe('רגרסיה: דליפת הערות בין משימות (הבאג שתוקן ב-saveModal)', () => {
   test('שמירת משימה אחרי שהמערך הוחלף ברקע לא דורסת את ה-chat שלה בהערות של משימה אחרת', async ({ page }) => {
     const taskA = { _id: 'A', נ: 'משימת A', מב: 'מנהלת בדיקה', ת: '2026-07-01', כ: 'k', ב: 'b', ע: 1, ס: 'פתוח', chat: { malm: [{ sender: 'x', text: 'הערה של A', ts: 1, time: 't' }], dhl: [] } };

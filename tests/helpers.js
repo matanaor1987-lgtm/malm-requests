@@ -10,6 +10,25 @@ function seedUsers(extra) {
   ];
 }
 
+// מדמה את ההתנהגות האמיתית של Firebase Realtime Database: כתיבת אובייקט/מערך
+// ריק (או null) לנתיב שקולה למחיקתו - הצומת פשוט לא נשמר. בלי הדמיה הזו, מוק
+// ה-Firebase "נחמד" מדי ולא היה תופס באגים כמו זה שבו רשומה חדשה עם chat:{}
+// נכשלת באימות מול השרת האמיתי (ראו deepEqual/pruneEmpty ב-index.html).
+function firebasePrune(v) {
+  if (v === null || v === undefined || typeof v !== 'object') return v;
+  if (Array.isArray(v)) {
+    return v.map(firebasePrune).filter((x) => x !== undefined && x !== null);
+  }
+  const out = {};
+  Object.keys(v).forEach((k) => {
+    const pv = firebasePrune(v[k]);
+    if (pv === null || pv === undefined) return;
+    if (typeof pv === 'object' && Object.keys(pv).length === 0) return;
+    out[k] = pv;
+  });
+  return out;
+}
+
 async function mockFirebase(page, initial) {
   const db = {
     malm: (initial && initial.malm) || [],
@@ -66,6 +85,7 @@ async function mockFirebase(page, initial) {
     if (method === 'PUT') {
       let body;
       try { body = req.postDataJSON(); } catch (e) { body = null; }
+      body = firebasePrune(body);
       const m = path.match(/^\/db\/(malm|rivka|users)\.json$/);
       const sm = path.match(/^\/sanity\/([^/]+)\.json$/);
       const dm = path.match(/^\/devTasksByUid\/([^/]+)\.json$/);
