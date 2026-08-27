@@ -565,6 +565,47 @@ test.describe('משימות בעליה לאוויר', () => {
     expect(liveLaunch.l1).toBeUndefined();
     await expect(page.locator('#launchBody')).not.toContainText('משימה לבדיקה');
   });
+
+  test('אפשר לסמן דחיפות (מיד / בהמשך) למשימה חדשה, וזה מוצג כתג בטבלה', async ({ page }) => {
+    const { launchTasks: liveLaunch } = await mockFirebase(page, {});
+    await page.goto('/index.html');
+    await login(page, 'testadmin', 'pw');
+    await page.click('.tab[data-tab="5"]');
+
+    await page.click('button[onclick="openNewLaunch()"]');
+    await page.fill('#launchTask', 'משימה דחופה לבדיקה');
+    await page.selectOption('#launchTiming', 'מיד');
+    await page.click('button[onclick="saveLaunchTask()"]');
+    await page.waitForTimeout(150);
+
+    const row = page.locator('#launchBody tr', { hasText: 'משימה דחופה לבדיקה' });
+    await expect(row).toContainText('מיד לאחר העליה');
+    const ids = Object.keys(liveLaunch);
+    expect(liveLaunch[ids[0]].timing).toBe('מיד');
+  });
+
+  test('אפשר לשנות דחיפות בעריכה, ומשימה ישנה בלי דחיפות מוצגת עם "—" ולא נכפה עליה ערך', async ({ page }) => {
+    const seed = { l2: { id: 'l2', task: 'משימה ישנה בלי דחיפות', status: 'פתוח', notes: '', createdAt: '2026-08-01T00:00:00.000Z' } };
+    const { launchTasks: liveLaunch } = await mockFirebase(page, { launchTasks: JSON.parse(JSON.stringify(seed)) });
+    await page.goto('/index.html');
+    await login(page, 'testadmin', 'pw');
+    await page.click('.tab[data-tab="5"]');
+
+    // משימה ישנה שלא סומנה - מוצגת עם "—", לא עם אחד מהערכים
+    const row = page.locator('#launchBody tr', { hasText: 'משימה ישנה בלי דחיפות' });
+    await expect(row).toContainText('—');
+    await expect(row).not.toContainText('מיד לאחר העליה');
+    await expect(row).not.toContainText('בימים שלאחר מכן');
+
+    await page.click('button[onclick="openEditLaunch(\'l2\')"]');
+    await expect(page.locator('#launchTiming')).toHaveValue(''); // לא נכפה ערך במודל העריכה
+    await page.selectOption('#launchTiming', 'בהמשך');
+    await page.click('button[onclick="saveLaunchTask()"]');
+    await page.waitForTimeout(150);
+
+    await expect(row).toContainText('בימים שלאחר מכן');
+    expect(liveLaunch.l2.timing).toBe('בהמשך');
+  });
 });
 
 test.describe('קישור לאיפיון בפיתוחים ותיקונים', () => {

@@ -2876,12 +2876,24 @@ async function loadLaunchTab() {
   } catch (e) { LAUNCH_TASKS = {}; }
 }
 
+// תג "דחיפות" - מתי בפועל נדרש לבצע את המשימה ביחס לרגע העליה לאוויר. משימות
+// ישנות שנוצרו לפני הוספת השדה פשוט לא יסמנו כלום ("—") - לא כופים עליהן ערך.
+function launchTimingBadge(timing) {
+  if (timing === 'מיד') {
+    return '<span style="display:inline-block;background:#ffebee;color:#c62828;border-radius:10px;padding:2px 9px;font-size:11px;font-weight:700;white-space:nowrap">🔴 מיד לאחר העליה</span>';
+  }
+  if (timing === 'בהמשך') {
+    return '<span style="display:inline-block;background:#fff8e1;color:#f57f17;border-radius:10px;padding:2px 9px;font-size:11px;font-weight:700;white-space:nowrap">🟡 בימים שלאחר מכן</span>';
+  }
+  return '<span style="color:#ccc">—</span>';
+}
+
 function renderLaunchTable() {
   var tb = document.getElementById('launchBody');
   if (!tb) return;
   var tasks = Object.values(LAUNCH_TASKS).sort(function(a, b){ return (b.createdAt||'').localeCompare(a.createdAt||''); });
   if (!tasks.length) {
-    tb.innerHTML = '<tr><td colspan="5" style="padding:30px;text-align:center;color:#aaa">אין משימות עדיין — לחץ "+ משימה חדשה"</td></tr>';
+    tb.innerHTML = '<tr><td colspan="6" style="padding:30px;text-align:center;color:#aaa">אין משימות עדיין — לחץ "+ משימה חדשה"</td></tr>';
     return;
   }
   tb.innerHTML = tasks.map(function(t, i) {
@@ -2896,6 +2908,7 @@ function renderLaunchTable() {
     return '<tr style="background:' + bg + ';vertical-align:top" data-launch-id="' + esc(t.id) + '">' +
       '<td style="padding:8px 10px;border-bottom:1px solid #eee;font-size:12px;line-height:1.5;white-space:pre-wrap">' + esc(t.task) + linkedBadge + '</td>' +
       '<td style="padding:8px 10px;border-bottom:1px solid #eee;white-space:nowrap"><span style="color:' + statusColor + ';font-weight:700">' + esc(t.status||'פתוח') + '</span></td>' +
+      '<td style="padding:8px 10px;border-bottom:1px solid #eee;white-space:nowrap">' + launchTimingBadge(t.timing) + '</td>' +
       '<td style="padding:8px 10px;border-bottom:1px solid #eee;font-size:12px;color:#555;line-height:1.5;white-space:pre-wrap">' + esc(t.notes||'') + '</td>' +
       '<td style="padding:8px 10px;border-bottom:1px solid #eee;font-size:11px;white-space:nowrap">' + esc(t.createdAt ? t.createdAt.slice(0,10) : '') + '</td>' +
       '<td style="padding:8px 10px;border-bottom:1px solid #eee;white-space:nowrap">' +
@@ -2910,6 +2923,7 @@ function openNewLaunch() {
   document.getElementById('launchEditId').value = '';
   document.getElementById('launchTask').value = '';
   document.getElementById('launchStatus').value = 'פתוח';
+  document.getElementById('launchTiming').value = '';
   document.getElementById('launchNotes').value = '';
   document.getElementById('launchModalTitle').textContent = 'משימה חדשה';
   document.getElementById('launchModal').style.display = 'flex';
@@ -2921,6 +2935,7 @@ function openEditLaunch(id) {
   document.getElementById('launchEditId').value = id;
   document.getElementById('launchTask').value = t.task || '';
   document.getElementById('launchStatus').value = t.status || 'פתוח';
+  document.getElementById('launchTiming').value = t.timing || '';
   document.getElementById('launchNotes').value = t.notes || '';
   document.getElementById('launchModalTitle').textContent = 'עריכת משימה';
   document.getElementById('launchModal').style.display = 'flex';
@@ -2935,6 +2950,7 @@ async function saveLaunchTask() {
   if (!task) { alert('יש להזין תיאור משימה'); return; }
   var editId = document.getElementById('launchEditId').value;
   var status = document.getElementById('launchStatus').value;
+  var timing = document.getElementById('launchTiming').value;
   var notes = document.getElementById('launchNotes').value.trim();
 
   var id = editId || 'launch_' + Date.now() + '_' + Math.random().toString(36).slice(2,9);
@@ -2950,6 +2966,7 @@ async function saveLaunchTask() {
     id: id,
     task: task,
     status: status,
+    timing: timing,
     notes: notes,
     closedBy: statusChangedToDone ? (CU ? CU.name : '') : (status === 'פתוח' ? '' : (existing.closedBy || '')),
     closedAt: statusChangedToDone ? new Date().toISOString() : (status === 'פתוח' ? '' : (existing.closedAt || '')),
@@ -3260,6 +3277,7 @@ async function dedupRecords(sheet) {
     <thead><tr style="background:#1a1a2e;color:#fff">
       <th style="padding:8px 10px;text-align:right;min-width:260px">משימה</th>
       <th style="padding:8px 10px;text-align:right;white-space:nowrap">סטטוס</th>
+      <th style="padding:8px 10px;text-align:right;white-space:nowrap">דחיפות</th>
       <th style="padding:8px 10px;text-align:right;min-width:180px">הערות</th>
       <th style="padding:8px 10px;text-align:right;white-space:nowrap">נוצר בתאריך</th>
       <th style="padding:8px 10px;text-align:right;white-space:nowrap">פעולות</th>
@@ -3281,6 +3299,14 @@ async function dedupRecords(sheet) {
         <select id="launchStatus" style="width:100%;padding:8px 10px;border:1.5px solid #ddd;border-radius:6px;font-size:13px;font-family:Arial;direction:rtl">
           <option value="פתוח">פתוח</option>
           <option value="בוצע">בוצע</option>
+        </select>
+      </div>
+      <div style="margin-bottom:10px">
+        <label style="font-size:11px;color:#666;font-weight:700;display:block;margin-bottom:3px">דחיפות - מתי נדרש לבצע</label>
+        <select id="launchTiming" style="width:100%;padding:8px 10px;border:1.5px solid #ddd;border-radius:6px;font-size:13px;font-family:Arial;direction:rtl">
+          <option value="">—</option>
+          <option value="מיד">🔴 מיד לאחר העליה לאוויר</option>
+          <option value="בהמשך">🟡 בימים שלאחר מכן</option>
         </select>
       </div>
       <div style="margin-bottom:10px">
