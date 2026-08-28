@@ -540,7 +540,7 @@ test.describe('משימות בעליה לאוויר', () => {
     await expect(page.locator('#tabLaunch')).toBeHidden();
   });
 
-  test('עריכת משימה וסימון כ"בוצע" רושם מי סגר ומתי, ומחיקה מסירה מהרשימה', async ({ page }) => {
+  test('עריכת משימה וסימון כ"בוצע" רושם מי סגר ומתי, ומחיקה מסתירה מהרשימה (מחיקה רכה)', async ({ page }) => {
     const seed = { l1: { id: 'l1', task: 'משימה לבדיקה', status: 'פתוח', notes: '', createdAt: '2026-08-01T00:00:00.000Z' } };
     const { launchTasks: liveLaunch } = await mockFirebase(page, { launchTasks: JSON.parse(JSON.stringify(seed)) });
     await page.goto('/index.html');
@@ -562,8 +562,14 @@ test.describe('משימות בעליה לאוויר', () => {
     page.once('dialog', d => d.accept());
     await page.click('button[onclick="deleteLaunchTask(\'l1\')"]');
     await page.waitForTimeout(150);
-    expect(liveLaunch.l1).toBeUndefined();
+    // מחיקה רכה - כמו בכל שאר המסכים - הרשומה נשארת בשרת עם deleted:true, לא נמחקת לצמיתות
+    expect(liveLaunch.l1.deleted).toBe(true);
     await expect(page.locator('#launchBody')).not.toContainText('משימה לבדיקה');
+    await expect(page.locator('#savingMsg')).toContainText('ביטול');
+
+    await page.click('#savingMsg a');
+    await expect(page.locator('#launchBody')).toContainText('משימה לבדיקה');
+    expect(liveLaunch.l1.deleted).toBeFalsy();
   });
 
   test('אפשר לסמן דחיפות (מיד / בהמשך) למשימה חדשה, וזה מוצג כתג בטבלה', async ({ page }) => {
@@ -730,6 +736,138 @@ test.describe('אימות כתיבה מול השרת (לא מסתפקים בתג
     await page.waitForTimeout(300);
 
     await expect(page.locator('#savingMsg')).toContainText('האימות מול השרת נכשל');
+  });
+
+  test('אותו דבר במשימות בעליה לאוויר - כתיבה שלא נקלטת בפועל מציגה שגיאת אימות ולא סוגרת את המודל', async ({ page }) => {
+    const seed = { l1: { id: 'l1', task: 'משימה קיימת', status: 'פתוח', notes: '', createdAt: '2026-08-01T00:00:00.000Z' } };
+    await mockFirebase(page, { launchTasks: JSON.parse(JSON.stringify(seed)) });
+    await page.route('**/launchTasks/l1.json', async (route) => {
+      if (route.request().method() === 'PUT') {
+        return route.fulfill({ status: 200, contentType: 'application/json', body: '{}' });
+      }
+      return route.fallback();
+    });
+    await page.goto('/index.html');
+    await login(page, 'testadmin', 'pw');
+    await page.click('.tab[data-tab="5"]');
+    await page.click('button[onclick="openEditLaunch(\'l1\')"]');
+    await page.fill('#launchNotes', 'זה לא אמור באמת להישמר');
+    await page.click('button[onclick="saveLaunchTask()"]');
+    await page.waitForTimeout(300);
+
+    await expect(page.locator('#launchModal')).toBeVisible();
+    await expect(page.locator('#launchMsg')).toContainText('האימות מול השרת נכשל');
+  });
+});
+
+test.describe('רגרסיה: עריכה מקבילה של אותה רשומה מתריעה לפני דריסה', () => {
+  test('אם מישהו אחר שינה שדה בבקשת רבקה בזמן שהעריכה שלי פתוחה, נדרש אישור לפני שמירה - וביטול האישור לא דורס את השינוי שלו', async ({ page }) => {
+    const rec = { _id: 'r_conc_1', נ: 'משימה משותפת', מב: 'מנהלת בדיקה', ת: '2026-07-01', כ: 'כותרת מקורית', ב: 'b', ע: 1, ס: 'פתוח', chat: {} };
+    const { db } = await mockFirebase(page, { rivka: [rec] });
+    await page.goto('/index.html');
+    await login(page, 'testadmin', 'pw');
+    await page.click('.tab[data-tab="1"]');
+    await page.click('tr:has-text("משימה משותפת") .act-btn');
+    await expect(page.locator('#modalBg')).toHaveClass(/open/);
+
+    // מדמים שמישהו אחר שינה את הכותרת בשרת בזמן שהחלון פתוח אצלי
+    const serverRec = db.rivka.find(r => r._id === 'r_conc_1');
+    serverRec.כ = 'כותרת ששונתה על ידי מישהו אחר';
+
+    await page.fill('#f_ב', 'עדכון שלי לבקשה');
+    let dialogMsg = '';
+    page.once('dialog', d => { dialogMsg = d.message(); d.dismiss(); });
+    await page.click('button.btn-save');
+    await page.waitForTimeout(300);
+
+    expect(dialogMsg).toContain('מישהו אחר שינה');
+    // ביטלתי את האישור - השינוי של האחר נשאר כמו שהוא, השינוי שלי לא נשמר
+    expect(db.rivka.find(r => r._id === 'r_conc_1').כ).toBe('כותרת ששונתה על ידי מישהו אחר');
+    expect(db.rivka.find(r => r._id === 'r_conc_1').ב).toBe('b');
+  });
+
+  test('אישור ההתראה על עריכה מקבילה שומר את השינוי שלי ודורס במפורש', async ({ page }) => {
+    const rec = { _id: 'r_conc_2', נ: 'משימה משותפת 2', מב: 'מנהלת בדיקה', ת: '2026-07-01', כ: 'כותרת מקורית', ב: 'b', ע: 1, ס: 'פתוח', chat: {} };
+    const { db } = await mockFirebase(page, { rivka: [rec] });
+    await page.goto('/index.html');
+    await login(page, 'testadmin', 'pw');
+    await page.click('.tab[data-tab="1"]');
+    await page.click('tr:has-text("משימה משותפת 2") .act-btn');
+    await expect(page.locator('#modalBg')).toHaveClass(/open/);
+
+    const serverRec = db.rivka.find(r => r._id === 'r_conc_2');
+    serverRec.כ = 'כותרת ששונתה על ידי מישהו אחר';
+
+    await page.fill('#f_ב', 'עדכון שלי לבקשה 2');
+    page.once('dialog', d => d.accept());
+    await page.click('button.btn-save');
+    await page.waitForTimeout(300);
+
+    await expect(page.locator('#modalBg')).not.toHaveClass(/open/);
+    expect(db.rivka.find(r => r._id === 'r_conc_2').ב).toBe('עדכון שלי לבקשה 2');
+  });
+
+  test('אם אף אחד לא נגע ברשומה בינתיים, שמירה רגילה לא מציגה שום התראה', async ({ page }) => {
+    const rec = { _id: 'r_conc_3', נ: 'משימה רגילה', מב: 'מנהלת בדיקה', ת: '2026-07-01', כ: 'כותרת', ב: 'b', ע: 1, ס: 'פתוח', chat: {} };
+    await mockFirebase(page, { rivka: [rec] });
+    await page.goto('/index.html');
+    await login(page, 'testadmin', 'pw');
+    await page.click('.tab[data-tab="1"]');
+    await page.click('tr:has-text("משימה רגילה") .act-btn');
+
+    let dialogShown = false;
+    page.on('dialog', d => { dialogShown = true; d.accept(); });
+    await page.fill('#f_ב', 'עדכון רגיל');
+    await page.click('button.btn-save');
+    await page.waitForTimeout(300);
+
+    expect(dialogShown).toBe(false);
+    await expect(page.locator('#modalBg')).not.toHaveClass(/open/);
+  });
+
+  test('שליחת הודעת צאט תוך כדי שהעריכה פתוחה לא נחשבת "עריכה מקבילה" - שמירה רגילה אחריה לא מציגה התראה', async ({ page }) => {
+    const rec = { _id: 'r_conc_4', נ: 'משימה עם צאט', מב: 'מנהלת בדיקה', ת: '2026-07-01', כ: 'כותרת', ב: 'b', ע: 1, ס: 'פתוח', chat: {} };
+    await mockFirebase(page, { rivka: [rec] });
+    await page.goto('/index.html');
+    await login(page, 'testadmin', 'pw');
+    await page.click('.tab[data-tab="1"]');
+    await page.click('tr:has-text("משימה עם צאט") .act-btn');
+    await expect(page.locator('#modalBg')).toHaveClass(/open/);
+
+    await page.fill('#chatInput', 'הערה תוך כדי עריכה');
+    await page.keyboard.press('Enter');
+    await page.waitForTimeout(200);
+
+    let dialogShown = false;
+    page.on('dialog', d => { dialogShown = true; d.accept(); });
+    await page.fill('#f_ב', 'עדכון אחרי הצאט');
+    await page.click('button.btn-save');
+    await page.waitForTimeout(300);
+
+    expect(dialogShown).toBe(false);
+    await expect(page.locator('#modalBg')).not.toHaveClass(/open/);
+  });
+
+  test('אותו דבר במשימות בעליה לאוויר - עריכה מקבילה מתריעה לפני דריסה', async ({ page }) => {
+    const seed = { l1: { id: 'l1', task: 'משימה', status: 'פתוח', notes: 'הערה מקורית', createdAt: '2026-08-01T00:00:00.000Z' } };
+    const { launchTasks: liveLaunch } = await mockFirebase(page, { launchTasks: JSON.parse(JSON.stringify(seed)) });
+    await page.goto('/index.html');
+    await login(page, 'testadmin', 'pw');
+    await page.click('.tab[data-tab="5"]');
+    await page.click('button[onclick="openEditLaunch(\'l1\')"]');
+    await expect(page.locator('#launchModal')).toBeVisible();
+
+    liveLaunch.l1.status = 'בוצע'; // מישהו אחר כבר סגר את המשימה בינתיים
+
+    await page.fill('#launchNotes', 'הערה חדשה שלי');
+    let dialogMsg = '';
+    page.once('dialog', d => { dialogMsg = d.message(); d.dismiss(); });
+    await page.click('button[onclick="saveLaunchTask()"]');
+    await page.waitForTimeout(300);
+
+    expect(dialogMsg).toContain('מישהו אחר שינה');
+    expect(liveLaunch.l1.notes).toBe('הערה מקורית'); // לא נדרס
+    expect(liveLaunch.l1.status).toBe('בוצע'); // הסטטוס שהאחר קבע נשאר
   });
 });
 

@@ -361,6 +361,9 @@ tr:hover td{background:#fffbf0}
 const OWNER=window.APP_CONFIG.owner,REPO=window.APP_CONFIG.repo,TOKEN=window.APP_CONFIG.token;
 let DB={malm:[],rivka:[]},currentTab=0,editIdx=-1,editSheet='',editRecId=null,sortCol2='ע',sortDir2=1,sortCol1='',sortDir1=1,transferSourceRivkaId=null;
 let formSnapshot=null;
+// תמונת מצב של השדות הניתנים לעריכה, כפי שהיו ברגע פתיחת חלון העריכה - כדי
+// שאפשר יהיה לזהות לפני שמירה אם מישהו אחר שינה את הרשומה בינתיים (ראו saveRecord).
+let editOpenSnapshot=null;
 const PAGE_SIZE=100;
 let page1=1,page2=1,lastFilterKey1='',lastFilterKey2='';
 const SM=['פתוח','בטיפול','בבדיקה','ממתין לבדיקה','מוקפא','הושהה','בוצע','טופל','בוטל'];
@@ -586,7 +589,7 @@ async function saveDB(){
 // שמירה אטומית של רשומה בודדת לפי _id — מונעת דריסה/כפילות בין משתמשים
 // תמיד טוען את המערך המלא טרי מ-Firebase, מאתר את הרשומה לפי _id (לא לפי אינדקס),
 // מעדכן/מוסיף אותה, ושומר את כל המערך בחזרה. כך אינדקסים שזזו בינתיים לא משנים כלום.
-async function saveRecord(sheet, idx, rec){
+async function saveRecord(sheet, idx, rec, openSnapshot){
   const el=document.getElementById('savingMsg');
   el.style.display='block';
   el.style.background='#1a1a2e';
@@ -600,6 +603,18 @@ async function saveRecord(sheet, idx, rec){
     if(rec._id){
       const fi = arr.findIndex(function(x){ return x._id===rec._id; });
       if(fi >= 0){
+        // זיהוי עריכה מקבילה: אם מישהו אחר שינה שדה ניתן-לעריכה ברשומה הזו מאז
+        // שהטופס נפתח (openSnapshot נלקח ב-openEdit) - מתריעים לפני שדורסים אותו
+        // בשקט. openSnapshot לא מועבר משליחת צ'אט (sendMsg) - כתיבה כזו לא נחשבת
+        // "מישהו שינה", כי היא לא נוגעת בשדות הטופס.
+        if(openSnapshot){
+          let priorSubset=null;
+          try{ priorSubset=JSON.parse(openSnapshot); }catch(e){}
+          if(priorSubset && !deepEqual(editableSubset(sheet,arr[fi]), priorSubset)){
+            const proceed=confirm('מישהו אחר שינה את המשימה הזו בזמן שהעריכה הייתה פתוחה אצלך. לשמור בכל זאת ולדרוס את השינוי שלו? (ביטול לא ישמור את מה שערכת)');
+            if(!proceed){ el.style.display='none'; return; }
+          }
+        }
         arr[fi] = rec; // עדכון רשומה קיימת — לפי ID, לא אינדקס
       } else {
         arr.unshift(rec); // לא נמצא (למשל רשומה חדשה) — הוסף בראש
@@ -878,9 +893,19 @@ function rivkaFields(r={}, isEdit=false){
     <div class="form-row"><label>בקשה</label><textarea id="f_ב" class="tall">${r.ב||''}</textarea></div>`;
 }
 
+// תת-קבוצת השדות הניתנים לעריכה בטופס (ולא chat/reads/statusLog, שמשתנים באופן
+// שוטף ולא קשור לעריכה עצמה - למשל שליחת הודעת צ'אט תוך כדי שהטופס פתוח לא
+// אמורה להיחשב "מישהו אחר שינה את הרשומה" מבחינת בדיקת השדות הניתנים לעריכה).
+function editableSubset(sheet, r){
+  if(!r) return null;
+  if(sheet==='malm') return { ת:r.ת||'', ד:r.ד||'', מ:r.מ||'', ע:r.ע??'', ס:r.ס||'', dhl:r.dhl||'', א:r.א||'' };
+  return { נ:r.נ||'', מב:r.מב||'', מבUid:r.מבUid||'', ת:r.ת||'', כ:r.כ||'', ב:r.ב||'', מט:r.מט||'', מטUid:r.מטUid||'', ע:r.ע??'', ס:r.ס||'' };
+}
+
 function openAdd(){
   if(!CU){return;}
   editIdx=-1;editSheet=currentTab===0?'malm':'rivka';editRecId=null;
+  editOpenSnapshot=null;
   document.getElementById('modalTitle').textContent=currentTab===0?'✏️ משימה חדשה — מלמ כולל':'✏️ משימה חדשה — רבקה';
   document.getElementById('modalFields').innerHTML=currentTab===0?malmFields():rivkaFields({}, false);
   // Show file upload for new requests too
@@ -902,6 +927,7 @@ function openEdit(sheet,idx){
   const r=DB[sheet][idx];
   if(sheet==='rivka' && !isAdmin() && (!r || (r.מב !== (CU?CU.name:'') && r.מב !== (CU?CU.username:'')))) return;
   editIdx=idx;editSheet=sheet;editRecId=r?r._id:null;
+  editOpenSnapshot=r?JSON.stringify(editableSubset(sheet,r)):null;
   if(editRecId) markRead(sheet, editRecId);
   document.getElementById('modalTitle').textContent='✏️ עריכת משימה';
   document.getElementById('modalFields').innerHTML=sheet==='malm'?malmFields(r):rivkaFields(r, true);
@@ -1043,10 +1069,11 @@ function saveModal(){
   }
   const savedIdx = editIdx; // שמור לפני closeModal מאפס
   const savedSheet = editSheet;
+  const savedOpenSnapshot = editOpenSnapshot;
   closeModal(true);
   initFilters();
   if(savedSheet==='malm')r1();else r2();
-  saveRecord(savedSheet, savedIdx, rec);
+  saveRecord(savedSheet, savedIdx, rec, savedOpenSnapshot);
 }
 
 // יוצר את משימת המלמ החדשה (עם אימות מול השרת, כמו כל שמירה אחרת במערכת) ורק
@@ -1273,7 +1300,10 @@ function undoDelete(sheet, recId){
 function showUndoToast(sheet, recId, name){
   var el=document.getElementById('savingMsg');
   el.style.display='block'; el.style.background='#1a1a2e';
-  el.innerHTML='🗑️ "'+escapeHtml(name)+'" נמחקה. <a href="#" onclick="undoDelete(\''+sheet+'\',\''+recId+'\');return false" style="color:#FECC02;text-decoration:underline;font-weight:700;margin-right:6px">ביטול</a>';
+  // "launch" (משימות בעליה לאוויר) לא מאוחסן כמערך בתוך DB כמו שאר הגיליונות
+  // אלא כאובייקט LAUNCH_TASKS בפני עצמו - ולכן צריך פונקציית ביטול נפרדת עבורו.
+  var undoCall = sheet==='launch' ? ('undoDeleteLaunch(\''+recId+'\')') : ('undoDelete(\''+sheet+'\',\''+recId+'\')');
+  el.innerHTML='🗑️ "'+escapeHtml(name)+'" נמחקה. <a href="#" onclick="'+undoCall+';return false" style="color:#FECC02;text-decoration:underline;font-weight:700;margin-right:6px">ביטול</a>';
   clearTimeout(window._undoTimer);
   window._undoTimer=setTimeout(function(){ el.style.display='none'; el.innerHTML=''; },6000);
 }
@@ -2867,6 +2897,10 @@ async function updateSanityField(id, field, val) {
 // LAUNCH TASKS TAB (משימות בעליה לאוויר)
 // ══════════════════════════════════════
 var LAUNCH_TASKS = {};
+// תמונת מצב של השדות הניתנים לעריכה, כפי שהיו ברגע פתיחת חלון העריכה - כדי לזהות
+// לפני שמירה אם מישהו אחר שינה את המשימה בינתיים (אותו עיקרון כמו editOpenSnapshot
+// ברבקה/מלמ, ראו saveRecord).
+var launchEditSnapshot = null;
 
 async function loadLaunchTab() {
   try {
@@ -2891,7 +2925,7 @@ function launchTimingBadge(timing) {
 function renderLaunchTable() {
   var tb = document.getElementById('launchBody');
   if (!tb) return;
-  var tasks = Object.values(LAUNCH_TASKS).sort(function(a, b){ return (b.createdAt||'').localeCompare(a.createdAt||''); });
+  var tasks = Object.values(LAUNCH_TASKS).filter(function(t){ return !t.deleted; }).sort(function(a, b){ return (b.createdAt||'').localeCompare(a.createdAt||''); });
   if (!tasks.length) {
     tb.innerHTML = '<tr><td colspan="6" style="padding:30px;text-align:center;color:#aaa">אין משימות עדיין — לחץ "+ משימה חדשה"</td></tr>';
     return;
@@ -2919,6 +2953,12 @@ function renderLaunchTable() {
   }).join('');
 }
 
+// תת-קבוצת השדות הניתנים לעריכה בטופס - לצורך זיהוי עריכה מקבילה (ראו saveLaunchTask).
+function editableLaunchSubset(r){
+  if(!r) return null;
+  return { task:r.task||'', status:r.status||'', timing:r.timing||'', notes:r.notes||'' };
+}
+
 function openNewLaunch() {
   document.getElementById('launchEditId').value = '';
   document.getElementById('launchTask').value = '';
@@ -2926,6 +2966,8 @@ function openNewLaunch() {
   document.getElementById('launchTiming').value = '';
   document.getElementById('launchNotes').value = '';
   document.getElementById('launchModalTitle').textContent = 'משימה חדשה';
+  document.getElementById('launchMsg').textContent = '';
+  launchEditSnapshot = null;
   document.getElementById('launchModal').style.display = 'flex';
 }
 
@@ -2938,11 +2980,14 @@ function openEditLaunch(id) {
   document.getElementById('launchTiming').value = t.timing || '';
   document.getElementById('launchNotes').value = t.notes || '';
   document.getElementById('launchModalTitle').textContent = 'עריכת משימה';
+  document.getElementById('launchMsg').textContent = '';
+  launchEditSnapshot = JSON.stringify(editableLaunchSubset(t));
   document.getElementById('launchModal').style.display = 'flex';
 }
 
 function closeLaunchModal() {
   document.getElementById('launchModal').style.display = 'none';
+  launchEditSnapshot = null;
 }
 
 async function saveLaunchTask() {
@@ -2952,14 +2997,26 @@ async function saveLaunchTask() {
   var status = document.getElementById('launchStatus').value;
   var timing = document.getElementById('launchTiming').value;
   var notes = document.getElementById('launchNotes').value.trim();
+  var BASE = 'https://malm-focus-default-rtdb.firebaseio.com';
 
   var id = editId || 'launch_' + Date.now() + '_' + Math.random().toString(36).slice(2,9);
   var existing = {};
   if (editId) {
     try {
-      var freshRes = await fetch('https://malm-focus-default-rtdb.firebaseio.com/launchTasks/' + editId + '.json?t=' + Date.now());
+      var freshRes = await fetch(BASE + '/launchTasks/' + editId + '.json?t=' + Date.now());
       existing = (await freshRes.json()) || {};
     } catch (e) { existing = LAUNCH_TASKS[editId] || {}; }
+
+    // זיהוי עריכה מקבילה: אם מישהו אחר שינה שדה ניתן-לעריכה מאז שהטופס נפתח -
+    // מתריעים לפני שדורסים אותו בשקט (אותו עיקרון כמו ברבקה/מלמ, ראו saveRecord).
+    if (launchEditSnapshot) {
+      var priorSnap = null;
+      try { priorSnap = JSON.parse(launchEditSnapshot); } catch(e) {}
+      if (priorSnap && !deepEqual(editableLaunchSubset(existing), priorSnap)) {
+        var proceed = confirm('מישהו אחר שינה את המשימה הזו בזמן שהעריכה הייתה פתוחה אצלך. לשמור בכל זאת ולדרוס את השינוי שלו? (ביטול לא ישמור את מה שערכת)');
+        if (!proceed) return;
+      }
+    }
   }
   var statusChangedToDone = status === 'בוצע' && existing.status !== 'בוצע';
   var rec = {
@@ -2984,22 +3041,72 @@ async function saveLaunchTask() {
     rec.linkedSanityName = existing.linkedSanityName;
   }
 
-  await fetch('https://malm-focus-default-rtdb.firebaseio.com/launchTasks/' + id + '.json', {
-    method: 'PUT',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify(rec)
-  });
+  var msgEl = document.getElementById('launchMsg');
+  var saveBtn = document.getElementById('launchSaveBtn');
+  if (saveBtn) saveBtn.disabled = true;
+  if (msgEl) { msgEl.style.color = '#666'; msgEl.textContent = 'שומר...'; }
 
-  LAUNCH_TASKS[id] = rec;
-  closeLaunchModal();
-  renderLaunchTable();
+  try {
+    var putRes = await fetch(BASE + '/launchTasks/' + id + '.json', {
+      method: 'PUT',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(rec)
+    });
+    if (!putRes.ok) throw new Error('השרת דחה את הכתיבה (סטטוס ' + putRes.status + ')');
+
+    // אימות: קוראים שוב מהשרת ומוודאים שהרשומה באמת שם - בדיוק כמו כל שמירה
+    // אחרת במערכת (זה היה המוקד היחיד שלא עשה זאת).
+    var verifyRes = await fetch(BASE + '/launchTasks/' + id + '.json?t=' + Date.now());
+    var verifyData = (await verifyRes.json()) || {};
+    if (!deepEqual(verifyData, rec)) throw new Error('האימות מול השרת נכשל - המשימה לא נשמרה בפועל. נסה/י שוב.');
+
+    LAUNCH_TASKS[id] = rec;
+    closeLaunchModal();
+    renderLaunchTable();
+  } catch(e) {
+    if (msgEl) { msgEl.style.color = '#c62828'; msgEl.textContent = '❌ ' + e.message; }
+  } finally {
+    if (saveBtn) saveBtn.disabled = false;
+  }
 }
 
-async function deleteLaunchTask(id) {
-  if (!confirm('למחוק את המשימה?')) return;
-  await fetch('https://malm-focus-default-rtdb.firebaseio.com/launchTasks/' + id + '.json', { method: 'DELETE' });
-  delete LAUNCH_TASKS[id];
+// מחיקה רכה - מסמן deleted:true במקום למחוק בפועל, כדי לאפשר ביטול (בדיוק
+// כמו בכל שאר המסכים - ראו deleteRec - לפני כן הייתה כאן מחיקה בלתי-הפיכה).
+function deleteLaunchTask(id) {
+  var t = LAUNCH_TASKS[id];
+  if (!t) return;
+  var name = t.task || 'המשימה';
+  if (!confirm('למחוק את "' + name + '"?')) return;
+  t.deleted = true;
   renderLaunchTable();
+  showUndoToast('launch', id, name);
+  saveLaunchDeletedFlag(id, true);
+}
+
+function undoDeleteLaunch(id){
+  var t = LAUNCH_TASKS[id];
+  if (t) t.deleted = false;
+  renderLaunchTable();
+  saveLaunchDeletedFlag(id, false);
+  var el = document.getElementById('savingMsg');
+  el.style.display = 'none'; el.innerHTML = '';
+}
+
+// עדכון אטומי של דגל deleted בלבד - טוען טרי, מעדכן, שומר בחזרה (אותו דפוס
+// כמו saveDeletedFlag לרבקה/מלמ, אבל מותאם לכך ש-launchTasks מאוחסן כאובייקט
+// יחיד לכל משימה, לא כמערך).
+async function saveLaunchDeletedFlag(id, deletedFlag){
+  try{
+    var BASE = 'https://malm-focus-default-rtdb.firebaseio.com';
+    var fresh = await fetch(BASE + '/launchTasks/' + id + '.json?t=' + Date.now());
+    var rec = await fresh.json();
+    if(!rec) return;
+    if(deletedFlag) rec.deleted = true; else delete rec.deleted;
+    await fetch(BASE + '/launchTasks/' + id + '.json', {
+      method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(rec)
+    });
+    LAUNCH_TASKS[id] = rec;
+  }catch(e){}
 }
 
 // ניווט בין משימת פיתוח לבדיקה למשימת "עליה לאוויר" המקושרת אליה, ובחזרה -
@@ -3313,9 +3420,10 @@ async function dedupRecords(sheet) {
         <label style="font-size:11px;color:#666;font-weight:700;display:block;margin-bottom:3px">הערות</label>
         <textarea id="launchNotes" rows="3" style="width:100%;padding:8px 10px;border:1.5px solid #ddd;border-radius:6px;font-size:13px;font-family:Arial;direction:rtl;resize:vertical;box-sizing:border-box"></textarea>
       </div>
+      <div id="launchMsg" style="font-size:12px;margin-bottom:4px;min-height:14px"></div>
       <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
         <button onclick="closeLaunchModal()" style="padding:8px 16px;border:1px solid #ddd;border-radius:6px;cursor:pointer;font-size:13px;font-family:Arial;background:#fff">ביטול</button>
-        <button onclick="saveLaunchTask()" style="padding:8px 16px;background:#D40511;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px;font-weight:700;font-family:Arial">שמור</button>
+        <button id="launchSaveBtn" onclick="saveLaunchTask()" style="padding:8px 16px;background:#D40511;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px;font-weight:700;font-family:Arial">שמור</button>
       </div>
     </div>
   </div>
