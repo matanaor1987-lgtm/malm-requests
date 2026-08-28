@@ -1718,3 +1718,62 @@ test.describe('העברת משימה מרבקה למלמ כולל', () => {
     await expect(page.locator('tr:has-text("משימה של מנהל") .act-btn[title="העבר למלמ כולל"]')).toHaveCount(0);
   });
 });
+
+test.describe('אף פריט לא נמחק לצמיתות מה-DB - מחיקה רכה בכל מקום', () => {
+  test('מחיקת בדיקת שפיות היא מחיקה רכה עם ביטול, לא הסרה מהשרת', async ({ page }) => {
+    const sanity = { s1: { id: 's1', name: 'בדיקה למחיקה', module: 'מסך א', env: 'טסט', status: 'פתוח', assignee: '', notes: '', adminNotes: '' } };
+    const { sanity: liveSanity } = await mockFirebase(page, { sanity: JSON.parse(JSON.stringify(sanity)) });
+    await page.goto('/index.html');
+    await login(page, 'testadmin', 'pw');
+    await page.click('.tab[data-tab="4"]');
+    await expect(page.locator('#sanityAdminBody')).toContainText('בדיקה למחיקה');
+
+    page.once('dialog', d => d.accept());
+    await page.click('button[onclick="deleteSanityTask(\'s1\')"]');
+    await page.waitForTimeout(150);
+
+    // הרשומה נשארת ב"שרת" עם deleted:true - לא מוסרת ממנו בכלל
+    expect(liveSanity.s1.deleted).toBe(true);
+    expect(liveSanity.s1.name).toBe('בדיקה למחיקה');
+    await expect(page.locator('#sanityAdminBody')).not.toContainText('בדיקה למחיקה');
+    await expect(page.locator('#savingMsg')).toContainText('ביטול');
+
+    await page.click('#savingMsg a');
+    await expect(page.locator('#sanityAdminBody')).toContainText('בדיקה למחיקה');
+    expect(liveSanity.s1.deleted).toBeFalsy();
+  });
+
+  test('מחיקת משתמש בטאב משתמשים היא מחיקה רכה - המשתמש נשאר ב-DB, לא יכול להתחבר, וניתן לבטל', async ({ page }) => {
+    const { db } = await mockFirebase(page, { users: seedUsers([{ name: 'משתמש למחיקה', username: 'del_me', password: 'pw', role: 'manager', email: 'del@test.local' }]) });
+    await page.goto('/index.html');
+    await login(page, 'testadmin', 'pw');
+    await page.click('.tab[data-tab="2"]');
+    await expect(page.locator('#usersList')).toContainText('משתמש למחיקה');
+
+    const row = page.locator('#usersList > div', { hasText: 'משתמש למחיקה' });
+    page.once('dialog', d => d.accept());
+    await row.locator('button', { hasText: 'מחק' }).click();
+    await page.waitForTimeout(150);
+
+    // המשתמש נשאר במערך ה-DB בשרת עם deleted:true - לא מוסר ממנו
+    const savedUser = db.users.find(u => u.username === 'del_me');
+    expect(savedUser).toBeTruthy();
+    expect(savedUser.deleted).toBe(true);
+    await expect(page.locator('#usersList')).not.toContainText('משתמש למחיקה');
+    await expect(page.locator('#savingMsg')).toContainText('ביטול');
+
+    await page.click('#savingMsg a');
+    await expect(page.locator('#usersList')).toContainText('משתמש למחיקה');
+    expect(db.users.find(u => u.username === 'del_me').deleted).toBeFalsy();
+  });
+
+  test('משתמש שנמחק (מחיקה רכה) לא יכול להתחבר יותר', async ({ page }) => {
+    await mockFirebase(page, { users: seedUsers([{ name: 'משתמש מושבת', username: 'disabled_u', password: 'pw', role: 'manager', email: 'd@test.local', deleted: true }]) });
+    await page.goto('/index.html');
+    await page.fill('#lgUser', 'disabled_u');
+    await page.fill('#lgPass', 'pw');
+    await page.click('#lgBtn');
+    await expect(page.locator('#lgErr')).toHaveText(/שגוי/);
+    await expect(page.locator('#mainTabs')).toBeHidden();
+  });
+});

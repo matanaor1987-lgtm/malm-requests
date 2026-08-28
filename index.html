@@ -410,7 +410,7 @@ function sendEmailNotification(toEmail, toName, subject, message, taskTitle, sta
 async function lgLogin() {
   var u = document.getElementById('lgUser').value.trim();
   var p = document.getElementById('lgPass').value.trim();
-  var found = (DB.users||[]).find(function(x){ return x.username===u && x.password===p; });
+  var found = (DB.users||[]).find(function(x){ return x.username===u && x.password===p && !x.deleted; });
   if (!found) { document.getElementById('lgErr').textContent='שם משתמש או סיסמה שגויים'; return; }
   CU = found;
   try { sessionStorage.setItem('mu', JSON.stringify(found)); } catch(e){}
@@ -547,7 +547,7 @@ async function loadDB(){
       var sv = sessionStorage.getItem('mu');
       if (sv) {
         var u = JSON.parse(sv);
-        var f = (DB.users||[]).find(function(x){ return x.username===u.username && x.password===u.password; });
+        var f = (DB.users||[]).find(function(x){ return x.username===u.username && x.password===u.password && !x.deleted; });
         if (f) {
           CU = f;
           showApp();
@@ -1171,7 +1171,7 @@ document.addEventListener('mouseout',function(e){
 function renderUsers() {
   var el = document.getElementById('usersList');
   if (!el) return;
-  var users = (DB.users||[]).filter(function(u){ return u.username !== 'admin' && u.username !== 'malam'; });
+  var users = (DB.users||[]).filter(function(u){ return u.username !== 'admin' && u.username !== 'malam' && !u.deleted; });
   if (!users.length) { el.innerHTML = '<p style="color:#aaa;padding:10px">אין משתמשים עדיין</p>'; return; }
   el.innerHTML = '';
   users.forEach(function(u) {
@@ -1265,11 +1265,46 @@ async function addUser() {
   } catch(e) { msg.textContent = '❌ '+e.message; }
 }
 
-async function delUser(username) {
-  if (!confirm('למחוק?')) return;
-  DB.users = DB.users.filter(function(u){ return u.username !== username; });
-  await saveDB();
+// מחיקה רכה - מסמן deleted:true במקום להסיר בפועל מ-DB.users, כדי שאף משתמש לא
+// באמת נעלם (ראו deleteRec) - חשוב גם כדי שהיסטוריית שיוכים ישנים (לפי _uid/שם)
+// תישאר ניתנת לזיהוי, לא רק כדי לאפשר ביטול.
+// משתמשים ב-saveUserDeletedFlag הייעודי (לא saveDB) כי saveDB מציג הודעת "שומר..."/
+// "נשמר!" משלו על #savingMsg, שהייתה דורסת את הודעת ה"ביטול" של מחיקה זו.
+function delUser(username) {
+  var u = (DB.users||[]).find(function(x){ return x.username===username; });
+  if (!u) return;
+  if (!confirm('למחוק את "' + u.name + '"?')) return;
+  u.deleted = true;
   renderUsers();
+  showUndoToast('users', username, u.name);
+  saveUserDeletedFlag(username, true);
+}
+
+function undoDeleteUser(username){
+  var u = (DB.users||[]).find(function(x){ return x.username===username; });
+  if (u) u.deleted = false;
+  renderUsers();
+  saveUserDeletedFlag(username, false);
+  var el = document.getElementById('savingMsg');
+  el.style.display = 'none'; el.innerHTML = '';
+}
+
+// עדכון אטומי של דגל deleted בלבד למשתמש - אותו דפוס כמו saveDeletedFlag לרבקה/
+// מלמ, אבל מזהה לפי username (למשתמשים אין _id) ולא מציג הודעת שמירה משלו.
+async function saveUserDeletedFlag(username, deletedFlag){
+  try{
+    var BASE = 'https://malm-focus-default-rtdb.firebaseio.com';
+    var fresh = await fetch(BASE + '/db/users.json?t=' + Date.now());
+    var arr = await fresh.json() || [];
+    var fi = arr.findIndex(function(x){ return x.username===username; });
+    if(fi>=0){
+      if(deletedFlag) arr[fi].deleted = true; else delete arr[fi].deleted;
+      await fetch(BASE + '/db/users.json', {
+        method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(arr)
+      });
+      DB.users = arr;
+    }
+  }catch(e){}
 }
 
 // מחיקה רכה — מסמן deleted:true במקום למחוק בפועל, כדי לאפשר ביטול
@@ -1300,9 +1335,13 @@ function undoDelete(sheet, recId){
 function showUndoToast(sheet, recId, name){
   var el=document.getElementById('savingMsg');
   el.style.display='block'; el.style.background='#1a1a2e';
-  // "launch" (משימות בעליה לאוויר) לא מאוחסן כמערך בתוך DB כמו שאר הגיליונות
-  // אלא כאובייקט LAUNCH_TASKS בפני עצמו - ולכן צריך פונקציית ביטול נפרדת עבורו.
-  var undoCall = sheet==='launch' ? ('undoDeleteLaunch(\''+recId+'\')') : ('undoDelete(\''+sheet+'\',\''+recId+'\')');
+  // "launch"/"sanity"/"users" לא מאוחסנים ומזוהים בדיוק כמו רבקה/מלמ (LAUNCH_TASKS
+  // ו-SANITY_TASKS הם אובייקטים לפי id, ו-DB.users מזוהה לפי username לא _id) -
+  // ולכן צריך פונקציית ביטול נפרדת לכל אחד מהם.
+  var undoCall = sheet==='launch' ? ('undoDeleteLaunch(\''+recId+'\')')
+    : sheet==='sanity' ? ('undoDeleteSanity(\''+recId+'\')')
+    : sheet==='users' ? ('undoDeleteUser(\''+recId+'\')')
+    : ('undoDelete(\''+sheet+'\',\''+recId+'\')');
   el.innerHTML='🗑️ "'+escapeHtml(name)+'" נמחקה. <a href="#" onclick="'+undoCall+';return false" style="color:#FECC02;text-decoration:underline;font-weight:700;margin-right:6px">ביטול</a>';
   clearTimeout(window._undoTimer);
   window._undoTimer=setTimeout(function(){ el.style.display='none'; el.innerHTML=''; },6000);
@@ -2397,7 +2436,7 @@ async function loadSanityTab() {
 function renderSanityAdmin() {
   var tb = document.getElementById('sanityAdminBody');
   if (!tb) return;
-  var tasks = Object.values(SANITY_TASKS);
+  var tasks = Object.values(SANITY_TASKS).filter(function(t){ return !t.deleted; });
   if (!tasks.length) {
     tb.innerHTML = '<tr><td colspan="6" style="padding:30px;text-align:center;color:#aaa">אין בדיקות עדיין — לחץ "+ בדיקה חדשה"</td></tr>';
     return;
@@ -2432,7 +2471,7 @@ function renderSanityAdmin() {
 // משתמשי המערכת - כדי שהרשימה תציג רק מי שבאמת רלוונטי.
 function populateSanityFilters(){
   var assignees={};
-  Object.values(SANITY_TASKS).forEach(function(t){ if(t.assignee) assignees[t.assignee]=1; });
+  Object.values(SANITY_TASKS).forEach(function(t){ if(t.assignee && !t.deleted) assignees[t.assignee]=1; });
   msfSetOptions('sanityAssignee', Object.keys(assignees).sort());
 }
 function filterSanityAdminTable(){
@@ -2454,7 +2493,7 @@ function renderSanityManager() {
   if (!tb) return;
   var myName = CU ? CU.name : '';
   var tasks = Object.values(SANITY_TASKS).filter(function(t) {
-    return t.assignee === myName && t.status === 'פתוח';
+    return t.assignee === myName && t.status === 'פתוח' && !t.deleted;
   });
   if (!tasks.length) {
     tb.innerHTML = '<tr><td colspan="5" style="padding:30px;text-align:center;color:#aaa">אין בדיקות פתוחות כרגע 👍</td></tr>';
@@ -2651,11 +2690,41 @@ function sendSanityEmail(user, task) {
   });
 }
 
-async function deleteSanityTask(id) {
-  if (!confirm('למחוק את הבדיקה?')) return;
-  await fetch('https://malm-focus-default-rtdb.firebaseio.com/sanity/' + id + '.json', { method: 'DELETE' });
-  delete SANITY_TASKS[id];
+// מחיקה רכה - מסמן deleted:true במקום למחוק בפועל, כדי לאפשר ביטול (אותו
+// דפוס כמו deleteRec/deleteLaunchTask - לפני כן הייתה כאן מחיקה בלתי-הפיכה).
+function deleteSanityTask(id) {
+  var t = SANITY_TASKS[id];
+  if (!t) return;
+  if (!confirm('למחוק את "' + (t.name||'הבדיקה') + '"?')) return;
+  t.deleted = true;
   renderSanityAdmin();
+  showUndoToast('sanity', id, t.name || 'הבדיקה');
+  saveSanityDeletedFlag(id, true);
+}
+
+function undoDeleteSanity(id){
+  var t = SANITY_TASKS[id];
+  if (t) t.deleted = false;
+  renderSanityAdmin();
+  saveSanityDeletedFlag(id, false);
+  var el = document.getElementById('savingMsg');
+  el.style.display = 'none'; el.innerHTML = '';
+}
+
+// עדכון אטומי של דגל deleted בלבד - אותו דפוס כמו saveLaunchDeletedFlag,
+// מותאם לכך ש-sanity מאוחסן כאובייקט יחיד לכל בדיקה (לא כמערך).
+async function saveSanityDeletedFlag(id, deletedFlag){
+  try{
+    var BASE = 'https://malm-focus-default-rtdb.firebaseio.com';
+    var fresh = await fetch(BASE + '/sanity/' + id + '.json?t=' + Date.now());
+    var rec = await fresh.json();
+    if(!rec) return;
+    if(deletedFlag) rec.deleted = true; else delete rec.deleted;
+    await fetch(BASE + '/sanity/' + id + '.json', {
+      method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(rec)
+    });
+    SANITY_TASKS[id] = rec;
+  }catch(e){}
 }
 
 function openCloseSanity(id, targetStatus) {
@@ -2696,7 +2765,7 @@ async function confirmCloseSanity() {
   renderSanityManager();
   // Update badge
   var myName = CU ? CU.name : '';
-  var stillOpen = Object.values(SANITY_TASKS).filter(function(t){ return t.assignee===myName && t.status==='פתוח'; });
+  var stillOpen = Object.values(SANITY_TASKS).filter(function(t){ return t.assignee===myName && t.status==='פתוח' && !t.deleted; });
   var badge = document.getElementById('sanityBadge');
   if (badge) { badge.textContent = stillOpen.length; badge.style.display = stillOpen.length>0?'inline':'none'; }
 }
@@ -3143,39 +3212,41 @@ function jumpToSanityTask(id) {
   });
 }
 
-// פונקציה חד-פעמית להסרת רשומות כפולות (תוכן זהה לחלוטין למעט _id)
-// הופעלה ידנית ע"י מתן לניקוי כפילויות היסטוריות
+// פונקציה חד-פעמית לסימון רשומות כפולות (תוכן זהה לחלוטין למעט _id) כמחוקות -
+// הופעלה ידנית ע"י מתן לניקוי כפילויות היסטוריות. מסמנת deleted:true במקום
+// להסיר בפועל - אף רשומה לא נעלמת לצמיתות מה-DB, בדיוק כמו כל מחיקה אחרת
+// במערכת (לפני כן זו הייתה מסירה מלאה מהמערך).
 async function dedupRecords(sheet) {
   if (!isAdmin()) { alert('רק אדמין יכול להריץ ניקוי'); return; }
   const fresh = await fetch('https://malm-focus-default-rtdb.firebaseio.com/db/'+sheet+'.json?t='+Date.now());
   let arr = await fresh.json() || [];
   const seen = new Map();
-  const deduped = [];
   let removedCount = 0;
   arr.forEach(function(rec) {
-    // מפתח השוואה: כל השדות חוץ מ-_id ו-chat (כדי לא להתבלבל מהבדלי תכתובת)
-    const key = JSON.stringify(Object.keys(rec).filter(k=>k!=='_id').sort().reduce(function(o,k){o[k]=rec[k];return o;},{}));
+    if (rec.deleted) return; // כבר מסומן כמחוק - לא נוגעים
+    // מפתח השוואה: כל השדות חוץ מ-_id ו-deleted (כדי לא להתבלבל מהבדלי תכתובת)
+    const key = JSON.stringify(Object.keys(rec).filter(k=>k!=='_id'&&k!=='deleted').sort().reduce(function(o,k){o[k]=rec[k];return o;},{}));
     if (seen.has(key)) {
+      rec.deleted = true;
       removedCount++;
     } else {
       seen.set(key, true);
-      deduped.push(rec);
     }
   });
   if (removedCount === 0) {
     alert('לא נמצאו כפילויות ב-' + sheet);
     return;
   }
-  if (!confirm('נמצאו ' + removedCount + ' רשומות כפולות ב-' + sheet + '. למחוק אותן?')) return;
+  if (!confirm('נמצאו ' + removedCount + ' רשומות כפולות ב-' + sheet + '. לסמן אותן כמחוקות (מחיקה רכה - ניתנות לשחזור מה-DB במידת הצורך)?')) return;
   await fetch('https://malm-focus-default-rtdb.firebaseio.com/db/'+sheet+'.json', {
     method: 'PUT',
     headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify(deduped)
+    body: JSON.stringify(arr)
   });
-  DB[sheet] = deduped;
+  DB[sheet] = arr;
   initFilters();
   if (sheet==='malm') r1(); else r2();
-  alert('✅ הוסרו ' + removedCount + ' כפילויות מ-' + sheet);
+  alert('✅ סומנו ' + removedCount + ' כפילויות כמחוקות ב-' + sheet);
 }
 </script>
 
