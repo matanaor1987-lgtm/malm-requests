@@ -310,6 +310,43 @@ test.describe('דוח שינויי סטטוס', () => {
     await expect(page.locator('#statusReportResults')).toContainText('בטווח');
     await expect(page.locator('#statusReportResults')).not.toContainText('מחוץ לטווח');
   });
+
+  test('רגרסיה: משימה חדשה שרק נפתחה מופיעה בדוח לפי הסטטוס ההתחלתי שלה - לא רק משימות שעברו שינוי סטטוס מאוחר יותר', async ({ page }) => {
+    await mockFirebase(page, {});
+    await page.goto('/index.html');
+    await login(page, 'testadmin', 'pw');
+    await page.click('.tab[data-tab="1"]');
+    await page.click('#btnAdd');
+    await page.fill('#f_נ', 'משימה חדשה שנפתחה עכשיו');
+    await page.fill('#f_כ', 'כותרת');
+    await page.fill('#f_ב', 'תוכן');
+    await page.click('button.btn-save');
+    await expect(page.locator('#modalBg')).not.toHaveClass(/open/);
+
+    await page.click('button[onclick="openStatusReport(\'rivka\')"]');
+    await page.selectOption('#sr_status', 'פתוח');
+    await expect(page.locator('#statusReportResults')).toContainText('משימה חדשה שנפתחה עכשיו');
+
+    const log = await page.evaluate(() => DB.rivka.find(r => r.נ === 'משימה חדשה שנפתחה עכשיו').statusLog);
+    expect(log.length).toBe(1);
+    expect(log[0].s).toBe('פתוח');
+  });
+
+  test('אותו דבר במשימות מלמ כולל - משימה חדשה מופיעה בדוח לפי הסטטוס ההתחלתי שלה', async ({ page }) => {
+    await mockFirebase(page, {});
+    await page.goto('/index.html');
+    await login(page, 'testadmin', 'pw');
+    await page.click('.tab[data-tab="0"]');
+    await page.click('#btnAdd');
+    await page.fill('#f_ד', 'תחום בדיקה');
+    await page.fill('#f_מ', 'משימת מלמ חדשה שנפתחה עכשיו');
+    await page.click('button.btn-save');
+    await expect(page.locator('#modalBg')).not.toHaveClass(/open/);
+
+    await page.click('button[onclick="openStatusReport(\'malm\')"]');
+    await page.selectOption('#sr_status', 'פתוח');
+    await expect(page.locator('#statusReportResults')).toContainText('משימת מלמ חדשה שנפתחה עכשיו');
+  });
 });
 
 test.describe('בדיקות שפיות - הערות לכולם', () => {
@@ -569,6 +606,7 @@ test.describe('משימות בעליה לאוויר', () => {
 
     await page.click('#savingMsg a');
     await expect(page.locator('#launchBody')).toContainText('משימה לבדיקה');
+    await page.waitForTimeout(150); // נותן לכתיבה השקטה (saveLaunchDeletedFlag) להשלים מול השרת
     expect(liveLaunch.l1.deleted).toBeFalsy();
   });
 
@@ -1740,6 +1778,7 @@ test.describe('אף פריט לא נמחק לצמיתות מה-DB - מחיקה �
 
     await page.click('#savingMsg a');
     await expect(page.locator('#sanityAdminBody')).toContainText('בדיקה למחיקה');
+    await page.waitForTimeout(150); // נותן לכתיבה השקטה (saveSanityDeletedFlag) להשלים מול השרת
     expect(liveSanity.s1.deleted).toBeFalsy();
   });
 
@@ -1764,6 +1803,7 @@ test.describe('אף פריט לא נמחק לצמיתות מה-DB - מחיקה �
 
     await page.click('#savingMsg a');
     await expect(page.locator('#usersList')).toContainText('משתמש למחיקה');
+    await page.waitForTimeout(150); // נותן לכתיבה השקטה (saveUserDeletedFlag) להשלים מול השרת
     expect(db.users.find(u => u.username === 'del_me').deleted).toBeFalsy();
   });
 
@@ -1775,5 +1815,66 @@ test.describe('אף פריט לא נמחק לצמיתות מה-DB - מחיקה �
     await page.click('#lgBtn');
     await expect(page.locator('#lgErr')).toHaveText(/שגוי/);
     await expect(page.locator('#mainTabs')).toBeHidden();
+  });
+});
+
+test.describe('מיון טבלאות לפי לחיצה על כותרת עמודה', () => {
+  test('מלמ כולל: לחיצה על כותרת "תאריך" ממיינת את השורות, ולחיצה נוספת הופכת את הכיוון', async ({ page }) => {
+    const malm = [
+      { _id: 'm1', ת: '2026-07-03', ד: 'x', מ: 'משימה ג', ע: 1, ס: 'פתוח', dhl: '', א: '', ה: '', chat: {}, reads: {} },
+      { _id: 'm2', ת: '2026-07-01', ד: 'x', מ: 'משימה א', ע: 1, ס: 'פתוח', dhl: '', א: '', ה: '', chat: {}, reads: {} },
+      { _id: 'm3', ת: '2026-07-02', ד: 'x', מ: 'משימה ב', ע: 1, ס: 'פתוח', dhl: '', א: '', ה: '', chat: {}, reads: {} },
+    ];
+    await mockFirebase(page, { malm });
+    await page.goto('/index.html');
+    await login(page, 'testadmin', 'pw');
+    await page.click('.tab[data-tab="0"]');
+    await expect(page.locator('#b1')).toContainText('משימה א');
+
+    await page.click('#th1-ת');
+    let rows = await page.locator('#b1 tr').allTextContents();
+    expect(rows[0]).toContain('משימה א'); // 07-01 - הכי מוקדם, ראשון בעליה
+    expect(rows[2]).toContain('משימה ג'); // 07-03 - הכי מאוחר, אחרון בעליה
+
+    await page.click('#th1-ת');
+    rows = await page.locator('#b1 tr').allTextContents();
+    expect(rows[0]).toContain('משימה ג'); // אותה עמודה שוב - הופך לירידה
+  });
+
+  test('בדיקות שפיות: לחיצה על כותרת "בדיקה" ממיינת לפי שם הבדיקה', async ({ page }) => {
+    const sanity = {
+      s1: { id: 's1', name: 'בדיקת ג', module: 'x', env: 'טסט', status: 'פתוח', assignee: '', notes: '', adminNotes: '' },
+      s2: { id: 's2', name: 'בדיקת א', module: 'x', env: 'טסט', status: 'פתוח', assignee: '', notes: '', adminNotes: '' },
+      s3: { id: 's3', name: 'בדיקת ב', module: 'x', env: 'טסט', status: 'פתוח', assignee: '', notes: '', adminNotes: '' },
+    };
+    await mockFirebase(page, { sanity: JSON.parse(JSON.stringify(sanity)) });
+    await page.goto('/index.html');
+    await login(page, 'testadmin', 'pw');
+    await page.click('.tab[data-tab="4"]');
+    await expect(page.locator('#sanityAdminBody')).toContainText('בדיקת א');
+
+    await page.click('th[onclick="sortSanityTable(\'name\')"]');
+    let rows = await page.locator('#sanityAdminBody tr').allTextContents();
+    expect(rows[0]).toContain('בדיקת א');
+    expect(rows[2]).toContain('בדיקת ג');
+  });
+
+  test('משימות בעליה לאוויר: ברירת המחדל היא החדש ביותר קודם, ואפשר למיין לפי כותרת עמודה אחרת', async ({ page }) => {
+    const launchTasks = {
+      l1: { id: 'l1', task: 'משימה ראשונה', status: 'פתוח', notes: '', createdAt: '2026-08-01T00:00:00.000Z' },
+      l2: { id: 'l2', task: 'משימה שנייה', status: 'פתוח', notes: '', createdAt: '2026-08-03T00:00:00.000Z' },
+    };
+    await mockFirebase(page, { launchTasks: JSON.parse(JSON.stringify(launchTasks)) });
+    await page.goto('/index.html');
+    await login(page, 'testadmin', 'pw');
+    await page.click('.tab[data-tab="5"]');
+    await expect(page.locator('#launchBody')).toContainText('משימה');
+
+    let rows = await page.locator('#launchBody tr').allTextContents();
+    expect(rows[0]).toContain('משימה שנייה'); // חדש יותר קודם, כברירת מחדל
+
+    await page.click('th[onclick="sortLaunchTable(\'task\')"]');
+    rows = await page.locator('#launchBody tr').allTextContents();
+    expect(rows[0]).toContain('משימה ראשונה'); // מיון לפי טקסט המשימה
   });
 });

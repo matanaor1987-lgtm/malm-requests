@@ -239,9 +239,14 @@ tr:hover td{background:#fffbf0}
   <div class="count" id="c1"></div>
   <div class="tbl-wrap">
     <table><thead><tr>
-      <th style="width:30px"></th><th style="width:88px">תאריך</th><th>תחום / משימה</th>
-      <th style="width:36px">עד'</th><th style="width:90px">סטטוס</th>
-      <th style="width:70px">DHL</th><th style="width:70px">אחראי</th><th>💬 הערות</th>
+      <th style="width:30px"></th>
+      <th class="th-sort" style="width:88px" onclick="sortTable1('ת')" id="th1-ת">תאריך</th>
+      <th class="th-sort" onclick="sortTable1('ד')" id="th1-ד">תחום / משימה</th>
+      <th class="th-sort" style="width:36px" onclick="sortTable1('ע')" id="th1-ע">עד'</th>
+      <th class="th-sort" style="width:90px" onclick="sortTable1('ס')" id="th1-ס">סטטוס</th>
+      <th class="th-sort" style="width:70px" onclick="sortTable1('dhl')" id="th1-dhl">DHL</th>
+      <th class="th-sort" style="width:70px" onclick="sortTable1('א')" id="th1-א">אחראי</th>
+      <th>💬 הערות</th>
     </tr></thead><tbody id="b1"><tr><td colspan="8" class="loading">טוען נתונים...</td></tr></tbody></table>
   </div>
   <div class="pagination" id="pg1"></div>
@@ -474,6 +479,19 @@ function showApp() {
 
 function genId(){ return 'r_'+Date.now()+'_'+Math.random().toString(36).slice(2,9); }
 
+// מריץ פעולות אסינכרוניות באותו "מפתח" (key) אחת אחרי השנייה, לפי סדר הקריאה -
+// לא במקביל. חשוב במיוחד למחיקה-רכה+ביטול: מחיקה כותבת deleted:true ומיד אחריה
+// ביטול כותב deleted:false, שתיהן "fetch טרי -> שנה -> PUT" - בלי הבטחת סדר, אם
+// מישהו לוחץ ביטול מהר (או שהרשת/העומס מאט את הקריאה הראשונה), כתיבת ה-true
+// עלולה להשלים אחרי כתיבת ה-false ולדרוס אותה בחזרה - הביטול "נעלם" בשקט.
+var _writeChains = {};
+function chainedWrite(key, fn){
+  var prev = _writeChains[key] || Promise.resolve();
+  var next = prev.then(fn, fn);
+  _writeChains[key] = next;
+  return next;
+}
+
 // מסיר רקורסיבית שדות עם ערך "ריק" (אובייקט/מערך בלי תוכן, null, undefined) - כי
 // Firebase Realtime Database לא באמת שומר צמתים ריקים: כתיבת {} או [] לנתיב שקולה
 // למחיקתו, כך שכשקוראים בחזרה מהשרת השדה פשוט לא קיים. בלי הנירמול הזה, כל שמירה
@@ -690,6 +708,8 @@ function initFilters(){
 
 function r1(){
   updateStatusBtn('1');
+  document.querySelectorAll('[id^="th1-"]').forEach(el => { el.classList.remove('asc','desc'); });
+  if(sortCol1){ const th0=document.getElementById('th1-'+sortCol1); if(th0) th0.classList.add(sortDir1===1?'asc':'desc'); }
   const q=document.getElementById('q1').value.toLowerCase();
   const st1cbs=document.querySelectorAll('.st1cb');
   const selectedStatuses=[...st1cbs].filter(cb=>cb.checked).map(cb=>cb.value);
@@ -705,6 +725,7 @@ function r1(){
     if(q&&!(r.מ+r.ד+r.א+(r.dhl||'')+r.ה).toLowerCase().includes(q))return false;
     return true;
   });
+  if(sortCol1){f.sort((a,b)=>{let av=a[sortCol1]??'',bv=b[sortCol1]??'';if(sortCol1==='ת'){return sortDir1*(av<bv?-1:av>bv?1:0);}if(sortCol1==='ע'){return sortDir1*((av===''?99:Number(av))-(bv===''?99:Number(bv)));}return sortDir1*String(av).localeCompare(String(bv),'he');});}
   document.getElementById('c1').textContent=`מציג ${f.length} מתוך ${DB.malm.length}`;
   const filterKey1=q+'|'+selectedStatuses.join(',')+'|'+dm+'|'+prSel.selected.join(',');
   if(filterKey1!==lastFilterKey1){page1=1;lastFilterKey1=filterKey1;}
@@ -1022,9 +1043,11 @@ function saveModal(){
     };
   }
   const wasStatus = r ? r.ס : null;
-  // מעקב שינויי סטטוס — נשמר לצורך דוח "אילו משימות עברו לסטטוס X בטווח תאריכים"
+  // מעקב שינויי סטטוס — נשמר לצורך דוח "אילו משימות עברו לסטטוס X בטווח תאריכים".
+  // "!r" (רשומה חדשה) נכנס לתנאי גם הוא - אחרת הסטטוס ההתחלתי (למשל "פתוח") של
+  // משימה חדשה לעולם לא היה נרשם, והדוח לא היה מציג משימות שרק נפתחו.
   rec.statusLog = r ? (r.statusLog||[]) : [];
-  if(r && wasStatus !== rec.ס){
+  if(!r || wasStatus !== rec.ס){
     rec.statusLog = rec.statusLog.concat([{s:rec.ס, t:Date.now(), by:CU?CU.name:''}]);
   }
   // Attach pending files to new record
@@ -1291,7 +1314,8 @@ function undoDeleteUser(username){
 
 // עדכון אטומי של דגל deleted בלבד למשתמש - אותו דפוס כמו saveDeletedFlag לרבקה/
 // מלמ, אבל מזהה לפי username (למשתמשים אין _id) ולא מציג הודעת שמירה משלו.
-async function saveUserDeletedFlag(username, deletedFlag){
+function saveUserDeletedFlag(username, deletedFlag){
+  return chainedWrite('userDel:'+username, async function(){
   try{
     var BASE = 'https://malm-focus-default-rtdb.firebaseio.com';
     var fresh = await fetch(BASE + '/db/users.json?t=' + Date.now());
@@ -1305,6 +1329,7 @@ async function saveUserDeletedFlag(username, deletedFlag){
       DB.users = arr;
     }
   }catch(e){}
+  });
 }
 
 // מחיקה רכה — מסמן deleted:true במקום למחוק בפועל, כדי לאפשר ביטול
@@ -1348,7 +1373,8 @@ function showUndoToast(sheet, recId, name){
 }
 
 // עדכון אטומי של דגל deleted בלבד — טוען טרי, מעדכן לפי _id, שומר בחזרה
-async function saveDeletedFlag(sheet, recId, deletedFlag){
+function saveDeletedFlag(sheet, recId, deletedFlag){
+  return chainedWrite('del:'+sheet+':'+recId, async function(){
   try{
     const fresh = await fetch('https://malm-focus-default-rtdb.firebaseio.com/db/'+sheet+'.json?t='+Date.now());
     let arr = await fresh.json() || [];
@@ -1364,6 +1390,7 @@ async function saveDeletedFlag(sheet, recId, deletedFlag){
   }catch(e){
     console.warn('saveDeletedFlag failed:', e);
   }
+  });
 }
 
 function switchTab(i) {
@@ -2433,10 +2460,26 @@ async function loadSanityTab() {
   }
 }
 
+var sanitySortCol = '', sanitySortDir = 1;
+function sortSanityTable(col){
+  if(sanitySortCol===col){ sanitySortDir*=-1; } else { sanitySortCol=col; sanitySortDir=1; }
+  ['module','name','env','assignee','status','closedAt'].forEach(function(c){
+    var el=document.getElementById('sanitySort_'+c);
+    if(el) el.textContent = c===sanitySortCol ? (sanitySortDir===1?'▲':'▼') : '';
+  });
+  renderSanityAdmin();
+}
+
 function renderSanityAdmin() {
   var tb = document.getElementById('sanityAdminBody');
   if (!tb) return;
   var tasks = Object.values(SANITY_TASKS).filter(function(t){ return !t.deleted; });
+  if (sanitySortCol) {
+    tasks.sort(function(a,b){
+      var av = a[sanitySortCol]||'', bv = b[sanitySortCol]||'';
+      return String(av).localeCompare(String(bv),'he') * sanitySortDir;
+    });
+  }
   if (!tasks.length) {
     tb.innerHTML = '<tr><td colspan="6" style="padding:30px;text-align:center;color:#aaa">אין בדיקות עדיין — לחץ "+ בדיקה חדשה"</td></tr>';
     return;
@@ -2713,7 +2756,8 @@ function undoDeleteSanity(id){
 
 // עדכון אטומי של דגל deleted בלבד - אותו דפוס כמו saveLaunchDeletedFlag,
 // מותאם לכך ש-sanity מאוחסן כאובייקט יחיד לכל בדיקה (לא כמערך).
-async function saveSanityDeletedFlag(id, deletedFlag){
+function saveSanityDeletedFlag(id, deletedFlag){
+  return chainedWrite('sanityDel:'+id, async function(){
   try{
     var BASE = 'https://malm-focus-default-rtdb.firebaseio.com';
     var fresh = await fetch(BASE + '/sanity/' + id + '.json?t=' + Date.now());
@@ -2725,6 +2769,7 @@ async function saveSanityDeletedFlag(id, deletedFlag){
     });
     SANITY_TASKS[id] = rec;
   }catch(e){}
+  });
 }
 
 function openCloseSanity(id, targetStatus) {
@@ -2991,10 +3036,28 @@ function launchTimingBadge(timing) {
   return '<span style="color:#ccc">—</span>';
 }
 
+var launchSortCol = '', launchSortDir = 1;
+function sortLaunchTable(col){
+  if(launchSortCol===col){ launchSortDir*=-1; } else { launchSortCol=col; launchSortDir=1; }
+  ['task','status','timing','createdAt'].forEach(function(c){
+    var el=document.getElementById('launchSort_'+c);
+    if(el) el.textContent = c===launchSortCol ? (launchSortDir===1?'▲':'▼') : '';
+  });
+  renderLaunchTable();
+}
+
 function renderLaunchTable() {
   var tb = document.getElementById('launchBody');
   if (!tb) return;
-  var tasks = Object.values(LAUNCH_TASKS).filter(function(t){ return !t.deleted; }).sort(function(a, b){ return (b.createdAt||'').localeCompare(a.createdAt||''); });
+  var tasks = Object.values(LAUNCH_TASKS).filter(function(t){ return !t.deleted; });
+  if (launchSortCol) {
+    tasks.sort(function(a,b){
+      var av = a[launchSortCol]||'', bv = b[launchSortCol]||'';
+      return String(av).localeCompare(String(bv),'he') * launchSortDir;
+    });
+  } else {
+    tasks.sort(function(a, b){ return (b.createdAt||'').localeCompare(a.createdAt||''); });
+  }
   if (!tasks.length) {
     tb.innerHTML = '<tr><td colspan="6" style="padding:30px;text-align:center;color:#aaa">אין משימות עדיין — לחץ "+ משימה חדשה"</td></tr>';
     return;
@@ -3164,7 +3227,8 @@ function undoDeleteLaunch(id){
 // עדכון אטומי של דגל deleted בלבד - טוען טרי, מעדכן, שומר בחזרה (אותו דפוס
 // כמו saveDeletedFlag לרבקה/מלמ, אבל מותאם לכך ש-launchTasks מאוחסן כאובייקט
 // יחיד לכל משימה, לא כמערך).
-async function saveLaunchDeletedFlag(id, deletedFlag){
+function saveLaunchDeletedFlag(id, deletedFlag){
+  return chainedWrite('launchDel:'+id, async function(){
   try{
     var BASE = 'https://malm-focus-default-rtdb.firebaseio.com';
     var fresh = await fetch(BASE + '/launchTasks/' + id + '.json?t=' + Date.now());
@@ -3176,6 +3240,7 @@ async function saveLaunchDeletedFlag(id, deletedFlag){
     });
     LAUNCH_TASKS[id] = rec;
   }catch(e){}
+  });
 }
 
 // ניווט בין משימת פיתוח לבדיקה למשימת "עליה לאוויר" המקושרת אליה, ובחזרה -
@@ -3348,14 +3413,14 @@ async function dedupRecords(sheet) {
     </div>
     <table style="width:100%;border-collapse:collapse;font-size:12px">
       <thead><tr style="background:#1a1a2e;color:#fff">
-        <th style="padding:8px 10px;text-align:right;white-space:nowrap">מסך/מודול</th>
-        <th style="padding:8px 10px;text-align:right;min-width:200px">בדיקה</th>
-        <th style="padding:8px 10px;text-align:right;white-space:nowrap">סביבה</th>
-        <th style="padding:8px 10px;text-align:right;white-space:nowrap">מבצע</th>
-        <th style="padding:8px 10px;text-align:right;white-space:nowrap">סטטוס</th>
+        <th style="padding:8px 10px;text-align:right;white-space:nowrap;cursor:pointer" onclick="sortSanityTable('module')" title="מיון">מסך/מודול <span id="sanitySort_module"></span></th>
+        <th style="padding:8px 10px;text-align:right;min-width:200px;cursor:pointer" onclick="sortSanityTable('name')" title="מיון">בדיקה <span id="sanitySort_name"></span></th>
+        <th style="padding:8px 10px;text-align:right;white-space:nowrap;cursor:pointer" onclick="sortSanityTable('env')" title="מיון">סביבה <span id="sanitySort_env"></span></th>
+        <th style="padding:8px 10px;text-align:right;white-space:nowrap;cursor:pointer" onclick="sortSanityTable('assignee')" title="מיון">מבצע <span id="sanitySort_assignee"></span></th>
+        <th style="padding:8px 10px;text-align:right;white-space:nowrap;cursor:pointer" onclick="sortSanityTable('status')" title="מיון">סטטוס <span id="sanitySort_status"></span></th>
         <th style="padding:8px 10px;text-align:right">הערות בודק</th>
         <th style="padding:8px 10px;text-align:right;min-width:120px">Admin Notes</th>
-        <th style="padding:8px 10px;text-align:right;white-space:nowrap">תאריך בדיקה</th>
+        <th style="padding:8px 10px;text-align:right;white-space:nowrap;cursor:pointer" onclick="sortSanityTable('closedAt')" title="מיון">תאריך בדיקה <span id="sanitySort_closedAt"></span></th>
         <th style="padding:8px 10px;text-align:right;white-space:nowrap">פעולות</th>
       </tr></thead>
       <tbody id="sanityAdminBody"></tbody>
@@ -3453,11 +3518,11 @@ async function dedupRecords(sheet) {
   </div>
   <table style="width:100%;border-collapse:collapse;font-size:12px">
     <thead><tr style="background:#1a1a2e;color:#fff">
-      <th style="padding:8px 10px;text-align:right;min-width:260px">משימה</th>
-      <th style="padding:8px 10px;text-align:right;white-space:nowrap">סטטוס</th>
-      <th style="padding:8px 10px;text-align:right;white-space:nowrap">דחיפות</th>
+      <th style="padding:8px 10px;text-align:right;min-width:260px;cursor:pointer" onclick="sortLaunchTable('task')" title="מיון">משימה <span id="launchSort_task"></span></th>
+      <th style="padding:8px 10px;text-align:right;white-space:nowrap;cursor:pointer" onclick="sortLaunchTable('status')" title="מיון">סטטוס <span id="launchSort_status"></span></th>
+      <th style="padding:8px 10px;text-align:right;white-space:nowrap;cursor:pointer" onclick="sortLaunchTable('timing')" title="מיון">דחיפות <span id="launchSort_timing"></span></th>
       <th style="padding:8px 10px;text-align:right;min-width:180px">הערות</th>
-      <th style="padding:8px 10px;text-align:right;white-space:nowrap">נוצר בתאריך</th>
+      <th style="padding:8px 10px;text-align:right;white-space:nowrap;cursor:pointer" onclick="sortLaunchTable('createdAt')" title="מיון">נוצר בתאריך <span id="launchSort_createdAt"></span></th>
       <th style="padding:8px 10px;text-align:right;white-space:nowrap">פעולות</th>
     </tr></thead>
     <tbody id="launchBody"></tbody>
