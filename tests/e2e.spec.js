@@ -1878,3 +1878,114 @@ test.describe('מיון טבלאות לפי לחיצה על כותרת עמוד�
     expect(rows[0]).toContain('משימה ראשונה'); // מיון לפי טקסט המשימה
   });
 });
+
+test.describe('ניהול גרסאות (Release) - אחרי עליה לאוויר', () => {
+  test('פתיחת גרסה חדשה מציגה תג "גרסה נוכחית" בפיתוחים/שפיות/עליה-לאוויר, ומשימה חדשה מתויגת אליה אוטומטית', async ({ page }) => {
+    const { releases } = await mockFirebase(page, {});
+    await page.goto('/index.html');
+    await login(page, 'testadmin', 'pw');
+
+    page.once('dialog', d => d.accept('8.4.2'));
+    await page.click('button[onclick="openReleaseManager()"]');
+    await page.click('button[onclick="openNewReleaseForm()"]');
+    await expect(page.locator('#rmCurrent')).toContainText('8.4.2');
+    await page.click('button[onclick="closeReleaseManager()"]');
+
+    const relIds = Object.keys(releases);
+    expect(relIds.length).toBe(1);
+    expect(releases[relIds[0]].status).toBe('current');
+
+    // הבאדג' מוצג בטאב פיתוחים ותיקונים
+    await page.click('.tab[data-tab="3"]');
+    await expect(page.locator('#devReleaseBadge')).toContainText('8.4.2');
+    await page.click('button[onclick="openNewDevTask()"]');
+    await page.fill('#ndtDesc', 'משימה שנוצרה בגרסה 8.4.2');
+    await page.click('button[onclick="saveNewDevTask()"]');
+    await page.waitForTimeout(300);
+    await expect(page.locator('#devBody')).toContainText('משימה שנוצרה בגרסה 8.4.2');
+
+    const taggedTask = await page.evaluate(() => DEV_TASKS.find(t => t.desc === 'משימה שנוצרה בגרסה 8.4.2'));
+    expect(taggedTask.releaseId).toBe(relIds[0]);
+  });
+
+  test('סגירת גרסה מסתירה פריטים ששויכו אליה מהתצוגה החיה, אבל פריטים ישנים ללא שיוך גרסה נשארים גלויים', async ({ page }) => {
+    const oldTask = { _uid: 'dt_old', id: '10001', dev: 'x', status: 'פתוח', desc: 'משימה ישנה בלי שיוך גרסה', notes: '', comp: '', ver: '', iface: '', specLink: '', tester: '', testerUid: '', tNotes: '', tStatus: '' };
+    const { releases, devTasksByUid: liveDevTasks } = await mockFirebase(page, { devTasksByUid: { dt_old: oldTask } });
+    await page.goto('/index.html');
+    await login(page, 'testadmin', 'pw');
+
+    page.once('dialog', d => d.accept('9.0.0'));
+    await page.click('button[onclick="openReleaseManager()"]');
+    await page.click('button[onclick="openNewReleaseForm()"]');
+    const relId = Object.keys(releases)[0];
+    await page.click('button[onclick="closeReleaseManager()"]');
+
+    await page.click('.tab[data-tab="3"]');
+    await expect(page.locator('#devBody')).toContainText('משימה ישנה בלי שיוך גרסה');
+    await page.click('button[onclick="openNewDevTask()"]');
+    await page.fill('#ndtDesc', 'משימה חדשה בגרסה 9.0.0');
+    await page.click('button[onclick="saveNewDevTask()"]');
+    await page.waitForTimeout(300);
+    await expect(page.locator('#devBody')).toContainText('משימה חדשה בגרסה 9.0.0');
+
+    // סוגרים את הגרסה
+    page.once('dialog', d => d.accept());
+    await page.click('button[onclick="openReleaseManager()"]');
+    await page.click('button[onclick="closeCurrentRelease()"]');
+    await page.click('button[onclick="closeReleaseManager()"]');
+
+    // הפריט שתויג במפורש לגרסה שנסגרה נעלם מהתצוגה החיה; הפריט הישן (בלי releaseId) נשאר
+    await expect(page.locator('#devBody')).not.toContainText('משימה חדשה בגרסה 9.0.0');
+    await expect(page.locator('#devBody')).toContainText('משימה ישנה בלי שיוך גרסה');
+    expect(releases[relId].status).toBe('closed');
+  });
+
+  test('מסך הארכיון מציג את הפריטים ששויכו לגרסה סגורה', async ({ page }) => {
+    const relId = 'rel_test_1';
+    const releasesSeed = { [relId]: { id: relId, name: 'גרסה 7.1', status: 'closed', date: '2026-08-01', closedAt: '2026-08-15T00:00:00.000Z', createdAt: '2026-08-01T00:00:00.000Z' } };
+    const sanitySeed = { s1: { id: 's1', name: 'בדיקת ארכיון', module: 'מסך א', env: 'טסט', status: 'בוצע', assignee: '', notes: 'עבר בהצלחה', adminNotes: '', releaseId: relId } };
+    await mockFirebase(page, { releases: releasesSeed, sanity: sanitySeed });
+    await page.goto('/index.html');
+    await login(page, 'testadmin', 'pw');
+
+    await page.click('button[onclick="openReleaseManager()"]');
+    await expect(page.locator('#rmPast')).toContainText('גרסה 7.1');
+    await page.click('button[onclick="openReleaseArchive(\'' + relId + '\')"]');
+    await expect(page.locator('#releaseArchiveBody')).toContainText('בדיקת ארכיון');
+    await expect(page.locator('#releaseArchiveBody')).toContainText('עבר בהצלחה');
+  });
+
+  test('אדמין יכול לבחור כמה בקשות רבקה בצ׳קבוקס ולשייך אותן בבאץ׳ לגרסה; מנהל (לא אדמין) לא רואה בכלל את הצ׳קבוקסים', async ({ page }) => {
+    const relId = 'rel_batch_1';
+    const releasesSeed = { [relId]: { id: relId, name: 'גרסה 6.0', status: 'closed', date: '2026-07-01', createdAt: '2026-07-01T00:00:00.000Z' } };
+    const rivka = [
+      { _id: 'rb1', נ: 'תקלה א', מב: 'מנהלת בדיקה', ת: '2026-07-01', כ: 'k', ב: 'b', ע: 1, ס: 'פתוח', chat: {} },
+      { _id: 'rb2', נ: 'תקלה ב', מב: 'מנהלת בדיקה', ת: '2026-07-01', כ: 'k', ב: 'b', ע: 1, ס: 'פתוח', chat: {} },
+    ];
+    const { db } = await mockFirebase(page, { releases: releasesSeed, rivka });
+    await page.goto('/index.html');
+    await login(page, 'testadmin', 'pw');
+    await expect(page.locator('#b2')).toContainText('תקלה א');
+
+    await page.locator('tr:has-text("תקלה א") .rivkaSelCb').check();
+    await page.locator('tr:has-text("תקלה ב") .rivkaSelCb').check();
+    await expect(page.locator('#rivkaBatchBar')).toContainText('2 נבחרו');
+
+    await page.click('button[onclick="openBatchReleaseAssign(\'rivka\')"]');
+    await page.selectOption('#batchReleaseSelect', relId);
+    await page.click('button[onclick="confirmBatchReleaseAssign()"]');
+    await page.waitForTimeout(300);
+
+    expect(db.rivka.find(r => r._id === 'rb1').releaseId).toBe(relId);
+    expect(db.rivka.find(r => r._id === 'rb2').releaseId).toBe(relId);
+    await expect(page.locator('tr:has-text("תקלה א")')).toContainText('גרסה 6.0');
+    // התקלות נשארות גלויות בתור הרגיל כרגיל - שיוך לגרסה לא מסתיר אותן
+    await expect(page.locator('#b2')).toContainText('תקלה א');
+    await expect(page.locator('#b2')).toContainText('תקלה ב');
+
+    await page.click('#btnOut');
+    await login(page, 'testmgr', 'pw');
+    await expect(page.locator('#rivkaSelCol')).toBeHidden();
+    await expect(page.locator('.rivkaSelCb')).toHaveCount(0);
+  });
+});

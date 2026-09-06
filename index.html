@@ -171,6 +171,7 @@ tr:hover td{background:#fffbf0}
     <button onclick="backupDB()" style="background:none;border:1px solid #2e7d32;color:#2e7d32;border-radius:5px;padding:5px 10px;cursor:pointer;font-size:12px;font-family:Arial;margin-left:6px" title="גיבוי נתונים">💾 גיבוי</button>
     <button onclick="document.getElementById('restoreInput').click()" style="background:none;border:1px solid #1565c0;color:#1565c0;border-radius:5px;padding:5px 10px;cursor:pointer;font-size:12px;font-family:Arial;margin-left:6px" title="שחזור מגיבוי">↩️ שחזור</button>
     <input type="file" id="restoreInput" accept=".json" style="display:none" onchange="restoreDB(this)">
+    <button onclick="openReleaseManager()" style="background:none;border:1px solid #6a1b9a;color:#6a1b9a;border-radius:5px;padding:5px 10px;cursor:pointer;font-size:12px;font-family:Arial;margin-left:6px" title="ניהול גרסאות">🏷️ גרסאות</button>
   </span>
 <button class="btn btn-add" id="btnAdd" onclick="openAdd()" style="display:none">+ משימה חדשה</button>
 </div>
@@ -236,9 +237,15 @@ tr:hover td{background:#fffbf0}
     </div>
     <button onclick="openStatusReport('malm')" style="background:#1a1a2e;color:#fff;padding:5px 12px;border-radius:5px;border:none;cursor:pointer;font-size:12px;font-family:Arial">📊 דוח שינויי סטטוס</button>
   </div>
+  <div id="malmBatchBar" style="display:none;align-items:center;gap:10px;background:#f3e5f5;border-radius:6px;padding:8px 12px;margin-bottom:8px">
+    <span class="batchCount" style="font-size:12px;font-weight:700;color:#6a1b9a"></span>
+    <button onclick="openBatchReleaseAssign('malm')" style="background:#6a1b9a;color:#fff;border:none;border-radius:5px;padding:5px 12px;cursor:pointer;font-size:12px;font-family:Arial">🏷️ שייך לגרסה</button>
+    <button onclick="clearSel('malm')" style="background:none;border:1px solid #aaa;border-radius:5px;padding:5px 12px;cursor:pointer;font-size:12px;font-family:Arial">נקה בחירה</button>
+  </div>
   <div class="count" id="c1"></div>
   <div class="tbl-wrap">
     <table><thead><tr>
+      <th id="malmSelCol" style="width:26px;display:none"></th>
       <th style="width:30px"></th>
       <th class="th-sort" style="width:88px" onclick="sortTable1('ת')" id="th1-ת">תאריך</th>
       <th class="th-sort" onclick="sortTable1('ד')" id="th1-ד">תחום / משימה</th>
@@ -283,9 +290,15 @@ tr:hover td{background:#fffbf0}
     </div>
     <button onclick="openStatusReport('rivka')" style="background:#1a1a2e;color:#fff;padding:5px 12px;border-radius:5px;border:none;cursor:pointer;font-size:12px;font-family:Arial">📊 דוח שינויי סטטוס</button>
   </div>
+  <div id="rivkaBatchBar" style="display:none;align-items:center;gap:10px;background:#f3e5f5;border-radius:6px;padding:8px 12px;margin-bottom:8px">
+    <span class="batchCount" style="font-size:12px;font-weight:700;color:#6a1b9a"></span>
+    <button onclick="openBatchReleaseAssign('rivka')" style="background:#6a1b9a;color:#fff;border:none;border-radius:5px;padding:5px 12px;cursor:pointer;font-size:12px;font-family:Arial">🏷️ שייך לגרסה</button>
+    <button onclick="clearSel('rivka')" style="background:none;border:1px solid #aaa;border-radius:5px;padding:5px 12px;cursor:pointer;font-size:12px;font-family:Arial">נקה בחירה</button>
+  </div>
   <div class="count" id="c2"></div>
   <div class="tbl-wrap">
     <table><thead><tr>
+      <th id="rivkaSelCol" style="width:26px;display:none"></th>
       <th style="width:30px"></th>
       <th class="th-sort" onclick="sortTable2('נ')" id="th2-נ">נושא</th>
       <th class="th-sort" style="width:80px" onclick="sortTable2('מב')" id="th2-מב">מבקש</th>
@@ -369,6 +382,9 @@ let formSnapshot=null;
 // תמונת מצב של השדות הניתנים לעריכה, כפי שהיו ברגע פתיחת חלון העריכה - כדי
 // שאפשר יהיה לזהות לפני שמירה אם מישהו אחר שינה את הרשומה בינתיים (ראו saveRecord).
 let editOpenSnapshot=null;
+// בחירה מרובה (checkboxes) בטבלאות מלמ/רבקה, לצורך שיוך בבאץ' לגרסה (ראו
+// openBatchReleaseAssign). נשמר לפי _id, לא לפי idx - כדי שהבחירה תישרוד סינון/מיון.
+let selectedMalmIds=new Set(), selectedRivkaIds=new Set();
 const PAGE_SIZE=100;
 let page1=1,page2=1,lastFilterKey1='',lastFilterKey2='';
 const SM=['פתוח','בטיפול','בבדיקה','ממתין לבדיקה','מוקפא','הושהה','בוצע','טופל','בוטל'];
@@ -444,6 +460,7 @@ function showApp() {
   document.getElementById('uBadge').style.display = 'flex';
   document.getElementById('uName').textContent = 'שלום, ' + CU.name;
   document.getElementById('mainTabs').style.display = 'flex';
+  loadReleases().then(refreshLiveReleaseViews);
 
   if (isAdmin()) {
     document.getElementById('backupControls').style.display = 'inline';
@@ -453,6 +470,8 @@ function showApp() {
     document.getElementById('tabLaunch').style.display = 'block';
     document.getElementById('btnAdd').style.display = 'block';
     document.getElementById('tab0').style.display = 'block';
+    document.getElementById('malmSelCol').style.display = '';
+    document.getElementById('rivkaSelCol').style.display = '';
     // Admin starts on משימות לרבקה tab
     switchTab(1);
     initFilters(); r1(); r2();
@@ -490,6 +509,274 @@ function chainedWrite(key, fn){
   var next = prev.then(fn, fn);
   _writeChains[key] = next;
   return next;
+}
+
+// ══════════════════════════════════════
+// גרסאות (Release) - מחזור עבודה סביב עליה לאוויר
+// ══════════════════════════════════════
+// כל גרסה: {id, name, date, notes, status:'current'|'closed', createdAt, closedAt}.
+// גרסה אחת (לכל היותר) מסומנת status:'current' בכל רגע נתון. בדיקות שפיות/משימות
+// פיתוח/משימות עליה-לאוויר חדשות מתויגות אוטומטית ב-releaseId של הגרסה הנוכחית
+// בזמן היצירה בלבד (לא מחושב מחדש בעריכה - כדי שפריט שנוצר בגרסה X יישאר משויך
+// ל-X גם אחרי שנפתחה גרסה חדשה). מסכי התצוגה החיה (שפיות/פיתוחים/עליה-לאוויר)
+// מציגים כברירת מחדל רק פריטים מהגרסה הנוכחית - וגם פריטים ישנים שנוצרו לפני
+// שהפיצ'ר הזה היה קיים בכלל (אין להם releaseId) כדי שלא "ייעלמו" בבת אחת. ברגע
+// שגרסה נסגרת, פריטים ששויכו אליה במפורש מפסיקים להופיע בתצוגה החיה - אבל
+// לעולם לא נמחקים, ונשארים נגישים דרך מסך הארכיון.
+var RELEASES = {};
+
+async function loadReleases(){
+  try{
+    var r = await fetch('https://malm-focus-default-rtdb.firebaseio.com/releases.json?t='+Date.now());
+    var data = await r.json();
+    RELEASES = data || {};
+  }catch(e){ RELEASES = {}; }
+}
+
+function getCurrentRelease(){
+  var found = null;
+  Object.keys(RELEASES).forEach(function(id){
+    if(RELEASES[id] && RELEASES[id].status==='current') found = RELEASES[id];
+  });
+  return found;
+}
+
+// פריט שייך לתצוגה החיה אם: אין כלל מעקב גרסאות (עוד לא הוגדרה אף גרסה) / אין
+// לפריט releaseId בכלל (נוצר לפני שהפיצ'ר הזה היה קיים - לא כופים עליו שיוך
+// רטרואקטיבי) / הפריט משויך במפורש לגרסה שכרגע מסומנת "נוכחית".
+function isInCurrentRelease(item){
+  // אף גרסה מעולם לא נוצרה - מעקב הגרסאות עוד לא הופעל בכלל, לא מסננים שום דבר
+  // (התאמה לאחור מלאה למערכת כפי שהייתה לפני הפיצ'ר הזה).
+  if(Object.keys(RELEASES).length===0) return true;
+  // פריט ישן/לא מתויג (נוצר לפני הפיצ'ר הזה) - תמיד מוצג, לא כופים עליו שיוך רטרואקטיבי.
+  if(!item.releaseId) return true;
+  // יש כבר היסטוריית גרסאות: פריט עם releaseId מוצג רק אם הוא תואם את הגרסה
+  // שמסומנת "נוכחית" ממש עכשיו. אם אין כרגע גרסה נוכחית (סגרו גרסה ועוד לא
+  // פתחו הבאה - מצב ביניים תקין) - פריט מתויג לא מוצג עד שתיפתח גרסה חדשה.
+  var cur = getCurrentRelease();
+  return cur ? item.releaseId === cur.id : false;
+}
+
+function releaseBadgeHtml(){
+  var cur = getCurrentRelease();
+  if(!cur) return '';
+  return '<span style="display:inline-block;background:#f3e5f5;color:#6a1b9a;border-radius:10px;padding:3px 10px;font-size:11px;font-weight:700;margin-right:8px">🏷️ גרסה נוכחית: '+esc(cur.name)+'</span>';
+}
+
+function openReleaseManager(){
+  if(!isAdmin())return;
+  document.getElementById('releaseManagerBg').classList.add('open');
+  renderReleaseManager();
+}
+function closeReleaseManager(){
+  document.getElementById('releaseManagerBg').classList.remove('open');
+}
+
+function renderReleaseManager(){
+  var cur = getCurrentRelease();
+  var curEl = document.getElementById('rmCurrent');
+  if(cur){
+    curEl.innerHTML = '<div style="font-size:14px;font-weight:700;color:#1a1a2e">🏷️ '+esc(cur.name)+'</div>'+
+      '<div style="font-size:12px;color:#888;margin-top:2px">נפתחה ב-'+esc(cur.date||'')+(cur.notes?' · '+esc(cur.notes):'')+'</div>'+
+      '<button onclick="closeCurrentRelease()" style="margin-top:8px;background:#c62828;color:#fff;border:none;border-radius:6px;padding:6px 14px;cursor:pointer;font-size:12px;font-family:Arial">🔒 סגור גרסה</button>';
+  } else {
+    curEl.innerHTML = '<div style="font-size:13px;color:#888">אין גרסה נוכחית פעילה</div>';
+  }
+  var pastEl = document.getElementById('rmPast');
+  var past = Object.values(RELEASES).filter(function(r){ return r.status==='closed'; })
+    .sort(function(a,b){ return (b.closedAt||'').localeCompare(a.closedAt||''); });
+  pastEl.innerHTML = past.length ? past.map(function(r){
+    return '<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border:1px solid #eee;border-radius:6px;margin-bottom:6px">'+
+      '<div><b>'+esc(r.name)+'</b><span style="color:#888;font-size:11px;margin-right:8px">נסגרה ב-'+esc((r.closedAt||'').slice(0,10))+'</span></div>'+
+      '<button onclick="openReleaseArchive(\''+r.id+'\')" style="background:#1565c0;color:#fff;border:none;border-radius:5px;padding:4px 10px;cursor:pointer;font-size:11px;font-family:Arial">📁 ארכיון</button>'+
+    '</div>';
+  }).join('') : '<div style="color:#aaa;font-size:12px">אין עדיין גרסאות סגורות</div>';
+}
+
+function closeCurrentRelease(){
+  var cur = getCurrentRelease();
+  if(!cur) return;
+  if(!confirm('לסגור את הגרסה "'+cur.name+'"? בדיקות שפיות/משימות פיתוח/משימות עליה-לאוויר ששויכו אליה יפסיקו להופיע במסכים השוטפים (הן יישארו נגישות דרך הארכיון).')) return;
+  cur.status = 'closed';
+  cur.closedAt = new Date().toISOString();
+  saveRelease(cur);
+  renderReleaseManager();
+  refreshLiveReleaseViews();
+}
+
+// פותח גרסה חדשה כ"נוכחית" - פעולה נפרדת ומפורשת מסגירת הגרסה הקודמת (לא
+// אוטומטית אחרי סגירה). אם בכל זאת יש גרסה שסומנה "נוכחית" באותו רגע (מצב לא
+// תקין - לכל היותר גרסה אחת נוכחית) - סוגרים אותה במרומז כחלק מהפתיחה, כדי
+// שלא ייווצרו שתי גרסאות "נוכחיות" בו-זמנית.
+function openNewReleaseForm(){
+  var name = prompt('שם/מספר הגרסה החדשה (למשל: 8.4.2, או "עליה לאוויר ספטמבר 2026"):');
+  if(!name || !name.trim()) return;
+  var prevCurrent = getCurrentRelease();
+  if(prevCurrent){
+    prevCurrent.status = 'closed';
+    prevCurrent.closedAt = new Date().toISOString();
+    saveRelease(prevCurrent);
+  }
+  var rec = {
+    id: genId(),
+    name: name.trim(),
+    date: new Date().toISOString().slice(0,10),
+    notes: '',
+    status: 'current',
+    createdAt: new Date().toISOString()
+  };
+  RELEASES[rec.id] = rec;
+  saveRelease(rec);
+  renderReleaseManager();
+  refreshLiveReleaseViews();
+}
+
+function saveRelease(rec){
+  return chainedWrite('release:'+rec.id, async function(){
+    try{
+      await fetch('https://malm-focus-default-rtdb.firebaseio.com/releases/'+rec.id+'.json', {
+        method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(rec)
+      });
+    }catch(e){}
+  });
+}
+
+// מרענן את שלושת התצוגות החיות שתלויות בגרסה הנוכחית - רק אם כבר נטענו (אין
+// טעם לטעון אותן רק בשביל זה אם המשתמש לא ביקר בטאב שלהן).
+function refreshLiveReleaseViews(){
+  if(typeof DEV_TASKS!=='undefined' && DEV_TASKS.length) renderDevTable();
+  if(typeof SANITY_TASKS!=='undefined' && Object.keys(SANITY_TASKS).length){ renderSanityAdmin(); renderSanityManager(); }
+  if(typeof LAUNCH_TASKS!=='undefined' && Object.keys(LAUNCH_TASKS).length) renderLaunchTable();
+}
+
+function openReleaseArchive(releaseId){
+  var rel = RELEASES[releaseId];
+  if(!rel) return;
+  document.getElementById('releaseArchiveTitle').textContent = '📁 ארכיון — ' + rel.name;
+  document.getElementById('releaseArchiveBody').innerHTML = '<div style="padding:20px;color:#888">טוען...</div>';
+  document.getElementById('releaseArchiveBg').classList.add('open');
+  Promise.all([loadSanityTab(), loadDevLists(), loadDevTasks(), loadLaunchTab()]).then(function(){
+    renderReleaseArchiveBody(releaseId);
+  });
+}
+function closeReleaseArchive(){
+  document.getElementById('releaseArchiveBg').classList.remove('open');
+}
+
+function renderReleaseArchiveBody(releaseId){
+  var sanityItems = Object.values(SANITY_TASKS).filter(function(t){ return t.releaseId===releaseId; });
+  var devItems = DEV_TASKS.filter(function(t){ return t.releaseId===releaseId; });
+  var launchItems = Object.values(LAUNCH_TASKS).filter(function(t){ return t.releaseId===releaseId; });
+
+  function section(title, items, rowFn){
+    var body = items.length
+      ? '<table style="width:100%;border-collapse:collapse;font-size:12px">'+items.map(rowFn).join('')+'</table>'
+      : '<div style="color:#aaa;font-size:12px">אין פריטים</div>';
+    return '<div style="margin-bottom:20px"><div style="font-weight:700;color:#1a1a2e;margin-bottom:6px">'+title+' ('+items.length+')</div>'+body+'</div>';
+  }
+
+  var html = '';
+  html += section('✅ בדיקות שפיות', sanityItems, function(t){
+    return '<tr><td style="padding:6px;border-bottom:1px solid #eee;font-weight:700;min-width:120px">'+esc(t.name)+'</td>'+
+      '<td style="padding:6px;border-bottom:1px solid #eee;color:#555">'+esc(t.module||'')+'</td>'+
+      '<td style="padding:6px;border-bottom:1px solid #eee">'+esc(t.status||'')+'</td>'+
+      '<td style="padding:6px;border-bottom:1px solid #eee;color:#555">'+esc(t.notes||'')+'</td></tr>';
+  });
+  html += section('🛠️ פיתוחים ותיקונים', devItems, function(t){
+    return '<tr><td style="padding:6px;border-bottom:1px solid #eee;font-weight:700;color:#D40511;min-width:70px">'+esc(t.id||'')+'</td>'+
+      '<td style="padding:6px;border-bottom:1px solid #eee">'+esc(t.desc||'')+'</td>'+
+      '<td style="padding:6px;border-bottom:1px solid #eee">'+esc(t.status||'')+'</td>'+
+      '<td style="padding:6px;border-bottom:1px solid #eee">'+esc(t.tStatus||'')+'</td></tr>';
+  });
+  html += section('🚀 משימות עליה לאוויר', launchItems, function(t){
+    return '<tr><td style="padding:6px;border-bottom:1px solid #eee;white-space:pre-wrap;min-width:160px">'+esc(t.task||'')+'</td>'+
+      '<td style="padding:6px;border-bottom:1px solid #eee">'+esc(t.status||'')+'</td>'+
+      '<td style="padding:6px;border-bottom:1px solid #eee;color:#555">'+esc(t.notes||'')+'</td></tr>';
+  });
+
+  document.getElementById('releaseArchiveBody').innerHTML = html;
+}
+
+// תג קטן שמוצג בתוך שורת רבקה/מלמ אם היא משויכת לגרסה (בשונה מ-releaseBadgeHtml,
+// שמציג את הגרסה ה"נוכחית" של המסך כולו - זה מציג את הגרסה הספציפית של הפריט).
+function releaseTagHtml(item){
+  if(!item.releaseId || !RELEASES[item.releaseId]) return '';
+  return '<div style="margin-top:2px"><span style="display:inline-block;background:#ede7f6;color:#5e35b1;border-radius:8px;padding:1px 7px;font-size:10px">🏷️ '+esc(RELEASES[item.releaseId].name)+'</span></div>';
+}
+
+// בחירה מרובה בשורות רבקה/מלמ + שיוך בבאץ' לגרסה - ראו selectedMalmIds/selectedRivkaIds.
+function toggleSel(sheet, id, checked){
+  var set = sheet==='malm' ? selectedMalmIds : selectedRivkaIds;
+  if(checked) set.add(id); else set.delete(id);
+  updateBatchBar(sheet);
+}
+function updateBatchBar(sheet){
+  var set = sheet==='malm' ? selectedMalmIds : selectedRivkaIds;
+  var bar = document.getElementById(sheet==='malm' ? 'malmBatchBar' : 'rivkaBatchBar');
+  if(!bar) return;
+  if(set.size){
+    bar.style.display='flex';
+    var countEl = bar.querySelector('.batchCount');
+    if(countEl) countEl.textContent = set.size + ' נבחרו';
+  } else {
+    bar.style.display='none';
+  }
+}
+function clearSel(sheet){
+  (sheet==='malm'?selectedMalmIds:selectedRivkaIds).clear();
+  if(sheet==='malm') r1(); else r2();
+}
+
+var batchReleaseSheet = '';
+function openBatchReleaseAssign(sheet){
+  var set = sheet==='malm'?selectedMalmIds:selectedRivkaIds;
+  if(!set.size) return;
+  var releaseOptions = Object.values(RELEASES).sort(function(a,b){ return (b.createdAt||'').localeCompare(a.createdAt||''); });
+  if(!releaseOptions.length){ alert('אין עדיין אף גרסה במערכת. אפשר לפתוח גרסה חדשה דרך "🏷️ גרסאות" בראש המסך.'); return; }
+  batchReleaseSheet = sheet;
+  document.getElementById('batchReleaseCount').textContent = 'משייך ' + set.size + ' פריטים נבחרים לגרסה:';
+  document.getElementById('batchReleaseSelect').innerHTML = releaseOptions.map(function(r){
+    return '<option value="'+r.id+'">'+esc(r.name)+(r.status==='current'?' (נוכחית)':' (סגורה)')+'</option>';
+  }).join('');
+  document.getElementById('batchReleaseBg').classList.add('open');
+}
+function closeBatchReleaseModal(){
+  document.getElementById('batchReleaseBg').classList.remove('open');
+}
+function confirmBatchReleaseAssign(){
+  var releaseId = document.getElementById('batchReleaseSelect').value;
+  var sheet = batchReleaseSheet;
+  var ids = Array.from(sheet==='malm'?selectedMalmIds:selectedRivkaIds);
+  closeBatchReleaseModal();
+  batchAssignRelease(sheet, ids, releaseId);
+}
+
+// כתיבה אחת לשיוך כל הפריטים הנבחרים לגרסה - fetch טרי, עדכון בזיכרון, PUT יחיד
+// (לא כתיבה נפרדת לכל פריט) - כדי שהשיוך יהיה פעולה אטומית אחת שקל לחזור עליה.
+async function batchAssignRelease(sheet, ids, releaseId){
+  var el=document.getElementById('savingMsg');
+  el.style.display='block'; el.style.background='#1a1a2e'; el.textContent='⏳ משייך לגרסה...';
+  try{
+    var fresh = await fetch('https://malm-focus-default-rtdb.firebaseio.com/db/'+sheet+'.json?t='+Date.now());
+    if(!fresh.ok) throw new Error('שגיאה בטעינה טרייה מהשרת (סטטוס '+fresh.status+')');
+    var arr = await fresh.json() || [];
+    var idSet = new Set(ids);
+    arr.forEach(function(rec){ if(idSet.has(rec._id)) rec.releaseId = releaseId; });
+    var putRes = await fetch('https://malm-focus-default-rtdb.firebaseio.com/db/'+sheet+'.json', {
+      method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(arr)
+    });
+    if(!putRes.ok) throw new Error('השרת דחה את הכתיבה (סטטוס '+putRes.status+')');
+    DB[sheet] = arr;
+    el.textContent='✓ שויך לגרסה!';
+    setTimeout(function(){ el.style.display='none'; }, 1500);
+  }catch(e){
+    el.textContent='❌ שגיאה בשיוך לגרסה: '+e.message;
+    el.style.background='#c62828';
+    setTimeout(function(){ el.style.display='none'; el.style.background='#1a1a2e'; }, 6000);
+    return;
+  }
+  (sheet==='malm'?selectedMalmIds:selectedRivkaIds).clear();
+  if(sheet==='malm') r1(); else r2();
 }
 
 // מסיר רקורסיבית שדות עם ערך "ריק" (אובייקט/מערך בלי תוכן, null, undefined) - כי
@@ -734,19 +1021,21 @@ function r1(){
   const pageItems1=f.slice((page1-1)*PAGE_SIZE,page1*PAGE_SIZE);
   document.getElementById('b1').innerHTML=pageItems1.length
     ?pageItems1.map(r=>{const idx=DB.malm.indexOf(r);return`<tr>
+      ${isAdmin()?`<td><input type="checkbox" class="malmSelCb" onchange="toggleSel('malm','${r._id}',this.checked)" ${selectedMalmIds.has(r._id)?'checked':''}></td>`:''}
       <td style="white-space:nowrap">
         <button class="act-btn" onclick="openEdit('malm',${idx})" title="עריכה">✏️</button>
         ${isAdmin()?`<button class="act-btn" onclick="deleteRec('malm',${idx})" title="מחק" style="color:#D40511">🗑️</button>`:''}
       </td>
       <td style="color:#888;font-size:11px">${r.ת||''}</td>
-      <td>${r.ד?`<div class="dtag">${r.ד}</div><br>`:''} ${r.מ||''}</td>
+      <td>${r.ד?`<div class="dtag">${r.ד}</div><br>`:''} ${r.מ||''}${releaseTagHtml(r)}</td>
       <td>${pc(r.ע)}</td><td>${sc(r.ס)}</td><td>${m(r.dhl)}</td><td>${m(r.א)}</td>
       <td>${hasUnread(r)?'<span class="unread-dot" title="הערה חדשה"></span>':''}${chatPreviewHtml(r)}</td></tr>`}).join('')
-    :'<tr><td colspan="8" class="nores">לא נמצאו תוצאות</td></tr>';
+    :'<tr><td colspan="9" class="nores">לא נמצאו תוצאות</td></tr>';
   document.getElementById('pg1').innerHTML=totalPages1>1?`
     <button onclick="goToPage1(-1)" ${page1<=1?'disabled':''}>‹ הקודם</button>
     <span>עמוד ${page1} מתוך ${totalPages1}</span>
     <button onclick="goToPage1(1)" ${page1>=totalPages1?'disabled':''}>הבא ›</button>`:'';
+  updateBatchBar('malm');
 }
 function goToPage1(delta){page1+=delta;if(page1<1)page1=1;r1();}
 
@@ -780,18 +1069,21 @@ function r2(){
     ?pageItems2.map(r=>{const idx=DB.rivka.indexOf(r);const eb=canEditRow(r)?'<button class="act-btn" onclick="openEdit(\'rivka\','+idx+')" title="עריכה">✏️</button>':'';
         const tb2=isAdmin()?'<button class="act-btn" onclick="openTransferToMalm('+idx+')" title="העבר למלמ כולל" style="color:#1565c0">🔀</button>':'';
         const db2=isAdmin()?'<button class="act-btn" onclick="deleteRec(\'rivka\','+idx+')" title="מחק" style="color:#D40511">🗑️</button>':'';
+        const selCb=isAdmin()?`<td><input type="checkbox" class="rivkaSelCb" onchange="toggleSel('rivka','${r._id}',this.checked)" ${selectedRivkaIds.has(r._id)?'checked':''}></td>`:'';
         return`<tr>
+      ${selCb}
       <td style="white-space:nowrap">${eb}${tb2}${db2}</td>
       <td>${m(r.נ)}</td><td>${m(r.מב)}</td>
       <td style="color:#888;font-size:11px">${r.ת||''}</td>
-      <td>${r.כ?`<strong>${r.כ}</strong><br>`:''} ${r.ב||''}</td>
+      <td>${r.כ?`<strong>${r.כ}</strong><br>`:''} ${r.ב||''}${releaseTagHtml(r)}</td>
       <td>${m(r.מט)}</td><td>${pc(r.ע)}</td><td>${sc(r.ס)}</td>
       <td>${hasUnread(r)?'<span class="unread-dot" title="הערה חדשה"></span>':''}${chatPreviewHtml(r)}</td></tr>`}).join('')
-    :'<tr><td colspan="9" class="nores">לא נמצאו תוצאות</td></tr>';
+    :'<tr><td colspan="10" class="nores">לא נמצאו תוצאות</td></tr>';
   document.getElementById('pg2').innerHTML=totalPages2>1?`
     <button onclick="goToPage2(-1)" ${page2<=1?'disabled':''}>‹ הקודם</button>
     <span>עמוד ${page2} מתוך ${totalPages2}</span>
     <button onclick="goToPage2(1)" ${page2>=totalPages2?'disabled':''}>הבא ›</button>`:'';
+  updateBatchBar('rivka');
 }
 function goToPage2(delta){page2+=delta;if(page2<1)page2=1;r2();}
 
@@ -1980,7 +2272,9 @@ function renderDevTable(){
   // לעולם לא ממיינים את DEV_TASKS עצמו - idx בכל שורה הוא מיקום נוכחי בזיכרון בלבד,
   // לא מזהה יציב (השמירה בפועל מבוססת על t.id - ראו saveDevTaskModal). ממיינים רק
   // את סדר התצוגה, כדי שהתנהגות הטבלה תישאר צפויה ולא תלויה במיקום.
-  var order = DEV_TASKS.map(function(_, i){ return i; });
+  var order = DEV_TASKS.map(function(_, i){ return i; }).filter(function(i){ return isInCurrentRelease(DEV_TASKS[i]); });
+  var relBadgeEl = document.getElementById('devReleaseBadge');
+  if (relBadgeEl) relBadgeEl.innerHTML = releaseBadgeHtml();
   if (devSortCol) {
     order.sort(function(ia, ib){
       var av = DEV_TASKS[ia][devSortCol] || '', bv = DEV_TASKS[ib][devSortCol] || '';
@@ -2108,7 +2402,8 @@ async function saveNewDevTask(){
     tester: '',
     testerUid: '',
     tNotes: '',
-    tStatus: ''
+    tStatus: '',
+    releaseId: (getCurrentRelease()||{}).id || ''
   };
   document.getElementById('newDevMsg').style.color='#666';
   document.getElementById('newDevMsg').textContent='שומר...';
@@ -2300,7 +2595,8 @@ async function saveDevTaskModal(){
         closedAt: '',
         createdAt: new Date().toISOString(),
         linkedDevUid: taskUid,
-        linkedDevTaskNum: updatedFields.id
+        linkedDevTaskNum: updatedFields.id,
+        releaseId: (getCurrentRelease()||{}).id || ''
       };
       var launchPutRes = await fetch(BASE + '/launchTasks/' + launchId + '.json', {
         method: 'PUT',
@@ -2473,7 +2769,9 @@ function sortSanityTable(col){
 function renderSanityAdmin() {
   var tb = document.getElementById('sanityAdminBody');
   if (!tb) return;
-  var tasks = Object.values(SANITY_TASKS).filter(function(t){ return !t.deleted; });
+  var tasks = Object.values(SANITY_TASKS).filter(function(t){ return !t.deleted && isInCurrentRelease(t); });
+  var relBadgeEl = document.getElementById('sanityReleaseBadge');
+  if (relBadgeEl) relBadgeEl.innerHTML = releaseBadgeHtml();
   if (sanitySortCol) {
     tasks.sort(function(a,b){
       var av = a[sanitySortCol]||'', bv = b[sanitySortCol]||'';
@@ -2536,7 +2834,7 @@ function renderSanityManager() {
   if (!tb) return;
   var myName = CU ? CU.name : '';
   var tasks = Object.values(SANITY_TASKS).filter(function(t) {
-    return t.assignee === myName && t.status === 'פתוח' && !t.deleted;
+    return t.assignee === myName && t.status === 'פתוח' && !t.deleted && isInCurrentRelease(t);
   });
   if (!tasks.length) {
     tb.innerHTML = '<tr><td colspan="5" style="padding:30px;text-align:center;color:#aaa">אין בדיקות פתוחות כרגע 👍</td></tr>';
@@ -2663,7 +2961,8 @@ async function saveSanityTask() {
         closedAt: '',
         createdAt: new Date().toISOString(),
         linkedSanityId: id,
-        linkedSanityName: name
+        linkedSanityName: name,
+        releaseId: (getCurrentRelease()||{}).id || ''
       };
       var launchPutRes = await fetch(BASE + '/launchTasks/' + launchId + '.json', {
         method: 'PUT',
@@ -2690,7 +2989,11 @@ async function saveSanityTask() {
       closedAt: statusChangedToClosed ? new Date().toISOString() : (status === 'פתוח' ? '' : (existing.closedAt || '')),
       adminNotes: existing.adminNotes || '',
       createdAt: existing.createdAt || new Date().toISOString(),
-      linkedLaunchId: launchId
+      linkedLaunchId: launchId,
+      // תיוג לגרסה קורה רק ביצירה, לפי הגרסה שהייתה נוכחית באותו רגע - לא מחושב
+      // מחדש בעריכה, אחרת פריט היה "קופץ" לגרסה שונה סתם כי מישהו ערך אותו אחרי
+      // שנפתחה גרסה חדשה.
+      releaseId: isNew ? ((getCurrentRelease()||{}).id || '') : (existing.releaseId || '')
     };
 
     await fetch(BASE + '/sanity/' + id + '.json', {
@@ -3049,7 +3352,9 @@ function sortLaunchTable(col){
 function renderLaunchTable() {
   var tb = document.getElementById('launchBody');
   if (!tb) return;
-  var tasks = Object.values(LAUNCH_TASKS).filter(function(t){ return !t.deleted; });
+  var tasks = Object.values(LAUNCH_TASKS).filter(function(t){ return !t.deleted && isInCurrentRelease(t); });
+  var relBadgeEl = document.getElementById('launchReleaseBadge');
+  if (relBadgeEl) relBadgeEl.innerHTML = releaseBadgeHtml();
   if (launchSortCol) {
     tasks.sort(function(a,b){
       var av = a[launchSortCol]||'', bv = b[launchSortCol]||'';
@@ -3159,7 +3464,9 @@ async function saveLaunchTask() {
     notes: notes,
     closedBy: statusChangedToDone ? (CU ? CU.name : '') : (status === 'פתוח' ? '' : (existing.closedBy || '')),
     closedAt: statusChangedToDone ? new Date().toISOString() : (status === 'פתוח' ? '' : (existing.closedAt || '')),
-    createdAt: existing.createdAt || new Date().toISOString()
+    createdAt: existing.createdAt || new Date().toISOString(),
+    // תיוג לגרסה רק ביצירה - עריכה משמרת את מה שהיה (לא "קופצת" לגרסה חדשה סתם)
+    releaseId: editId ? (existing.releaseId || '') : ((getCurrentRelease()||{}).id || '')
   };
   // אם המשימה נוצרה אוטומטית מקישור למשימת פיתוח לבדיקה או לבדיקת שפיות - חובה
   // לשמר את הקישור בכל עריכה, אחרת הוא נעלם (כי rec נבנה מחדש מהטופס בכל שמירה,
@@ -3316,7 +3623,7 @@ async function dedupRecords(sheet) {
 </script>
 
 <div class="pane" id="pane3" style="padding:14px 20px">
-  <div style="font-size:16px;font-weight:700;color:#1a1a2e;margin-bottom:14px">&#128295; פיתוחים ותיקונים לבדיקה</div>
+  <div style="font-size:16px;font-weight:700;color:#1a1a2e;margin-bottom:14px">&#128295; פיתוחים ותיקונים לבדיקה <span id="devReleaseBadge"></span></div>
   <div class="stats" id="s3"></div>
   <div style="display:flex;gap:10px;margin-bottom:12px;flex-wrap:wrap;align-items:center">
     <div id="msf_devStatus_wrap" style="position:relative;display:inline-block">
@@ -3384,7 +3691,7 @@ async function dedupRecords(sheet) {
   <!-- ADMIN VIEW -->
   <div id="sanityAdminView">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
-      <div style="font-size:16px;font-weight:700;color:#1a1a2e">✅ בדיקות שפיות <span id="sanityBadge" style="display:none;background:#D40511;color:#fff;border-radius:50%;padding:1px 6px;font-size:10px;font-weight:700;margin-right:4px"></span></div>
+      <div style="font-size:16px;font-weight:700;color:#1a1a2e">✅ בדיקות שפיות <span id="sanityBadge" style="display:none;background:#D40511;color:#fff;border-radius:50%;padding:1px 6px;font-size:10px;font-weight:700;margin-right:4px"></span> <span id="sanityReleaseBadge"></span></div>
       <button onclick="openStatusReport('sanity')" style="background:#1a1a2e;color:#fff;border:none;border-radius:6px;padding:8px 16px;cursor:pointer;font-size:13px;font-weight:700;font-family:Arial">📊 דוח בדיקות שהושלמו</button>
       <button onclick="openNewSanity()" style="background:#D40511;color:#fff;border:none;border-radius:6px;padding:8px 16px;cursor:pointer;font-size:13px;font-weight:700;font-family:Arial">+ בדיקה חדשה</button>
       <button onclick="resetSanityTasks()" style="background:#e65100;color:#fff;border:none;border-radius:6px;padding:8px 16px;cursor:pointer;font-size:13px;font-weight:700;font-family:Arial">🔄 אפס לברירת מחדל</button>
@@ -3513,7 +3820,7 @@ async function dedupRecords(sheet) {
 
 <div class="pane" id="pane5" style="padding:14px 20px;direction:rtl">
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
-    <div style="font-size:16px;font-weight:700;color:#1a1a2e">🚀 משימות בעליה לאוויר</div>
+    <div style="font-size:16px;font-weight:700;color:#1a1a2e">🚀 משימות בעליה לאוויר <span id="launchReleaseBadge"></span></div>
     <button onclick="openNewLaunch()" style="background:#D40511;color:#fff;border:none;border-radius:6px;padding:8px 16px;cursor:pointer;font-size:13px;font-weight:700;font-family:Arial">+ משימה חדשה</button>
   </div>
   <table style="width:100%;border-collapse:collapse;font-size:12px">
@@ -3561,6 +3868,48 @@ async function dedupRecords(sheet) {
         <button onclick="closeLaunchModal()" style="padding:8px 16px;border:1px solid #ddd;border-radius:6px;cursor:pointer;font-size:13px;font-family:Arial;background:#fff">ביטול</button>
         <button id="launchSaveBtn" onclick="saveLaunchTask()" style="padding:8px 16px;background:#D40511;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px;font-weight:700;font-family:Arial">שמור</button>
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- RELEASE MANAGER MODAL (top-level, so it's visible from any tab) -->
+<div class="modal-bg" id="releaseManagerBg">
+  <div style="background:#fff;border-radius:12px;padding:24px;width:90%;max-width:520px;direction:rtl;max-height:85vh;overflow-y:auto">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+      <div style="font-size:15px;font-weight:700;color:#1a1a2e">🏷️ ניהול גרסאות</div>
+      <button onclick="closeReleaseManager()" style="background:none;border:none;font-size:18px;cursor:pointer;color:#888">✕</button>
+    </div>
+    <div style="font-size:12px;color:#666;margin-bottom:14px;line-height:1.6">
+      בדיקות שפיות, משימות פיתוח ומשימות עליה-לאוויר חדשות משויכות אוטומטית לגרסה הנוכחית.
+      סגירת גרסה מסתירה את הפריטים ששויכו אליה מהמסכים השוטפים (הם לא נמחקים - נגישים תמיד דרך הארכיון).
+    </div>
+    <div id="rmCurrent" style="background:#f9f9f9;border-radius:8px;padding:12px;margin-bottom:14px"></div>
+    <button onclick="openNewReleaseForm()" style="width:100%;background:#6a1b9a;color:#fff;border:none;border-radius:6px;padding:9px;cursor:pointer;font-size:13px;font-weight:700;font-family:Arial;margin-bottom:18px">+ פתח גרסה חדשה</button>
+    <div style="font-size:13px;font-weight:700;color:#1a1a2e;margin-bottom:8px">גרסאות סגורות</div>
+    <div id="rmPast"></div>
+  </div>
+</div>
+
+<!-- RELEASE ARCHIVE VIEWER MODAL (top-level, so it's visible from any tab) -->
+<div class="modal-bg" id="releaseArchiveBg">
+  <div style="background:#fff;border-radius:12px;padding:24px;width:92%;max-width:760px;direction:rtl;max-height:85vh;overflow-y:auto">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+      <div style="font-size:15px;font-weight:700;color:#1a1a2e" id="releaseArchiveTitle">📁 ארכיון</div>
+      <button onclick="closeReleaseArchive()" style="background:none;border:none;font-size:18px;cursor:pointer;color:#888">✕</button>
+    </div>
+    <div id="releaseArchiveBody"></div>
+  </div>
+</div>
+
+<!-- BATCH RELEASE ASSIGN MODAL (top-level, so it's visible from any tab) -->
+<div class="modal-bg" id="batchReleaseBg">
+  <div style="background:#fff;border-radius:12px;padding:24px;width:90%;max-width:380px;direction:rtl">
+    <div style="font-size:15px;font-weight:700;margin-bottom:14px;color:#1a1a2e">🏷️ שיוך לגרסה</div>
+    <div style="font-size:12px;color:#666;margin-bottom:10px" id="batchReleaseCount"></div>
+    <select id="batchReleaseSelect" style="width:100%;padding:8px 10px;border:1.5px solid #ddd;border-radius:6px;font-size:13px;font-family:Arial;direction:rtl;margin-bottom:14px;box-sizing:border-box"></select>
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button onclick="closeBatchReleaseModal()" style="padding:8px 16px;border:1px solid #ddd;border-radius:6px;cursor:pointer;font-size:13px;font-family:Arial;background:#fff">ביטול</button>
+      <button onclick="confirmBatchReleaseAssign()" style="padding:8px 16px;background:#6a1b9a;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px;font-weight:700;font-family:Arial">שייך</button>
     </div>
   </div>
 </div>
