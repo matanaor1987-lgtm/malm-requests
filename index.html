@@ -428,6 +428,30 @@ function sendEmailNotification(toEmail, toName, subject, message, taskTitle, sta
   });
 }
 
+// כותרת מזהה קצרה למשימת רבקה, לשימוש כשדה task_title במייל - לעולם לא ריקה,
+// גם אם הבקשה נפתחה בלי נושא/כותרת (המשתמש לא חייב למלא את שניהם), כדי שלא
+// יגיע מייל עם "בקשה: " ריק שאי אפשר לזהות ממנו על מה מדובר.
+function rivkaEmailTitle(rec){
+  var parts = [];
+  if(rec.נ) parts.push(rec.נ);
+  if(rec.כ && rec.כ!==rec.נ) parts.push(rec.כ);
+  var title = parts.join(' — ');
+  return title || ('בקשה מתאריך ' + (rec.ת || '—'));
+}
+
+// גוף פירוט למייל על משימת רבקה - כולל את כל השדות המזהים (לא רק את הכותרת),
+// כדי שהמייל יהיה שימושי גם אם שדה ה-task_title בתבנית לא מוצג כמו שצריך
+// (התבנית עצמה מנוהלת ב-EmailJS, לא בקוד הזה - ראו שיחה על שיפור המיילים).
+function rivkaEmailDetails(rec){
+  var lines = [];
+  lines.push('נושא: ' + rivkaEmailTitle(rec));
+  lines.push('מבקש/ת: ' + (rec.מב || '—'));
+  lines.push('תאריך פתיחה: ' + (rec.ת || '—'));
+  lines.push('עדיפות: ' + (rec.ע!==undefined && rec.ע!==null && rec.ע!=='' ? rec.ע : '—'));
+  if(rec.ב) lines.push('תוכן הבקשה: ' + rec.ב);
+  return lines.join('\n');
+}
+
 async function lgLogin() {
   var u = document.getElementById('lgUser').value.trim();
   var p = document.getElementById('lgPass').value.trim();
@@ -1352,14 +1376,14 @@ function saveModal(){
   }
   // Send CRITICAL alert to matan + rivka if priority 0
   if(editSheet==='rivka' && String(rec.ע)==='0'){
-    sendEmailNotification('matan.naor@dhl.com', 'מתן', '🚨 בקשה קריטית נפתחה', 'בקשה בעדיפות קריטית מחכה לטיפול מיידי', rec.כ||rec.נ||'', '🚨 קריטי');
+    sendEmailNotification('matan.naor@dhl.com', 'מתן', '🚨 בקשה קריטית נפתחה', 'בקשה בעדיפות קריטית מחכה לטיפול מיידי.\n\n' + rivkaEmailDetails(rec), rivkaEmailTitle(rec), '🚨 קריטי');
   }
   // Send confirmation email to manager when new request is opened
   if(editIdx===-1 && editSheet==='rivka'){
     var ownerName3 = rec.מב || '';
     var ownerUser3 = (DB.users||[]).find(function(u){ return u.name===ownerName3 || u.username===ownerName3; });
     if(ownerUser3 && ownerUser3.email){
-      sendEmailNotification(ownerUser3.email, ownerUser3.name, 'הבקשה שלך נפתחה בהצלחה', 'בקשתך התקבלה ונמצאת בטיפול', rec.כ||rec.נ||'', 'פתוח');
+      sendEmailNotification(ownerUser3.email, ownerUser3.name, 'הבקשה שלך נפתחה בהצלחה', 'בקשתך התקבלה ונמצאת בטיפול.\n\n' + rivkaEmailDetails(rec), rivkaEmailTitle(rec), 'פתוח');
     }
   }
   if(editIdx===-1){
@@ -1379,7 +1403,7 @@ function saveModal(){
     var ownerUser2 = (DB.users||[]).find(function(u){ return u.name===ownerName2 || u.username===ownerName2; });
     if (ownerUser2 && ownerUser2.email) {
       var msgText = rec.ס==='בוצע' ? 'הבקשה שלך טופלה במלואה ✓' : 'הבקשה שלך נמצאת כעת בטיפול אצל הצוות';
-      sendEmailNotification(ownerUser2.email, ownerUser2.name, 'עדכון סטטוס בקשה', msgText, rec.כ||rec.נ||'', rec.ס);
+      sendEmailNotification(ownerUser2.email, ownerUser2.name, 'עדכון סטטוס בקשה', msgText + '\n\n' + rivkaEmailDetails(rec), rivkaEmailTitle(rec), rec.ס);
     }
   }
   const savedIdx = editIdx; // שמור לפני closeModal מאפס
@@ -2114,7 +2138,7 @@ function sendMsg(){
     var ownerName = rec.מב || '';
     var ownerUser = (DB.users||[]).find(function(u){ return u.name===ownerName || u.username===ownerName; });
     if (ownerUser && ownerUser.email) {
-      sendEmailNotification(ownerUser.email, ownerUser.name, 'הודעה חדשה בבקשה שלך', 'התקבלה הודעה חדשה: ' + (text||''), rec.כ||rec.נ||'', rec.ס||'');
+      sendEmailNotification(ownerUser.email, ownerUser.name, 'הודעה חדשה בבקשה שלך', 'התקבלה הודעה חדשה: ' + (text||'') + '\n\n' + rivkaEmailDetails(rec), rivkaEmailTitle(rec), rec.ס||'');
     }
   }
   document.getElementById('chatInput').value='';
@@ -2675,7 +2699,13 @@ function sendDevTesterEmail(user, task) {
     cc_email: 'ido.efrati@dhl.com',
     to_name: user.name,
     subject: 'משימת פיתוח חדשה שויכה אליך לבדיקה' + (task.id ? ' (' + task.id + ')' : ''),
-    message: 'שלום ' + user.name + ',\n\nשויכה אליך משימת פיתוח לבדיקה במערכת בקשות מלמ.\n\n' + (task.id ? 'מספר משימה: ' + task.id + '\n' : '') + 'תיאור: ' + (task.desc||'—') + '\n\nאנא היכנס למערכת לביצוע הבדיקה.',
+    message: 'שלום ' + user.name + ',\n\nשויכה אליך משימת פיתוח לבדיקה במערכת בקשות מלמ.\n\n'
+      + (task.id ? 'מספר משימה: ' + task.id + '\n' : '')
+      + 'תיאור: ' + (task.desc||'—') + '\n'
+      + (task.comp ? 'רכיב: ' + task.comp + '\n' : '')
+      + (task.ver ? 'גרסה: ' + task.ver + '\n' : '')
+      + (task.iface ? 'ממשק: ' + task.iface + '\n' : '')
+      + '\nאנא היכנס למערכת לביצוע הבדיקה.',
     task_title: task.desc || (task.id || ''),
     status: 'משימת פיתוח חדשה לבדיקה'
   });
@@ -3030,7 +3060,12 @@ function sendSanityEmail(user, task) {
     cc_email: 'ido.efrati@dhl.com',
     to_name: user.name,
     subject: 'בדיקת שפיות חדשה שויכה אליך: ' + task.name,
-    message: 'שלום ' + user.name + ',\n\nשויכה אליך בדיקת שפיות חדשה במערכת בקשות מלמ.\n\nשם הבדיקה: ' + task.name + '\nתיאור: ' + (task.desc||'—') + '\n\nאנא היכנס למערכת לביצוע הבדיקה.',
+    message: 'שלום ' + user.name + ',\n\nשויכה אליך בדיקת שפיות חדשה במערכת בקשות מלמ.\n\n'
+      + 'שם הבדיקה: ' + task.name + '\n'
+      + (task.module ? 'מסך/מודול: ' + task.module + '\n' : '')
+      + (task.env ? 'סביבה: ' + task.env + '\n' : '')
+      + 'תיאור: ' + (task.desc||'—') + '\n'
+      + '\nאנא היכנס למערכת לביצוע הבדיקה.',
     task_title: task.name,
     status: 'בדיקת שפיות חדשה'
   });

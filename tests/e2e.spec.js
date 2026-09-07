@@ -1989,3 +1989,27 @@ test.describe('ניהול גרסאות (Release) - אחרי עליה לאווי�
     await expect(page.locator('.rivkaSelCb')).toHaveCount(0);
   });
 });
+
+test.describe('תוכן מיילים למנהלים - כותרת מזהה שלעולם לא ריקה', () => {
+  test('rivkaEmailTitle לא ריקה גם לבקשה בלי נושא/כותרת, ו-rivkaEmailDetails כוללת את פרטי הבקשה המלאים', async ({ page }) => {
+    await mockFirebase(page, {});
+    await page.goto('/index.html');
+    await login(page, 'testadmin', 'pw');
+    const result = await page.evaluate(() => {
+      return {
+        withSubject: rivkaEmailTitle({ נ: 'נושא הבקשה', כ: '', ת: '2026-07-01' }),
+        withBoth: rivkaEmailTitle({ נ: 'נושא', כ: 'כותרת שונה', ת: '2026-07-01' }),
+        empty: rivkaEmailTitle({ נ: '', כ: '', ת: '2026-07-01' }),
+        details: rivkaEmailDetails({ נ: 'נושא הבקשה', כ: '', מב: 'מנהלת בדיקה', ת: '2026-07-01', ע: 2, ב: 'תוכן הבקשה המלא' })
+      };
+    });
+    expect(result.withSubject).toBe('נושא הבקשה');
+    expect(result.withBoth).toBe('נושא — כותרת שונה');
+    // בקשה בלי נושא ובלי כותרת - עדיין מקבלת כותרת מזהה, לא ריקה, כדי שמייל
+    // עליה לעולם לא יגיע עם "בקשה: " ריק (הבאג שהתגלה בפועל)
+    expect(result.empty).toBe('בקשה מתאריך 2026-07-01');
+    expect(result.details).toContain('נושא הבקשה');
+    expect(result.details).toContain('מנהלת בדיקה');
+    expect(result.details).toContain('תוכן הבקשה המלא');
+  });
+});
