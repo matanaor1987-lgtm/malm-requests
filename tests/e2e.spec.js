@@ -2035,7 +2035,7 @@ test.describe('שרתים - השוואת רכיבים בין שרתי Focus', ()
     await expect(page.locator('#tabServers')).toBeHidden();
   });
 
-  test('עריכת ערך בתא נשמרת ומתמידה; ערכים שונים לאותו רכיב בין שרתים מסומנים כ"לא תואם"', async ({ page }) => {
+  test('עריכה ידנית של תא (לחיצה פותחת prompt) נשמרת ומתמידה; גדלים שונים לאותו רכיב בין שרתים מסומנים כ"לא תואם", אבל תאריך/שעה שונים בלבד (אותו גודל) לא', async ({ page }) => {
     const seed = {
       servers: { sv1: { id: 'sv1', name: 'srv1.dhl.com', desc: 'שרת א' }, sv2: { id: 'sv2', name: 'srv2.dhl.com', desc: 'שרת ב' } },
       components: { DH: { code: 'DH' }, FF: { code: 'FF' } },
@@ -2048,18 +2048,27 @@ test.describe('שרתים - השוואת רכיבים בין שרתי Focus', ()
     await expect(page.locator('#serverGridWrap')).toContainText('שרת א');
 
     const dhRow = page.locator('#serverGridWrap tr', { hasText: 'DH' });
-    await dhRow.locator('input').nth(0).fill('5.1558');
-    await dhRow.locator('input').nth(0).dispatchEvent('change');
+    // לחיצה על תא הערך פותחת prompt() לעריכה ידנית (במקום שדה טקסט חי בתא)
+    page.once('dialog', d => d.accept('01/01/2026 10:00:00 (5.1558 KB)'));
+    await dhRow.locator('td').nth(1).click();
     await page.waitForTimeout(200);
-    expect(serverComponents.values.sv1.DH).toBe('5.1558');
+    expect(serverComponents.values.sv1.DH).toBe('01/01/2026 10:00:00 (5.1558 KB)');
+    await expect(dhRow).toContainText('5.1558 KB');
 
     // עדיין תואם (רק ערך אחד הוזן) - אין אזהרה
     await expect(dhRow).not.toContainText('⚠️');
 
-    await dhRow.locator('input').nth(1).fill('5.1557');
-    await dhRow.locator('input').nth(1).dispatchEvent('change');
+    // אותו גודל קובץ, תאריך/שעה שונים בלבד - זה לא אמור להיחשב "לא תואם"
+    page.once('dialog', d => d.accept('02/01/2026 11:30:00 (5.1558 KB)'));
+    await dhRow.locator('td').nth(2).click();
     await page.waitForTimeout(200);
-    await expect(dhRow).toContainText('⚠️'); // שני ערכים שונים לאותו רכיב - אזהרת חוסר התאמה
+    await expect(dhRow).not.toContainText('⚠️');
+
+    // עכשיו גודל שונה בפועל - זה כן אזהרת חוסר התאמה
+    page.once('dialog', d => d.accept('02/01/2026 11:30:00 (5.1557 KB)'));
+    await dhRow.locator('td').nth(2).click();
+    await page.waitForTimeout(200);
+    await expect(dhRow).toContainText('⚠️');
 
     // ה-FF לא נגעו בו - עדיין ללא אזהרה
     const ffRow = page.locator('#serverGridWrap tr', { hasText: 'FF' });
@@ -2094,6 +2103,58 @@ test.describe('שרתים - השוואת רכיבים בין שרתי Focus', ()
     await expect(page.locator('#serverGridWrap')).not.toContainText('DH');
     // מחיקה רכה - הרכיב נשאר ב-DB, רק מסומן ומסונן מהתצוגה
     expect(serverComponents.components.DH.deleted).toBe(true);
+  });
+
+  test('התאריך בתא מוצג בפורמט ישראלי (DD/MM/YYYY) בנפרד מגודל הקובץ', async ({ page }) => {
+    const seed = {
+      servers: { sv1: { id: 'sv1', name: 'srv1.dhl.com', desc: 'שרת א' } },
+      components: { DH: { code: 'DH' } },
+      // בקובץ המקור (MM/DD/YYYY): חודש 08, יום 12 -> בפורמט ישראלי (DD/MM/YYYY): 12/08/2026
+      values: { sv1: { DH: '08/12/2026 09:33:05 (913.37 KB)' } },
+      changeLog: []
+    };
+    await mockFirebase(page, { serverComponents: seed });
+    await page.goto('/index.html');
+    await login(page, 'testadmin', 'pw');
+    await page.click('.tab[data-tab="6"]');
+
+    await expect(page.locator('#serverGridWrap')).toContainText('12/08/2026 09:33');
+    await expect(page.locator('#serverGridWrap')).not.toContainText('08/12/2026');
+    await expect(page.locator('#serverGridWrap')).toContainText('913.37 KB');
+  });
+
+  test('אפשר לשנות את סדר עמודות השרתים בחצים בכותרת, והסדר נשמר', async ({ page }) => {
+    const seed = {
+      servers: { sv1: { id: 'sv1', name: 'srv1.dhl.com', desc: 'שרת א' }, sv2: { id: 'sv2', name: 'srv2.dhl.com', desc: 'שרת ב' } },
+      components: { DH: { code: 'DH' } },
+      values: {},
+      order: ['sv1', 'sv2']
+    };
+    const { serverComponents } = await mockFirebase(page, { serverComponents: seed });
+    await page.goto('/index.html');
+    await login(page, 'testadmin', 'pw');
+    await page.click('.tab[data-tab="6"]');
+
+    const headersBefore = await page.locator('#serverGridWrap th').allTextContents();
+    // סדר עמודות: [רכיב, שרת א, שרת ב]
+    expect(headersBefore[1]).toContain('שרת א');
+    expect(headersBefore[2]).toContain('שרת ב');
+
+    // הזזת "שרת ב" ימינה (לכיוון עמודת ה"רכיב") - מתחלף עם "שרת א"
+    const svBHeader = page.locator('#serverGridWrap th', { hasText: 'שרת ב' });
+    await svBHeader.locator('button[title="הזז ימינה"]').click();
+    await page.waitForTimeout(200);
+
+    const headersAfter = await page.locator('#serverGridWrap th').allTextContents();
+    expect(headersAfter[1]).toContain('שרת ב');
+    expect(headersAfter[2]).toContain('שרת א');
+    expect(serverComponents.order).toEqual(['sv2', 'sv1']);
+
+    // "שרת ב" עכשיו ראשון - כפתור "הזז ימינה" שלו מנוטרל; "שרת א" עכשיו אחרון - "הזז שמאלה" שלו מנוטרל
+    const svBHeaderNow = page.locator('#serverGridWrap th', { hasText: 'שרת ב' });
+    const svAHeaderNow = page.locator('#serverGridWrap th', { hasText: 'שרת א' });
+    await expect(svBHeaderNow.locator('button[title="הזז ימינה"]')).toBeDisabled();
+    await expect(svAHeaderNow.locator('button[title="הזז שמאלה"]')).toBeDisabled();
   });
 });
 
@@ -2226,8 +2287,7 @@ test.describe('עריכת שם/תיאור שרת - בלי לאבד נתונים 
     await login(page, 'testadmin', 'pw');
     await page.click('.tab[data-tab="6"]');
     await expect(page.locator('#serverGridWrap')).toContainText('תיאור ישן');
-    // ערך הרכיב מוצג בתוך <input value="..."> ולא כטקסט רגיל - נבדק לפי מאפיין ה-value
-    await expect(page.locator('#serverGridWrap input[value*="913.37 KB"]')).toHaveCount(1);
+    await expect(page.locator('#serverGridWrap')).toContainText('913.37 KB');
 
     const answers = ['new-name.dhl.com', 'תיאור חדש'];
     let dialogIdx = 0;
@@ -2238,7 +2298,7 @@ test.describe('עריכת שם/תיאור שרת - בלי לאבד נתונים 
     await expect(page.locator('#serverGridWrap')).toContainText('תיאור חדש');
     await expect(page.locator('#serverGridWrap')).not.toContainText('תיאור ישן');
     // הערך שכבר יובא לשרת הזה (DH) עדיין שם, לא נמחק ע"י העריכה
-    await expect(page.locator('#serverGridWrap input[value*="913.37 KB"]')).toHaveCount(1);
+    await expect(page.locator('#serverGridWrap')).toContainText('913.37 KB');
 
     expect(serverComponents.servers.sv1.name).toBe('new-name.dhl.com');
     expect(serverComponents.servers.sv1.desc).toBe('תיאור חדש');

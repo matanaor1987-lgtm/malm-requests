@@ -3670,6 +3670,10 @@ async function dedupRecords(sheet) {
 var SERVERS = {};
 var COMPONENTS = {};
 var SERVER_VALUES = {};
+// סדר תצוגה של עמודות השרתים בטבלה - מערך של server id-ים, נשלט ע"י חצי
+// ההזזה בכותרת כל עמודה. שרתים שעדיין לא מופיעים במערך (למשל אחרי ייבוא
+// ישן בלי סדר שמור) מתווספים אוטומטית בסוף לפי orderedServers().
+var SERVER_ORDER = [];
 // יומן שינויים: כל פעם שייבוא קובץ מזהה שהערך של רכיב מסוים על שרת השתנה
 // לעומת מה שהיה ידוע קודם (לא בייבוא ראשון - אין למה להשוות), נוצרת כאן
 // רשומה חדשה שאפשר לתעד עליה את מהות התיקון. מערך רגיל (לא אובייקט לפי id)
@@ -3696,6 +3700,7 @@ async function loadServerData(){
     COMPONENTS = (data && data.components) || {};
     SERVER_VALUES = (data && data.values) || {};
     CHANGE_LOG = (data && data.changeLog) || [];
+    SERVER_ORDER = (data && data.order) || [];
     if(Object.keys(SERVERS).length===0 && Object.keys(COMPONENTS).length===0){
       await seedDefaultServerData();
     }
@@ -3707,11 +3712,41 @@ async function seedDefaultServerData(){
   DEFAULT_SERVERS.forEach(function(s){
     var id = genId();
     SERVERS[id] = { id:id, name:s.name, desc:s.desc };
+    SERVER_ORDER.push(id);
   });
   DEFAULT_COMPONENTS.forEach(function(code){
     COMPONENTS[code] = { code:code };
   });
   await saveServerData();
+}
+
+// מחזיר את השרתים (הלא-מחוקים) לפי סדר התצוגה השמור ב-SERVER_ORDER; שרת
+// שעדיין לא מופיע שם (נוסף לפני שהתכונה הזו נבנתה, או ברגע ההוספה) מצטרף
+// בסוף הרשימה אוטומטית.
+function orderedServers(){
+  var all = Object.values(SERVERS).filter(function(s){ return !s.deleted; });
+  var byId = {};
+  all.forEach(function(s){ byId[s.id] = s; });
+  var ordered = [];
+  SERVER_ORDER.forEach(function(id){
+    if(byId[id]){ ordered.push(byId[id]); delete byId[id]; }
+  });
+  Object.values(byId).forEach(function(s){ ordered.push(s); });
+  return ordered;
+}
+
+// הזזת עמודת שרת ימינה/שמאלה בטבלה - dir הוא -1 (ימינה, לקראת עמודת ה"רכיב"
+// הדביקה בצד ימין) או 1 (שמאלה). בונה מחדש את SERVER_ORDER לפי הסדר החדש.
+function moveServerColumn(id, dir){
+  var order = orderedServers().map(function(s){ return s.id; });
+  var idx = order.indexOf(id);
+  if(idx===-1) return;
+  var swapIdx = idx + dir;
+  if(swapIdx<0 || swapIdx>=order.length) return;
+  var tmp = order[idx]; order[idx] = order[swapIdx]; order[swapIdx] = tmp;
+  SERVER_ORDER = order;
+  saveServerData();
+  renderServerGrid();
 }
 
 // שמירה מאומתת מול השרת - fetch טרי אחרי הכתיבה ובדיקת deepEqual, בדיוק כמו
@@ -3725,7 +3760,7 @@ function saveServerData(){
     if(el){ el.style.display='block'; el.style.background='#1a1a2e'; el.textContent='⏳ שומר...'; }
     try{
       var BASE = 'https://malm-focus-default-rtdb.firebaseio.com';
-      var payload = { servers:SERVERS, components:COMPONENTS, values:SERVER_VALUES, changeLog:CHANGE_LOG };
+      var payload = { servers:SERVERS, components:COMPONENTS, values:SERVER_VALUES, changeLog:CHANGE_LOG, order:SERVER_ORDER };
       var putRes = await fetch(BASE+'/serverComponents.json', {
         method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload)
       });
@@ -3742,11 +3777,36 @@ function saveServerData(){
   });
 }
 
+// מפרק ערך גולמי שנשמר בפורמט "MM/DD/YYYY HH:MM:SS (גודל)" (כך ה-import
+// שומר אותו) לתאריך בפורמט ישראלי (DD/MM/YYYY), שעה נפרדת, וגודל קובץ נפרד -
+// כדי שאפשר יהיה להציג אותם בבירור זה מזה בתא הטבלה. ערך חופשי שהוזן ידנית
+// ולא תואם לתבנית הזו מוצג כמו שהוא (בתור "גודל", בלי תאריך/שעה).
+function parseServerValue(raw){
+  if(!raw) return { size:'', dateTime:'' };
+  var m = raw.match(/^(\d{2})\/(\d{2})\/(\d{4}) (\d{2}:\d{2}):\d{2} \(([^)]*)\)$/);
+  if(!m) return { size: raw, dateTime: '' };
+  var month=m[1], day=m[2], year=m[3], time=m[4], size=m[5];
+  return { size: size, dateTime: day+'/'+month+'/'+year+' '+time };
+}
+function formatServerValueCompact(raw){
+  var d = parseServerValue(raw);
+  if(!d.size) return '';
+  return d.dateTime ? d.size+' · '+d.dateTime : d.size;
+}
+// חותמת זמן ISO (זמן ייבוא לרשומת יומן) לפורמט ישראלי DD/MM/YYYY HH:MM.
+function isoToIsraeliDateTime(iso){
+  if(!iso) return '';
+  var d = new Date(iso);
+  if(isNaN(d.getTime())) return iso;
+  function pad(n){ return String(n).padStart(2,'0'); }
+  return pad(d.getDate())+'/'+pad(d.getMonth()+1)+'/'+d.getFullYear()+' '+pad(d.getHours())+':'+pad(d.getMinutes());
+}
+
 function renderServerGrid(){
   var wrap = document.getElementById('serverGridWrap');
   if(!wrap) return;
   populateImportServerSelect();
-  var servers = Object.values(SERVERS).filter(function(s){ return !s.deleted; });
+  var servers = orderedServers();
   var components = Object.values(COMPONENTS).filter(function(c){ return !c.deleted; })
     .sort(function(a,b){ return a.code.localeCompare(b.code,'he'); });
 
@@ -3761,18 +3821,25 @@ function renderServerGrid(){
 
   var head = '<tr style="background:#1a1a2e;color:#fff">'
     + '<th style="padding:8px 10px;text-align:right;white-space:nowrap;position:sticky;right:0;background:#1a1a2e">רכיב</th>'
-    + servers.map(function(s){
+    + servers.map(function(s, i){
+        var atRight = i===0, atLeft = i===servers.length-1;
         return '<th style="padding:8px 10px;text-align:center;white-space:nowrap" title="'+esc(s.name)+'">'
+          + '<button onclick="moveServerColumn(\''+s.id+'\',-1)" title="הזז ימינה"'+(atRight?' disabled':'')+' style="background:none;border:none;color:'+(atRight?'#555':'#b3d9ff')+';cursor:'+(atRight?'default':'pointer')+';font-size:11px">▶</button>'
           + esc(s.desc||s.name)
           + ' <button onclick="openEditServer(\''+s.id+'\')" title="ערוך שם/תיאור שרת" style="background:none;border:none;color:#b3d9ff;cursor:pointer;font-size:11px">✏️</button>'
-          + '<button onclick="deleteServer(\''+s.id+'\')" title="הסר שרת" style="background:none;border:none;color:#ffb3b3;cursor:pointer;font-size:11px">✕</button></th>';
+          + '<button onclick="deleteServer(\''+s.id+'\')" title="הסר שרת" style="background:none;border:none;color:#ffb3b3;cursor:pointer;font-size:11px">✕</button>'
+          + '<button onclick="moveServerColumn(\''+s.id+'\',1)" title="הזז שמאלה"'+(atLeft?' disabled':'')+' style="background:none;border:none;color:'+(atLeft?'#555':'#b3d9ff')+';cursor:'+(atLeft?'default':'pointer')+';font-size:11px">◀</button>'
+        + '</th>';
       }).join('')
     + '</tr>';
 
   var rows = components.map(function(c, i){
-    var vals = servers.map(function(s){ return (SERVER_VALUES[s.id]||{})[c.code] || ''; });
-    var distinct = Array.from(new Set(vals.filter(Boolean)));
-    var mismatch = distinct.length > 1;
+    // ההבדל שבאמת קובע "חוסר התאמה" בין שרתים הוא גודל הקובץ - שני שרתים עם
+    // תאריך/שעה שונים אבל אותו גודל בפועל לא מסומנים כ-⚠️ (זה יכול לקרות
+    // מהעתקה/סנכרון בלי שינוי תוכן אמיתי).
+    var sizes = servers.map(function(s){ return parseServerValue((SERVER_VALUES[s.id]||{})[c.code]||'').size; });
+    var distinctSizes = Array.from(new Set(sizes.filter(Boolean)));
+    var mismatch = distinctSizes.length > 1;
     var bg = mismatch ? '#fdecea' : (i%2 ? '#f9f9f9' : '#fff');
     return '<tr style="background:'+bg+'">'
       + '<td style="padding:6px 10px;border-bottom:1px solid #eee;font-weight:700;white-space:nowrap;position:sticky;right:0;background:'+bg+'">'
@@ -3781,8 +3848,10 @@ function renderServerGrid(){
       + '</td>'
       + servers.map(function(s){
           var v = (SERVER_VALUES[s.id]||{})[c.code] || '';
-          return '<td style="padding:4px 6px;border-bottom:1px solid #eee;text-align:center">'
-            + '<input value="'+esc(v)+'" onchange="updateServerValue(\''+s.id+'\',\''+esc(c.code)+'\',this.value)" style="width:90px;padding:4px 6px;border:1px solid #ddd;border-radius:4px;font-size:12px;font-family:Arial;text-align:center;direction:ltr">'
+          var d = parseServerValue(v);
+          return '<td onclick="openEditServerValue(\''+s.id+'\',\''+esc(c.code)+'\')" title="לחץ לעריכה ידנית" style="padding:4px 8px;border-bottom:1px solid #eee;text-align:center;cursor:pointer;min-width:100px">'
+            + (d.size ? '<div style="font-weight:700;font-size:13px;direction:ltr">'+esc(d.size)+'</div>' : '<div style="color:#bbb;font-size:12px">—</div>')
+            + (d.dateTime ? '<div style="font-size:10px;color:#888;direction:ltr">'+esc(d.dateTime)+'</div>' : '')
           + '</td>';
         }).join('')
       + '</tr>';
@@ -3790,6 +3859,13 @@ function renderServerGrid(){
 
   wrap.innerHTML = '<table style="border-collapse:collapse;font-size:12px;min-width:100%">'
     + '<thead>'+head+'</thead><tbody>'+rows+'</tbody></table>';
+}
+
+function openEditServerValue(serverId, code){
+  var current = (SERVER_VALUES[serverId]||{})[code] || '';
+  var val = prompt('ערך עבור רכיב "'+code+'" (בפורמט המקורי: MM/DD/YYYY HH:MM:SS (גודל), או כל ערך חופשי):', current);
+  if(val===null) return; // בוטל - לא נוגעים בערך הקיים
+  updateServerValue(serverId, code, val.trim());
 }
 
 function updateServerValue(serverId, code, val){
@@ -3811,6 +3887,7 @@ function openAddServer(){
   var desc = prompt('תיאור השרת (למשל: "אפליקציה 1"):') || '';
   var id = genId();
   SERVERS[id] = { id:id, name:name.trim(), desc:desc.trim() };
+  SERVER_ORDER.push(id);
   saveServerData();
   renderServerGrid();
 }
@@ -3969,9 +4046,11 @@ function renderChangeLog(){
     return;
   }
   wrap.innerHTML = CHANGE_LOG.map(function(e){
+    var oldDisp = esc(formatServerValueCompact(e.oldValue) || e.oldValue);
+    var newDisp = esc(formatServerValueCompact(e.newValue) || e.newValue);
     return '<div style="border:1px solid #eee;border-radius:8px;padding:10px 12px;margin-bottom:8px;background:#fff">'
-      + '<div style="font-size:12px;color:#666;margin-bottom:4px">' + esc(e.serverName) + ' · רכיב <b>' + esc(e.code) + '</b> · ' + esc((e.importedAt||'').slice(0,16).replace('T',' ')) + '</div>'
-      + '<div style="font-size:11px;color:#999;margin-bottom:6px;direction:ltr;text-align:right">' + esc(e.oldValue) + ' ← ' + esc(e.newValue) + '</div>'
+      + '<div style="font-size:12px;color:#666;margin-bottom:4px">' + esc(e.serverName) + ' · רכיב <b>' + esc(e.code) + '</b> · ' + esc(isoToIsraeliDateTime(e.importedAt)) + '</div>'
+      + '<div style="font-size:11px;color:#999;margin-bottom:6px;direction:ltr;text-align:right">' + oldDisp + ' ← ' + newDisp + '</div>'
       + '<textarea placeholder="מהות התיקון..." onchange="updateChangeLogNote(\'' + e.id + '\',this.value)" style="width:100%;min-height:36px;padding:6px 8px;border:1px solid #ddd;border-radius:6px;font-size:12px;font-family:Arial;direction:rtl;resize:vertical;box-sizing:border-box">' + esc(e.note||'') + '</textarea>'
     + '</div>';
   }).join('');
