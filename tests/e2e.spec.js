@@ -2225,6 +2225,42 @@ test.describe('שרתים - השוואת רכיבים בין שרתי Focus', ()
     expect(sv2Html).not.toContain('fde8e8');
     expect(sv3Html).toContain('fde8e8');
   });
+
+  test('אפשר לכתוב הערה חופשית ליד כל רכיב בעמודת "הערות" ייעודית (לחיצה פותחת prompt), והיא נשמרת ומתמידה', async ({ page }) => {
+    const seed = {
+      servers: { sv1: { id: 'sv1', name: 'srv1.dhl.com', desc: 'שרת א' } },
+      components: { DH: { code: 'DH' }, FF: { code: 'FF' } },
+      values: {}
+    };
+    const { serverComponents } = await mockFirebase(page, { serverComponents: seed });
+    await page.goto('/index.html');
+    await login(page, 'testadmin', 'pw');
+    await page.click('.tab[data-tab="6"]');
+    await expect(page.locator('#serverGridWrap')).toContainText('הערות');
+
+    const dhRow = page.locator('#serverGridWrap tr', { hasText: 'DH' });
+    // עמודת ההערות היא התא האחרון בשורה
+    let noteCell = dhRow.locator('td').last();
+    await expect(noteCell).toContainText('לחץ להוספת הערה');
+
+    page.once('dialog', d => d.accept('רכיב רגיש - לא לעדכן בלי תיאום עם דני'));
+    await noteCell.click();
+    await page.waitForTimeout(200);
+
+    expect(serverComponents.components.DH.note).toBe('רכיב רגיש - לא לעדכן בלי תיאום עם דני');
+    noteCell = dhRow.locator('td').last();
+    await expect(noteCell).toContainText('רכיב רגיש - לא לעדכן בלי תיאום עם דני');
+
+    // הרכיב FF לא נגעו בו - נשאר בלי הערה
+    const ffRow = page.locator('#serverGridWrap tr', { hasText: 'FF' });
+    await expect(ffRow.locator('td').last()).toContainText('לחץ להוספת הערה');
+
+    // ביטול הדיאלוג לא משנה הערה קיימת
+    page.once('dialog', d => d.dismiss());
+    await noteCell.click();
+    await page.waitForTimeout(200);
+    expect(serverComponents.components.DH.note).toBe('רכיב רגיש - לא לעדכן בלי תיאום עם דני');
+  });
 });
 
 test.describe('ייבוא רשימת קבצים (.ecf) משרת - זיהוי גרסאות ושינויים אוטומטי', () => {

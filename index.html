@@ -3822,7 +3822,7 @@ function renderServerGrid(){
   // colgroup - עמודת הרכיב ברוחב קבוע, עמודות השרתים מתחלקות שווה בשווה
   // ביתרת הרוחב (table-layout:fixed) - כך הטבלה תופסת בדיוק את הרוחב הפנוי
   // בלי רווחים גדולים מיותרים בין העמודות ובלי לגלוש מעבר לתיבה.
-  var colgroup = '<colgroup><col style="width:110px">' + servers.map(function(){ return '<col>'; }).join('') + '</colgroup>';
+  var colgroup = '<colgroup><col style="width:110px">' + servers.map(function(){ return '<col>'; }).join('') + '<col style="width:200px">' + '</colgroup>';
 
   // שורת הכותרת "קפואה" (position:sticky;top:0) יחד עם #serverGridWrap שמוגבל
   // בגובה וגולל בפועל (overflow:auto;max-height) - זה מה שמאפשר לה להישאר
@@ -3842,6 +3842,7 @@ function renderServerGrid(){
           + '</div>'
         + '</th>';
       }).join('')
+    + '<th style="padding:8px 10px;text-align:right;white-space:nowrap;position:sticky;top:0;z-index:2;background:#1a1a2e;border-bottom:2px solid #0d0d1a">הערות</th>'
     + '</tr>';
 
   var rows = components.map(function(c, i){
@@ -3887,6 +3888,9 @@ function renderServerGrid(){
             + valueHtml
           + '</td>';
         }).join('')
+      + '<td onclick="openEditComponentNote(\''+esc(c.code)+'\')" title="לחץ לעריכה" style="padding:6px 10px;border-bottom:1px solid #eee;text-align:right;cursor:pointer;font-size:11.5px;color:#555;white-space:normal;word-break:break-word">'
+        + (c.note ? esc(c.note) : '<span style="color:#c7cbd3">— לחץ להוספת הערה —</span>')
+      + '</td>'
       + '</tr>';
   }).join('');
 
@@ -3899,6 +3903,19 @@ function openEditServerValue(serverId, code){
   var val = prompt('ערך עבור רכיב "'+code+'" (בפורמט המקורי: MM/DD/YYYY HH:MM:SS (גודל), או כל ערך חופשי):', current);
   if(val===null) return; // בוטל - לא נוגעים בערך הקיים
   updateServerValue(serverId, code, val.trim());
+}
+
+// הערה חופשית לכל רכיב (לא תלויה בשרת מסוים ולא בייבוא - תיעוד כללי, למשל
+// "רכיב רגיש, לא לעדכן בלי תיאום עם X") - נשמרת על אובייקט הרכיב עצמו
+// ב-COMPONENTS, כמו כל שדה אחר שלו.
+function openEditComponentNote(code){
+  var c = COMPONENTS[code];
+  if(!c) return;
+  var note = prompt('הערה לרכיב "'+code+'":', c.note||'');
+  if(note===null) return; // בוטל - לא נוגעים בהערה הקיימת
+  c.note = note.trim();
+  saveServerData();
+  renderServerGrid();
 }
 
 function updateServerValue(serverId, code, val){
