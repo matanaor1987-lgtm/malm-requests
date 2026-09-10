@@ -3764,7 +3764,8 @@ function renderServerGrid(){
     + servers.map(function(s){
         return '<th style="padding:8px 10px;text-align:center;white-space:nowrap" title="'+esc(s.name)+'">'
           + esc(s.desc||s.name)
-          + ' <button onclick="deleteServer(\''+s.id+'\')" title="הסר שרת" style="background:none;border:none;color:#ffb3b3;cursor:pointer;font-size:11px">✕</button></th>';
+          + ' <button onclick="openEditServer(\''+s.id+'\')" title="ערוך שם/תיאור שרת" style="background:none;border:none;color:#b3d9ff;cursor:pointer;font-size:11px">✏️</button>'
+          + '<button onclick="deleteServer(\''+s.id+'\')" title="הסר שרת" style="background:none;border:none;color:#ffb3b3;cursor:pointer;font-size:11px">✕</button></th>';
       }).join('')
     + '</tr>';
 
@@ -3810,6 +3811,24 @@ function openAddServer(){
   var desc = prompt('תיאור השרת (למשל: "אפליקציה 1"):') || '';
   var id = genId();
   SERVERS[id] = { id:id, name:name.trim(), desc:desc.trim() };
+  saveServerData();
+  renderServerGrid();
+}
+
+// עריכת שם/תיאור שרת קיים - משנה רק את שדות התצוגה של הרשומה, בלי לגעת ב-id
+// היציב שלה. כל הנתונים שכבר יובאו (SERVER_VALUES) ותיעודי יומן השינויים
+// (CHANGE_LOG) מקושרים לפי אותו id ולא לפי השם, כך שעריכת שם/תיאור לעולם לא
+// מוחקת או מנתקת נתונים שכבר נטענו לשרת הזה.
+function openEditServer(id){
+  var s = SERVERS[id];
+  if(!s) return;
+  var name = prompt('שם שרת (hostname):', s.name);
+  if(name===null) return; // בוטל - לא נוגעים בכלום
+  if(!name.trim()){ alert('שם שרת לא יכול להיות ריק'); return; }
+  var desc = prompt('תיאור השרת:', s.desc||'');
+  if(desc===null) desc = s.desc||''; // בוטל בשלב הזה - משאיר את התיאור הקיים כמו שהוא
+  s.name = name.trim();
+  s.desc = desc.trim();
   saveServerData();
   renderServerGrid();
 }
@@ -3878,13 +3897,19 @@ function deriveComponentCodeFromFile(filename){
 // מפרסר את תוכן הקובץ לאובייקט { קוד רכיב: "תאריך שינוי (גודל)" } - המחרוזת
 // המשולבת הזו היא "טביעת האצבע" של הקובץ: אם היא זהה בין שרתים - כנראה אותו
 // קובץ בדיוק; אם שונה (בתאריך או בגודל) - סימן לגרסה שונה.
+// חלק מהייצואים יוצאים עם TAB אמיתי כמפריד, וחלק (תקלה בייצוא בפועל) עם
+// האות "t" בודדת כמפריד במקום TAB - התבנית מזהה את שני הפורמטים לפי צורת
+// השדות (תאריך, "KB") ולא לפי חיפוש עיוור של "t", כדי לא לפגוע בשמות קבצים
+// שמכילים "t" בעצמם (למשל "Station.ecf").
+var ECF_LINE_RE = /^(\d{2}\/\d{2}\/\d{4}\s+\d{2}:\d{2}:\d{2})(?:\t|t)(\d+(?:\.\d+)?\s*KB)(?:\t|t)(.+)$/;
 function parseEcfFileList(text){
   var result = {};
-  text.split(/\r?\n/).forEach(function(line){
+  text.replace(/^\uFEFF/, '').split(/\r?\n/).forEach(function(line){
+    line = line.replace(/^\uFEFF/, '');
     if(!line.trim()) return;
-    var parts = line.split('\t');
-    if(parts.length < 3) return;
-    var dt = parts[0].trim(), size = parts[1].trim(), fullPath = parts.slice(2).join('\t').trim();
+    var m = line.match(ECF_LINE_RE);
+    if(!m) return;
+    var dt = m[1].trim(), size = m[2].trim(), fullPath = m[3].trim();
     if(!fullPath) return;
     if(!isRootEcfPath(fullPath)) return;
     var filename = fullPath.split('\\').pop();
@@ -3906,7 +3931,7 @@ async function importServerFile(){
   try{ text = await file.text(); }catch(e){ alert('שגיאה בקריאת הקובץ: '+e.message); return; }
   var parsed = parseEcfFileList(text);
   var codes = Object.keys(parsed);
-  if(!codes.length){ alert('לא נמצאו שורות תקינות בקובץ - ודא/י שזה הפלט המקורי של הסקריפט (תאריך, גודל ונתיב מופרדים ב-TAB)'); return; }
+  if(!codes.length){ alert('לא נמצאו שורות תקינות בקובץ - ודא/י שזה הפלט המקורי של הסקריפט (תאריך, גודל ונתיב לכל שורה)'); return; }
 
   var prevValues = SERVER_VALUES[serverId] || {};
   var serverName = (SERVERS[serverId]||{}).desc || (SERVERS[serverId]||{}).name || '';

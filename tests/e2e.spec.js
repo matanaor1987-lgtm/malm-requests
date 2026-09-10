@@ -2174,4 +2174,95 @@ test.describe('ייבוא רשימת קבצים (.ecf) משרת - זיהוי ג�
     await page.waitForTimeout(200);
     expect(serverComponents.changeLog[0].note).toBe('שדרוג גרסה בעקבות תיקון בממשק DCC');
   });
+
+  // בפועל חלק מהייצואים יוצאים עם תקלה: המפריד בין השדות הוא האות "t" בודדת
+  // במקום TAB אמיתי. חייבים לזהות את שני הפורמטים בלי לפגוע בשמות קבצים
+  // שמכילים "t" בעצמם (Station.ecf, modules.ecf).
+  const fileBrokenTFormat = '﻿' + [
+    '05/27/2026 10:27:38t1256.16 KBtD:\\FocusXPA\\Focus\\APCTL.ecf',
+    '06/30/2025 13:55:00t49.01 KBtD:\\FocusXPA\\Focus\\auctl.ecf',
+    '05/05/2026 10:12:36t365.4 KBtD:\\FocusXPA\\Focus\\Station.ecf',
+    '12/15/2022 12:43:20t247.76 KBtD:\\FocusXPA\\Focus\\UserFunctionality.ecf',
+    '11/19/2025 09:52:24t11503 KBtD:\\FocusXPA\\Focus\\tstver260126\\NFCTL.ecf',
+  ].join('\r\n');
+
+  test('פורמט חלופי: מפריד "t" בודדת במקום TAB אמיתי (תקלת ייצוא אמיתית) - נקלט נכון בלי לפגוע בשמות קבצים שמכילים "t"', async ({ page }) => {
+    const seed = { servers: { sv1: { id: 'sv1', name: 'srv1.dhl.com', desc: 'שרת ב' } }, components: {}, values: {}, changeLog: [] };
+    const { serverComponents } = await mockFirebase(page, { serverComponents: seed });
+    await page.goto('/index.html');
+    await login(page, 'testadmin', 'pw');
+    await page.click('.tab[data-tab="6"]');
+    await expect(page.locator('#importServerSelect option', { hasText: 'שרת ב' })).toHaveCount(1);
+
+    await page.selectOption('#importServerSelect', 'sv1');
+    await page.setInputFiles('#importFileInput', { name: 'filelist_t.txt', mimeType: 'text/plain', buffer: Buffer.from(fileBrokenTFormat, 'utf-8') });
+    page.once('dialog', d => d.accept());
+    await page.click('button[onclick="importServerFile()"]');
+    await page.waitForTimeout(300);
+
+    expect(serverComponents.values.sv1.AP).toContain('1256.16 KB');
+    expect(serverComponents.values.sv1.AU).toContain('49.01 KB');
+    // "Station" ו-"UserFunctionality" מכילים את האות t בעצמם - חייבים להישאר שלמים ולא להתפרק
+    expect(serverComponents.values.sv1.Station).toContain('365.4 KB');
+    expect(serverComponents.values.sv1.UserFunctionality).toContain('247.76 KB');
+    expect(Object.keys(serverComponents.components)).toContain('Station');
+    expect(Object.keys(serverComponents.components)).toContain('UserFunctionality');
+    // שורה בתת-תיקייה מתעלמים ממנה גם בפורמט הזה
+    expect(serverComponents.values.sv1.AP).not.toContain('01/07/2026');
+    expect(serverComponents.values.sv1.NF).toBeUndefined();
+  });
+});
+
+test.describe('עריכת שם/תיאור שרת - בלי לאבד נתונים שכבר יובאו', () => {
+  test('עריכת שם ותיאור שרת משנה רק את התצוגה - ערכי רכיבים שכבר יובאו נשארים בדיוק כמו שהיו', async ({ page }) => {
+    const seed = {
+      servers: { sv1: { id: 'sv1', name: 'old-name.dhl.com', desc: 'תיאור ישן' } },
+      components: { DH: { code: 'DH' } },
+      values: { sv1: { DH: '08/12/2026 09:33:05 (913.37 KB)' } },
+      changeLog: []
+    };
+    const { serverComponents } = await mockFirebase(page, { serverComponents: seed });
+    await page.goto('/index.html');
+    await login(page, 'testadmin', 'pw');
+    await page.click('.tab[data-tab="6"]');
+    await expect(page.locator('#serverGridWrap')).toContainText('תיאור ישן');
+    // ערך הרכיב מוצג בתוך <input value="..."> ולא כטקסט רגיל - נבדק לפי מאפיין ה-value
+    await expect(page.locator('#serverGridWrap input[value*="913.37 KB"]')).toHaveCount(1);
+
+    const answers = ['new-name.dhl.com', 'תיאור חדש'];
+    let dialogIdx = 0;
+    page.on('dialog', d => { d.accept(answers[dialogIdx] || ''); dialogIdx++; });
+    await page.click('button[onclick="openEditServer(\'sv1\')"]');
+    await page.waitForTimeout(300);
+
+    await expect(page.locator('#serverGridWrap')).toContainText('תיאור חדש');
+    await expect(page.locator('#serverGridWrap')).not.toContainText('תיאור ישן');
+    // הערך שכבר יובא לשרת הזה (DH) עדיין שם, לא נמחק ע"י העריכה
+    await expect(page.locator('#serverGridWrap input[value*="913.37 KB"]')).toHaveCount(1);
+
+    expect(serverComponents.servers.sv1.name).toBe('new-name.dhl.com');
+    expect(serverComponents.servers.sv1.desc).toBe('תיאור חדש');
+    expect(serverComponents.values.sv1.DH).toBe('08/12/2026 09:33:05 (913.37 KB)');
+  });
+
+  test('ביטול הדיאלוג הראשון (שם) לא משנה כלום', async ({ page }) => {
+    const seed = {
+      servers: { sv1: { id: 'sv1', name: 'old-name.dhl.com', desc: 'תיאור ישן' } },
+      // צריך רכיב אחד לפחות כדי שהטבלה (ולא הודעת "אין עדיין רכיבים") תוצג,
+      // אחרת כפתור העריכה (שנמצא בכותרת הטבלה) לא נרנדר בכלל
+      components: { DH: { code: 'DH' } }, values: {}, changeLog: []
+    };
+    const { serverComponents } = await mockFirebase(page, { serverComponents: seed });
+    await page.goto('/index.html');
+    await login(page, 'testadmin', 'pw');
+    await page.click('.tab[data-tab="6"]');
+    await expect(page.locator('#serverGridWrap')).toContainText('תיאור ישן');
+
+    page.once('dialog', d => d.dismiss());
+    await page.click('button[onclick="openEditServer(\'sv1\')"]');
+    await page.waitForTimeout(200);
+
+    expect(serverComponents.servers.sv1.name).toBe('old-name.dhl.com');
+    expect(serverComponents.servers.sv1.desc).toBe('תיאור ישן');
+  });
 });
