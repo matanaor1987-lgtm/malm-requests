@@ -1722,7 +1722,7 @@ function switchTab(i) {
   if(i===3){Promise.all([loadDevLists(),loadDevTasks()]).then(function(){renderDevTable();populateDevFilters();filterDevTable();});}
   if(i===4)loadSanityTab();
   if(i===5){loadLaunchTab().then(function(){renderLaunchTable();});}
-  if(i===6){loadServerData().then(function(){renderServerGrid();});}
+  if(i===6){loadServerData().then(function(){renderServerGrid();renderChangeLog();});}
 }
 
 // Auth events
@@ -3670,6 +3670,11 @@ async function dedupRecords(sheet) {
 var SERVERS = {};
 var COMPONENTS = {};
 var SERVER_VALUES = {};
+// יומן שינויים: כל פעם שייבוא קובץ מזהה שהערך של רכיב מסוים על שרת השתנה
+// לעומת מה שהיה ידוע קודם (לא בייבוא ראשון - אין למה להשוות), נוצרת כאן
+// רשומה חדשה שאפשר לתעד עליה את מהות התיקון. מערך רגיל (לא אובייקט לפי id)
+// כי הסדר (חדש קודם) חשוב לתצוגה.
+var CHANGE_LOG = [];
 
 // רשימת ברירת המחדל שהתקבלה בפועל מהמשתמש - נטענת פעם אחת אם עדיין אין שום
 // שרת/רכיב שמור ב-Firebase (לא דורסת נתונים קיימים בשום מקרה).
@@ -3690,6 +3695,7 @@ async function loadServerData(){
     SERVERS = (data && data.servers) || {};
     COMPONENTS = (data && data.components) || {};
     SERVER_VALUES = (data && data.values) || {};
+    CHANGE_LOG = (data && data.changeLog) || [];
     if(Object.keys(SERVERS).length===0 && Object.keys(COMPONENTS).length===0){
       await seedDefaultServerData();
     }
@@ -3708,20 +3714,38 @@ async function seedDefaultServerData(){
   await saveServerData();
 }
 
+// שמירה מאומתת מול השרת - fetch טרי אחרי הכתיבה ובדיקת deepEqual, בדיוק כמו
+// כל שמירה אחרת במערכת (זה בדיוק המנגנון שהיה חסר בעבר ב-saveLaunchTask וגרם
+// לתקלות דומות - לא רוצים לחזור על זה כאן, בטאב שכולו מבוסס על ייבוא בבאץ').
+// chainedWrite מבטיח שכתיבות לא יתחרו זו בזו (אותו עיקרון שתיקן את הבאג
+// במחיקה+ביטול מהיר).
 function saveServerData(){
   return chainedWrite('serverComponents', async function(){
+    var el = document.getElementById('savingMsg');
+    if(el){ el.style.display='block'; el.style.background='#1a1a2e'; el.textContent='⏳ שומר...'; }
     try{
-      await fetch('https://malm-focus-default-rtdb.firebaseio.com/serverComponents.json', {
-        method:'PUT', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ servers:SERVERS, components:COMPONENTS, values:SERVER_VALUES })
+      var BASE = 'https://malm-focus-default-rtdb.firebaseio.com';
+      var payload = { servers:SERVERS, components:COMPONENTS, values:SERVER_VALUES, changeLog:CHANGE_LOG };
+      var putRes = await fetch(BASE+'/serverComponents.json', {
+        method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload)
       });
-    }catch(e){ console.warn('saveServerData failed:', e); }
+      if(!putRes.ok) throw new Error('השרת דחה את הכתיבה (סטטוס '+putRes.status+')');
+      var verifyRes = await fetch(BASE+'/serverComponents.json?t='+Date.now());
+      var verifyData = await verifyRes.json();
+      if(!deepEqual(verifyData, payload)) throw new Error('האימות מול השרת נכשל - השינוי לא נשמר בפועל. נסה/י שוב.');
+      if(el){ el.textContent='✓ נשמר!'; setTimeout(function(){ el.style.display='none'; },1500); }
+      return true;
+    }catch(e){
+      if(el){ el.textContent='❌ שגיאה: '+e.message; el.style.background='#c62828'; setTimeout(function(){ el.style.display='none'; el.style.background='#1a1a2e'; },6000); }
+      return false;
+    }
   });
 }
 
 function renderServerGrid(){
   var wrap = document.getElementById('serverGridWrap');
   if(!wrap) return;
+  populateImportServerSelect();
   var servers = Object.values(SERVERS).filter(function(s){ return !s.deleted; });
   var components = Object.values(COMPONENTS).filter(function(c){ return !c.deleted; })
     .sort(function(a,b){ return a.code.localeCompare(b.code,'he'); });
@@ -3817,6 +3841,122 @@ function deleteComponent(code){
   c.deleted = true;
   saveServerData();
   renderServerGrid();
+}
+
+function populateImportServerSelect(){
+  var sel = document.getElementById('importServerSelect');
+  if(!sel) return;
+  var selected = sel.value;
+  var servers = Object.values(SERVERS).filter(function(s){ return !s.deleted; });
+  sel.innerHTML = '<option value="">— בחר שרת —</option>' + servers.map(function(s){
+    return '<option value="'+s.id+'">'+esc(s.desc||s.name)+'</option>';
+  }).join('');
+  if(servers.some(function(s){ return s.id===selected; })) sel.value = selected;
+}
+
+// ── ייבוא רשימת קבצים .ecf משרת (פלט הסקריפט ב-PowerShell שסוכם) ──────────
+// כל שורה: <תאריך שינוי אחרון של הקובץ>\t<גודל> KB\t<נתיב מלא>. מתעלמים
+// משורות בתת-תיקיות (כמו tstver260126) - נספרים רק קבצים ישירות תחת תיקיית
+// Focus, לפי בקשה מפורשת.
+function isRootEcfPath(fullPath){
+  var idx = fullPath.toLowerCase().indexOf('\\focus\\');
+  if(idx===-1) return true; // לא זוהתה תיקיית Focus בנתיב - לא מסננים כדי לא לאבד שורות בטעות
+  var rest = fullPath.slice(idx+7);
+  return rest.indexOf('\\')===-1;
+}
+
+// שם הקובץ קובע את קוד הרכיב: "DHCTL.ecf"->"DH", "Station.ecf"->"Station"
+// (אין CTL), "modules.ecf"/"UserFunctionality.ecf" (לא תואמים לתבנית XX+CTL)
+// -> נשארים בשם המלא שלהם כמו שהם.
+function deriveComponentCodeFromFile(filename){
+  var base = filename.replace(/\.ecf$/i, '');
+  var m = base.match(/^([A-Za-z]{2})CTL$/i);
+  if(m) return m[1].toUpperCase();
+  return base;
+}
+
+// מפרסר את תוכן הקובץ לאובייקט { קוד רכיב: "תאריך שינוי (גודל)" } - המחרוזת
+// המשולבת הזו היא "טביעת האצבע" של הקובץ: אם היא זהה בין שרתים - כנראה אותו
+// קובץ בדיוק; אם שונה (בתאריך או בגודל) - סימן לגרסה שונה.
+function parseEcfFileList(text){
+  var result = {};
+  text.split(/\r?\n/).forEach(function(line){
+    if(!line.trim()) return;
+    var parts = line.split('\t');
+    if(parts.length < 3) return;
+    var dt = parts[0].trim(), size = parts[1].trim(), fullPath = parts.slice(2).join('\t').trim();
+    if(!fullPath) return;
+    if(!isRootEcfPath(fullPath)) return;
+    var filename = fullPath.split('\\').pop();
+    if(!/\.ecf$/i.test(filename)) return;
+    var code = deriveComponentCodeFromFile(filename);
+    result[code] = dt + ' (' + size + ')';
+  });
+  return result;
+}
+
+async function importServerFile(){
+  var serverId = document.getElementById('importServerSelect').value;
+  var fileInput = document.getElementById('importFileInput');
+  if(!serverId){ alert('יש לבחור שרת לייבוא'); return; }
+  var file = fileInput.files[0];
+  if(!file){ alert('יש לבחור קובץ לייבוא'); return; }
+
+  var text;
+  try{ text = await file.text(); }catch(e){ alert('שגיאה בקריאת הקובץ: '+e.message); return; }
+  var parsed = parseEcfFileList(text);
+  var codes = Object.keys(parsed);
+  if(!codes.length){ alert('לא נמצאו שורות תקינות בקובץ - ודא/י שזה הפלט המקורי של הסקריפט (תאריך, גודל ונתיב מופרדים ב-TAB)'); return; }
+
+  var prevValues = SERVER_VALUES[serverId] || {};
+  var serverName = (SERVERS[serverId]||{}).desc || (SERVERS[serverId]||{}).name || '';
+  var changedCount = 0;
+  codes.forEach(function(code){
+    if(!COMPONENTS[code]) COMPONENTS[code] = { code: code }; // רכיב חדש שזוהה בקובץ - נוסף אוטומטית
+    var oldVal = prevValues[code] || '';
+    var newVal = parsed[code];
+    if(oldVal && oldVal!==newVal){
+      CHANGE_LOG.unshift({ id: genId(), serverId: serverId, serverName: serverName, code: code, oldValue: oldVal, newValue: newVal, importedAt: new Date().toISOString(), note: '' });
+      changedCount++;
+    }
+  });
+  SERVER_VALUES[serverId] = Object.assign({}, prevValues, parsed);
+
+  var importBtn = document.querySelector('button[onclick="importServerFile()"]');
+  if(importBtn) importBtn.disabled = true;
+  var ok = await saveServerData();
+  if(importBtn) importBtn.disabled = false;
+  if(!ok) return; // saveServerData כבר הציג את השגיאה ב-#savingMsg
+
+  fileInput.value = '';
+  renderServerGrid();
+  renderChangeLog();
+  alert('✅ יובאו ' + codes.length + ' רכיבים עבור ' + serverName + '.' + (changedCount ? ' זוהו ' + changedCount + ' שינויים לעומת הייבוא הקודם - ראה/י ביומן השינויים.' : ' אין שינויים לעומת הייבוא הקודם.'));
+}
+
+// יומן שינויים - כל רשומה היא שינוי שזוהה בייבוא (ערך ישן -> חדש), עם שדה
+// הערה חופשי לתיעוד מהות התיקון.
+function renderChangeLog(){
+  var wrap = document.getElementById('changeLogWrap');
+  if(!wrap) return;
+  if(!CHANGE_LOG.length){
+    wrap.innerHTML = '<div style="padding:16px;color:#aaa;font-size:12px">אין עדיין שינויים מתועדים - יופיעו כאן אוטומטית כשייבוא יזהה שרכיב השתנה לעומת הייבוא הקודם</div>';
+    return;
+  }
+  wrap.innerHTML = CHANGE_LOG.map(function(e){
+    return '<div style="border:1px solid #eee;border-radius:8px;padding:10px 12px;margin-bottom:8px;background:#fff">'
+      + '<div style="font-size:12px;color:#666;margin-bottom:4px">' + esc(e.serverName) + ' · רכיב <b>' + esc(e.code) + '</b> · ' + esc((e.importedAt||'').slice(0,16).replace('T',' ')) + '</div>'
+      + '<div style="font-size:11px;color:#999;margin-bottom:6px;direction:ltr;text-align:right">' + esc(e.oldValue) + ' ← ' + esc(e.newValue) + '</div>'
+      + '<textarea placeholder="מהות התיקון..." onchange="updateChangeLogNote(\'' + e.id + '\',this.value)" style="width:100%;min-height:36px;padding:6px 8px;border:1px solid #ddd;border-radius:6px;font-size:12px;font-family:Arial;direction:rtl;resize:vertical;box-sizing:border-box">' + esc(e.note||'') + '</textarea>'
+    + '</div>';
+  }).join('');
+}
+
+function updateChangeLogNote(id, note){
+  var entry = CHANGE_LOG.find(function(e){ return e.id===id; });
+  if(!entry) return;
+  entry.note = note;
+  saveServerData();
 }
 </script>
 
@@ -4079,9 +4219,25 @@ function deleteComponent(code){
     </div>
   </div>
   <div style="font-size:12px;color:#666;margin-bottom:12px;line-height:1.6">
-    שורה עם ⚠️ ורקע ורוד - יש לרכיב הזה יותר מערך אחד שונה בין השרתים. הזנה ידנית של ערכים (למשל מספר גרסה) בכל תא.
+    שורה עם ⚠️ ורקע ורוד - יש לרכיב הזה יותר מערך אחד שונה בין השרתים. אפשר להזין ערך ידנית בכל תא, או לייבא קובץ שלם לשרת מלמטה.
   </div>
+
+  <div style="background:#f9f9fb;border:1px solid #eee;border-radius:8px;padding:14px 16px;margin-bottom:16px">
+    <div style="font-size:13px;font-weight:700;color:#1a1a2e;margin-bottom:8px">📥 ייבוא רשימת קבצים משרת (פלט הסקריפט: Get-ChildItem *.ecf)</div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+      <select id="importServerSelect" style="padding:7px 10px;border:1px solid #ddd;border-radius:6px;font-size:12px;font-family:Arial;direction:rtl"></select>
+      <input type="file" id="importFileInput" accept=".txt" style="font-size:12px">
+      <button onclick="importServerFile()" style="background:#2e7d32;color:#fff;border:none;border-radius:6px;padding:7px 16px;cursor:pointer;font-size:12px;font-weight:700;font-family:Arial">ייבא</button>
+    </div>
+    <div style="font-size:11px;color:#999;margin-top:8px">מזהה רכיב אוטומטית מכל שם קובץ (למשל DHCTL.ecf → DH), ומתעלם מקבצים בתת-תיקיות. אפשר לייבא שוב באותו אופן בכל פעם שרוצים לבדוק מה השתנה.</div>
+  </div>
+
   <div id="serverGridWrap" style="overflow-x:auto;border:1px solid #eee;border-radius:8px"></div>
+
+  <div style="margin-top:22px">
+    <div style="font-size:14px;font-weight:700;color:#1a1a2e;margin-bottom:10px">🕒 יומן שינויים - תיעוד מהות התיקון</div>
+    <div id="changeLogWrap"></div>
+  </div>
 </div>
 
 <!-- RELEASE MANAGER MODAL (top-level, so it's visible from any tab) -->

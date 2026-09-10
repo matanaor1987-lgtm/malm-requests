@@ -2096,3 +2096,82 @@ test.describe('שרתים - השוואת רכיבים בין שרתי Focus', ()
     expect(serverComponents.components.DH.deleted).toBe(true);
   });
 });
+
+test.describe('ייבוא רשימת קבצים (.ecf) משרת - זיהוי גרסאות ושינויים אוטומטי', () => {
+  const fileV1 = [
+    '05/27/2026 10:27:38\t1256.16 KB\tD:\\FocusXPA\\Focus\\APCTL.ecf',
+    '08/12/2026 09:33:05\t913.37 KB\tD:\\FocusXPA\\Focus\\DHCTL.ecf',
+    '05/05/2026 10:12:36\t365.4 KB\tD:\\FocusXPA\\Focus\\Station.ecf',
+    '07/28/2013 09:30:20\t9.37 KB\tD:\\FocusXPA\\Focus\\modules.ecf',
+    '06/30/2025 13:55:00\t49.01 KB\tD:\\FocusXPA\\Focus\\auctl.ecf',
+    // שורה בתת-תיקייה - חייבת להיות מסוננת החוצה (לא נספרת בכלל)
+    '01/07/2026 13:02:16\t1242.54 KB\tD:\\FocusXPA\\Focus\\tstver260126\\APCTL.ecf',
+  ].join('\r\n');
+
+  test('ייבוא ראשון: מזהה רכיבים משמות הקבצים (כולל מקרים מיוחדים), מתעלם מתת-תיקיות, לא יוצר יומן שינויים', async ({ page }) => {
+    const seed = { servers: { sv1: { id: 'sv1', name: 'srv1.dhl.com', desc: 'שרת א' } }, components: {}, values: {}, changeLog: [] };
+    const { serverComponents } = await mockFirebase(page, { serverComponents: seed });
+    await page.goto('/index.html');
+    await login(page, 'testadmin', 'pw');
+    await page.click('.tab[data-tab="6"]');
+    await expect(page.locator('#importServerSelect option', { hasText: 'שרת א' })).toHaveCount(1);
+
+    await page.selectOption('#importServerSelect', 'sv1');
+    await page.setInputFiles('#importFileInput', { name: 'filelist.txt', mimeType: 'text/plain', buffer: Buffer.from(fileV1, 'utf-8') });
+    page.once('dialog', d => d.accept());
+    await page.click('button[onclick="importServerFile()"]');
+    await page.waitForTimeout(300);
+
+    // AP, DH, Station זוהו נכון; auctl.ecf -> AU (קוד חדש, לא היה ברשימת ברירת המחדל)
+    expect(serverComponents.values.sv1.AP).toContain('1256.16 KB');
+    expect(serverComponents.values.sv1.DH).toContain('913.37 KB');
+    expect(serverComponents.values.sv1.Station).toContain('365.4 KB');
+    expect(serverComponents.values.sv1.AU).toContain('49.01 KB');
+    expect(serverComponents.components.AU).toBeTruthy();
+    // modules.ecf - לא תואם לתבנית XX+CTL, נשאר בשם המלא שלו
+    expect(serverComponents.values.sv1.modules).toContain('9.37 KB');
+    // שום שורה מתוך tstver260126 לא אמורה להשפיע - הערך של AP הוא רק מהשורש
+    expect(serverComponents.values.sv1.AP).toContain('05/27/2026');
+    expect(serverComponents.values.sv1.AP).not.toContain('01/07/2026');
+
+    // ייבוא ראשון - אין למה להשוות, אז לא נוצר יומן שינויים (מערך ריק - Firebase
+    // לא באמת שומר מערך ריק, לכן המפתח עצמו עשוי להיעדר לגמרי מהתגובה)
+    expect((serverComponents.changeLog || []).length).toBe(0);
+    await expect(page.locator('#changeLogWrap')).toContainText('אין עדיין שינויים');
+  });
+
+  test('ייבוא שני עם ערך שונה לאותו רכיב יוצר רשומת יומן, מודגש כחוסר-התאמה בטבלה אם יש עוד שרת, ואפשר לתעד הערה', async ({ page }) => {
+    const seed = {
+      servers: { sv1: { id: 'sv1', name: 'srv1.dhl.com', desc: 'שרת א' } },
+      components: { DH: { code: 'DH' } },
+      values: { sv1: { DH: '08/12/2026 09:33:05 (913.37 KB)' } },
+      changeLog: []
+    };
+    const { serverComponents } = await mockFirebase(page, { serverComponents: seed });
+    await page.goto('/index.html');
+    await login(page, 'testadmin', 'pw');
+    await page.click('.tab[data-tab="6"]');
+    await expect(page.locator('#serverGridWrap')).toContainText('שרת א');
+
+    const fileV2 = '09/01/2026 12:00:00\t950 KB\tD:\\FocusXPA\\Focus\\DHCTL.ecf';
+    await page.selectOption('#importServerSelect', 'sv1');
+    await page.setInputFiles('#importFileInput', { name: 'filelist2.txt', mimeType: 'text/plain', buffer: Buffer.from(fileV2, 'utf-8') });
+    page.once('dialog', d => d.accept());
+    await page.click('button[onclick="importServerFile()"]');
+    await page.waitForTimeout(300);
+
+    expect(serverComponents.changeLog.length).toBe(1);
+    expect(serverComponents.changeLog[0].code).toBe('DH');
+    expect(serverComponents.changeLog[0].oldValue).toContain('913.37 KB');
+    expect(serverComponents.changeLog[0].newValue).toContain('950 KB');
+
+    await expect(page.locator('#changeLogWrap')).toContainText('DH');
+    await expect(page.locator('#changeLogWrap')).toContainText('913.37 KB');
+    await expect(page.locator('#changeLogWrap')).toContainText('950 KB');
+
+    await page.fill('#changeLogWrap textarea', 'שדרוג גרסה בעקבות תיקון בממשק DCC');
+    await page.locator('#changeLogWrap textarea').dispatchEvent('change');
+    await page.waitForTimeout(200);
+    expect(serverComponents.changeLog[0].note).toBe('שדרוג גרסה בעקבות תיקון בממשק DCC');
+  });
+});
