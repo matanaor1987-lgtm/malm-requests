@@ -40,6 +40,7 @@ async function mockFirebase(page, initial) {
   const launchTasks = (initial && initial.launchTasks) || {};
   const devLists = (initial && initial.devLists) || {};
   const releases = (initial && initial.releases) || {};
+  const serverComponents = (initial && initial.serverComponents) || { servers: {}, components: {}, values: {} };
 
   await page.route('**/malm-focus-default-rtdb.firebaseio.com/**', async (route) => {
     const req = route.request();
@@ -86,6 +87,9 @@ async function mockFirebase(page, initial) {
       if (rm) {
         return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(releases[rm[1]] || null) });
       }
+      if (path === '/serverComponents.json') {
+        return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(serverComponents) });
+      }
       // כל השאר - אין לנו נתונים, מחזירים ריק
       return route.fulfill({ status: 200, contentType: 'application/json', body: 'null' });
     }
@@ -108,18 +112,23 @@ async function mockFirebase(page, initial) {
       else if (lm) launchTasks[lm[1]] = body;
       else if (path === '/devLists.json' && body) { Object.keys(devLists).forEach(k => delete devLists[k]); Object.assign(devLists, body); }
       else if (rm) releases[rm[1]] = body;
+      else if (path === '/serverComponents.json' && body) { Object.keys(serverComponents).forEach(k => delete serverComponents[k]); Object.assign(serverComponents, body); }
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
     }
 
     if (method === 'PATCH') {
       const m = path.match(/^\/sanity\/([^/]+)\.json$/);
       const dm = path.match(/^\/devTasksByUid\/([^/]+)\.json$/);
+      const svm = path.match(/^\/serverComponents\/values\/([^/]+)\.json$/);
       if (m) {
         let body; try { body = req.postDataJSON(); } catch (e) { body = {}; }
         sanity[m[1]] = Object.assign(sanity[m[1]] || {}, body);
       } else if (dm) {
         let body; try { body = req.postDataJSON(); } catch (e) { body = {}; }
         devTasksByUid[decodeURIComponent(dm[1])] = Object.assign(devTasksByUid[decodeURIComponent(dm[1])] || {}, body);
+      } else if (svm) {
+        let body; try { body = req.postDataJSON(); } catch (e) { body = {}; }
+        serverComponents.values[svm[1]] = Object.assign(serverComponents.values[svm[1]] || {}, body);
       }
       return route.fulfill({ status: 200, contentType: 'application/json', body: '{}' });
     }
@@ -139,7 +148,7 @@ async function mockFirebase(page, initial) {
   // (הקוד באפליקציה כבר מטפל במקרה ש-emailjs לא נטען).
   await page.route('**/cdn.jsdelivr.net/**', (route) => route.abort());
 
-  return { db, sanity, devTasksByUid, launchTasks, devLists, releases };
+  return { db, sanity, devTasksByUid, launchTasks, devLists, releases, serverComponents };
 }
 
 async function login(page, username, password) {

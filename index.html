@@ -183,6 +183,7 @@ tr:hover td{background:#fffbf0}
   <div class="tab" id="tabSanity" data-tab="4" onclick="switchTab(4)" style="display:none">✅ בדיקות שפיות <span id="sanityBadge" style="display:none;background:#D40511;color:#fff;border-radius:50%;padding:1px 6px;font-size:10px;font-weight:700;margin-right:4px"></span></div>
   <div class="tab" id="tabDev" data-tab="3" onclick="switchTab(3)" style="display:none">🛠️ פיתוחים ותיקונים לבדיקה</div>
   <div class="tab" id="tabLaunch" data-tab="5" onclick="switchTab(5)" style="display:none">🚀 משימות בעליה לאוויר</div>
+  <div class="tab" id="tabServers" data-tab="6" onclick="switchTab(6)" style="display:none">🖥️ שרתים</div>
 </div>
 
 <div class="pane" id="pane2" style="padding:14px 20px">
@@ -492,6 +493,7 @@ function showApp() {
     document.getElementById('tabDev').style.display = 'block';
     document.getElementById('tabSanity').style.display = 'block';
     document.getElementById('tabLaunch').style.display = 'block';
+    document.getElementById('tabServers').style.display = 'block';
     document.getElementById('btnAdd').style.display = 'block';
     document.getElementById('tab0').style.display = 'block';
     document.getElementById('malmSelCol').style.display = '';
@@ -1712,14 +1714,15 @@ function saveDeletedFlag(sheet, recId, deletedFlag){
 function switchTab(i) {
   currentTab = i;
   document.querySelectorAll('#mainTabs .tab').forEach(function(t){ t.classList.toggle('active', t.dataset.tab==i); });
-  ['pane0','pane1','pane2','pane3','pane4','pane5'].forEach(function(id){ var el=document.getElementById(id); if(el)el.classList.remove('active'); });
+  ['pane0','pane1','pane2','pane3','pane4','pane5','pane6'].forEach(function(id){ var el=document.getElementById(id); if(el)el.classList.remove('active'); });
   var target=document.getElementById('pane'+i); if(target)target.classList.add('active');
   var ba=document.getElementById('btnAdd');
-  if(ba){ ba.style.display=(i===2||i===3||i===4||i===5)?'none':'block'; if(i===0)ba.textContent='+ משימה חדשה (מלמ)'; if(i===1)ba.textContent='+ משימה חדשה (רבקה)'; }
+  if(ba){ ba.style.display=(i===2||i===3||i===4||i===5||i===6)?'none':'block'; if(i===0)ba.textContent='+ משימה חדשה (מלמ)'; if(i===1)ba.textContent='+ משימה חדשה (רבקה)'; }
   if(i===2)renderUsers();
   if(i===3){Promise.all([loadDevLists(),loadDevTasks()]).then(function(){renderDevTable();populateDevFilters();filterDevTable();});}
   if(i===4)loadSanityTab();
   if(i===5){loadLaunchTab().then(function(){renderLaunchTable();});}
+  if(i===6){loadServerData().then(function(){renderServerGrid();});}
 }
 
 // Auth events
@@ -3655,6 +3658,166 @@ async function dedupRecords(sheet) {
   if (sheet==='malm') r1(); else r2();
   alert('✅ סומנו ' + removedCount + ' כפילויות כמחוקות ב-' + sheet);
 }
+
+// ══════════════════════════════════════
+// שרתים ורכיבים (Focus) - השוואת גרסאות/ערכים בין שרתים
+// ══════════════════════════════════════
+// מודל הנתונים: servers (רשימת שרתים), components (רשימת קודי רכיב - כמו
+// שכבר מוכרים משדה "רכיב" בטאב פיתוחים ותיקונים), ו-values[serverId][code]
+// = הערך (למשל גרסה) שהוזן ידנית לאותו רכיב על אותו שרת. הכל מוחזק תחת נתיב
+// אחד ב-Firebase: /serverComponents.json.
+// מחיקה רכה לשרתים/רכיבים (כמו בכל שאר המערכת) - אף אחד לא נעלם, רק מסונן.
+var SERVERS = {};
+var COMPONENTS = {};
+var SERVER_VALUES = {};
+
+// רשימת ברירת המחדל שהתקבלה בפועל מהמשתמש - נטענת פעם אחת אם עדיין אין שום
+// שרת/רכיב שמור ב-Firebase (לא דורסת נתונים קיימים בשום מקרה).
+var DEFAULT_SERVERS = [
+  { name: 'czchowstc000991.prg-dc.dhl.com', desc: 'שרת טסט' },
+  { name: 'czchowstc002492.prg-dc.dhl.com', desc: 'RDP' },
+  { name: 'czchowspc001064.prg-dc.dhl.com', desc: 'אפליקציה1' },
+  { name: 'czchowspc001068.prg-dc.dhl.com', desc: 'אפליקציה 2' },
+  { name: 'czchowspc003311.prg-dc.dhl.com', desc: 'שרת סרטיפיקטים 1' },
+  { name: 'czchowstc002645.prg-dc.dhl.com', desc: 'שדרוגים+DB+עדכוני גרסה' }
+];
+var DEFAULT_COMPONENTS = ['AP','AT','BA','BC','CD','CK','DH','DP','EC','EX','FF','HG','HH','HT','HW','IG','ISO','KM','LZ','MA','MD','NE','NF','OP','PP','RB','RC','RD','Station','TB','TD','TF','TG','TW','WP','ZA'];
+
+async function loadServerData(){
+  try{
+    var r = await fetch('https://malm-focus-default-rtdb.firebaseio.com/serverComponents.json?t='+Date.now());
+    var data = await r.json();
+    SERVERS = (data && data.servers) || {};
+    COMPONENTS = (data && data.components) || {};
+    SERVER_VALUES = (data && data.values) || {};
+    if(Object.keys(SERVERS).length===0 && Object.keys(COMPONENTS).length===0){
+      await seedDefaultServerData();
+    }
+  }catch(e){ console.warn('loadServerData error:', e); }
+}
+
+// זריעה חד-פעמית - רק אם אין עדיין שום שרת/רכיב שמור (לא דורסת נתונים קיימים).
+async function seedDefaultServerData(){
+  DEFAULT_SERVERS.forEach(function(s){
+    var id = genId();
+    SERVERS[id] = { id:id, name:s.name, desc:s.desc };
+  });
+  DEFAULT_COMPONENTS.forEach(function(code){
+    COMPONENTS[code] = { code:code };
+  });
+  await saveServerData();
+}
+
+function saveServerData(){
+  return chainedWrite('serverComponents', async function(){
+    try{
+      await fetch('https://malm-focus-default-rtdb.firebaseio.com/serverComponents.json', {
+        method:'PUT', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ servers:SERVERS, components:COMPONENTS, values:SERVER_VALUES })
+      });
+    }catch(e){ console.warn('saveServerData failed:', e); }
+  });
+}
+
+function renderServerGrid(){
+  var wrap = document.getElementById('serverGridWrap');
+  if(!wrap) return;
+  var servers = Object.values(SERVERS).filter(function(s){ return !s.deleted; });
+  var components = Object.values(COMPONENTS).filter(function(c){ return !c.deleted; })
+    .sort(function(a,b){ return a.code.localeCompare(b.code,'he'); });
+
+  if(!servers.length){
+    wrap.innerHTML = '<div style="padding:30px;text-align:center;color:#aaa">אין עדיין שרתים מוגדרים — לחץ "+ הוסף שרת"</div>';
+    return;
+  }
+  if(!components.length){
+    wrap.innerHTML = '<div style="padding:30px;text-align:center;color:#aaa">אין עדיין רכיבים מוגדרים — לחץ "+ הוסף רכיבים"</div>';
+    return;
+  }
+
+  var head = '<tr style="background:#1a1a2e;color:#fff">'
+    + '<th style="padding:8px 10px;text-align:right;white-space:nowrap;position:sticky;right:0;background:#1a1a2e">רכיב</th>'
+    + servers.map(function(s){
+        return '<th style="padding:8px 10px;text-align:center;white-space:nowrap" title="'+esc(s.name)+'">'
+          + esc(s.desc||s.name)
+          + ' <button onclick="deleteServer(\''+s.id+'\')" title="הסר שרת" style="background:none;border:none;color:#ffb3b3;cursor:pointer;font-size:11px">✕</button></th>';
+      }).join('')
+    + '</tr>';
+
+  var rows = components.map(function(c, i){
+    var vals = servers.map(function(s){ return (SERVER_VALUES[s.id]||{})[c.code] || ''; });
+    var distinct = Array.from(new Set(vals.filter(Boolean)));
+    var mismatch = distinct.length > 1;
+    var bg = mismatch ? '#fdecea' : (i%2 ? '#f9f9f9' : '#fff');
+    return '<tr style="background:'+bg+'">'
+      + '<td style="padding:6px 10px;border-bottom:1px solid #eee;font-weight:700;white-space:nowrap;position:sticky;right:0;background:'+bg+'">'
+        + (mismatch?'⚠️ ':'') + esc(c.code)
+        + ' <button onclick="deleteComponent(\''+esc(c.code)+'\')" title="הסר רכיב" style="background:none;border:none;color:#c62828;cursor:pointer;font-size:10px">✕</button>'
+      + '</td>'
+      + servers.map(function(s){
+          var v = (SERVER_VALUES[s.id]||{})[c.code] || '';
+          return '<td style="padding:4px 6px;border-bottom:1px solid #eee;text-align:center">'
+            + '<input value="'+esc(v)+'" onchange="updateServerValue(\''+s.id+'\',\''+esc(c.code)+'\',this.value)" style="width:90px;padding:4px 6px;border:1px solid #ddd;border-radius:4px;font-size:12px;font-family:Arial;text-align:center;direction:ltr">'
+          + '</td>';
+        }).join('')
+      + '</tr>';
+  }).join('');
+
+  wrap.innerHTML = '<table style="border-collapse:collapse;font-size:12px;min-width:100%">'
+    + '<thead>'+head+'</thead><tbody>'+rows+'</tbody></table>';
+}
+
+function updateServerValue(serverId, code, val){
+  if(!SERVER_VALUES[serverId]) SERVER_VALUES[serverId] = {};
+  SERVER_VALUES[serverId][code] = val;
+  chainedWrite('serverComponents', async function(){
+    try{
+      await fetch('https://malm-focus-default-rtdb.firebaseio.com/serverComponents/values/'+serverId+'.json', {
+        method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ [code]: val })
+      });
+    }catch(e){ console.warn('updateServerValue failed:', e); }
+  });
+  renderServerGrid();
+}
+
+function openAddServer(){
+  var name = prompt('שם שרת (hostname):');
+  if(!name || !name.trim()) return;
+  var desc = prompt('תיאור השרת (למשל: "אפליקציה 1"):') || '';
+  var id = genId();
+  SERVERS[id] = { id:id, name:name.trim(), desc:desc.trim() };
+  saveServerData();
+  renderServerGrid();
+}
+
+function deleteServer(id){
+  var s = SERVERS[id];
+  if(!s) return;
+  if(!confirm('להסיר את "'+(s.desc||s.name)+'" מהטבלה? (מחיקה רכה - ניתן לשחזר מה-DB במידת הצורך)')) return;
+  s.deleted = true;
+  saveServerData();
+  renderServerGrid();
+}
+
+function openAddComponents(){
+  var input = prompt('קודי רכיב להוספה (מופרדים בפסיק, למשל: DH, FF, NE):');
+  if(!input || !input.trim()) return;
+  input.split(',').map(function(s){ return s.trim().toUpperCase(); }).filter(Boolean).forEach(function(code){
+    if(!COMPONENTS[code]) COMPONENTS[code] = { code:code };
+    else COMPONENTS[code].deleted = false; // אם הוסר בעבר - הוספה חוזרת "משחזרת" אותו
+  });
+  saveServerData();
+  renderServerGrid();
+}
+
+function deleteComponent(code){
+  var c = COMPONENTS[code];
+  if(!c) return;
+  if(!confirm('להסיר את הרכיב "'+code+'" מהטבלה? (מחיקה רכה - ניתן לשחזר מה-DB במידת הצורך)')) return;
+  c.deleted = true;
+  saveServerData();
+  renderServerGrid();
+}
 </script>
 
 <div class="pane" id="pane3" style="padding:14px 20px">
@@ -3905,6 +4068,20 @@ async function dedupRecords(sheet) {
       </div>
     </div>
   </div>
+</div>
+
+<div class="pane" id="pane6" style="padding:14px 20px;direction:rtl">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:10px">
+    <div style="font-size:16px;font-weight:700;color:#1a1a2e">🖥️ שרתים — השוואת רכיבים בין שרתי Focus</div>
+    <div style="display:flex;gap:8px">
+      <button onclick="openAddServer()" style="background:#1565c0;color:#fff;border:none;border-radius:6px;padding:8px 16px;cursor:pointer;font-size:13px;font-weight:700;font-family:Arial">+ הוסף שרת</button>
+      <button onclick="openAddComponents()" style="background:#D40511;color:#fff;border:none;border-radius:6px;padding:8px 16px;cursor:pointer;font-size:13px;font-weight:700;font-family:Arial">+ הוסף רכיבים</button>
+    </div>
+  </div>
+  <div style="font-size:12px;color:#666;margin-bottom:12px;line-height:1.6">
+    שורה עם ⚠️ ורקע ורוד - יש לרכיב הזה יותר מערך אחד שונה בין השרתים. הזנה ידנית של ערכים (למשל מספר גרסה) בכל תא.
+  </div>
+  <div id="serverGridWrap" style="overflow-x:auto;border:1px solid #eee;border-radius:8px"></div>
 </div>
 
 <!-- RELEASE MANAGER MODAL (top-level, so it's visible from any tab) -->

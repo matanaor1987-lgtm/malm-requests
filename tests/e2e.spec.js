@@ -2013,3 +2013,86 @@ test.describe('תוכן מיילים למנהלים - כותרת מזהה שלע
     expect(result.details).toContain('תוכן הבקשה המלא');
   });
 });
+
+test.describe('שרתים - השוואת רכיבים בין שרתי Focus', () => {
+  test('אדמין רואה את הטאב, ורשימת ברירת המחדל (שרתים+רכיבים) נזרעת אוטומטית בפעם הראשונה', async ({ page }) => {
+    const { serverComponents } = await mockFirebase(page, {});
+    await page.goto('/index.html');
+    await login(page, 'testadmin', 'pw');
+    await expect(page.locator('#tabServers')).toBeVisible();
+    await page.click('.tab[data-tab="6"]');
+
+    await expect(page.locator('#serverGridWrap')).toContainText('אפליקציה1');
+    await expect(page.locator('#serverGridWrap')).toContainText('DH');
+    expect(Object.keys(serverComponents.servers).length).toBe(6);
+    expect(Object.keys(serverComponents.components).length).toBe(36);
+  });
+
+  test('מנהל (לא אדמין) לא רואה את הטאב', async ({ page }) => {
+    await mockFirebase(page, {});
+    await page.goto('/index.html');
+    await login(page, 'testmgr', 'pw');
+    await expect(page.locator('#tabServers')).toBeHidden();
+  });
+
+  test('עריכת ערך בתא נשמרת ומתמידה; ערכים שונים לאותו רכיב בין שרתים מסומנים כ"לא תואם"', async ({ page }) => {
+    const seed = {
+      servers: { sv1: { id: 'sv1', name: 'srv1.dhl.com', desc: 'שרת א' }, sv2: { id: 'sv2', name: 'srv2.dhl.com', desc: 'שרת ב' } },
+      components: { DH: { code: 'DH' }, FF: { code: 'FF' } },
+      values: {}
+    };
+    const { serverComponents } = await mockFirebase(page, { serverComponents: seed });
+    await page.goto('/index.html');
+    await login(page, 'testadmin', 'pw');
+    await page.click('.tab[data-tab="6"]');
+    await expect(page.locator('#serverGridWrap')).toContainText('שרת א');
+
+    const dhRow = page.locator('#serverGridWrap tr', { hasText: 'DH' });
+    await dhRow.locator('input').nth(0).fill('5.1558');
+    await dhRow.locator('input').nth(0).dispatchEvent('change');
+    await page.waitForTimeout(200);
+    expect(serverComponents.values.sv1.DH).toBe('5.1558');
+
+    // עדיין תואם (רק ערך אחד הוזן) - אין אזהרה
+    await expect(dhRow).not.toContainText('⚠️');
+
+    await dhRow.locator('input').nth(1).fill('5.1557');
+    await dhRow.locator('input').nth(1).dispatchEvent('change');
+    await page.waitForTimeout(200);
+    await expect(dhRow).toContainText('⚠️'); // שני ערכים שונים לאותו רכיב - אזהרת חוסר התאמה
+
+    // ה-FF לא נגעו בו - עדיין ללא אזהרה
+    const ffRow = page.locator('#serverGridWrap tr', { hasText: 'FF' });
+    await expect(ffRow).not.toContainText('⚠️');
+  });
+
+  test('אפשר להוסיף שרת חדש ולהסיר (מחיקה רכה) רכיב קיים', async ({ page }) => {
+    const seed = {
+      servers: { sv1: { id: 'sv1', name: 'srv1.dhl.com', desc: 'שרת א' } },
+      components: { DH: { code: 'DH' } },
+      values: {}
+    };
+    const { serverComponents } = await mockFirebase(page, { serverComponents: seed });
+    await page.goto('/index.html');
+    await login(page, 'testadmin', 'pw');
+    await page.click('.tab[data-tab="6"]');
+    await expect(page.locator('#serverGridWrap')).toContainText('שרת א');
+
+    // openAddServer() פותח שני prompt() ברצף (hostname ואז תיאור) - צריך handler
+    // מתמיד שעונה לכל דיאלוג לפי סדר, כי אין הזדמנות לרשום page.once בין השניים
+    const answers = ['srv2.dhl.com', 'שרת חדש'];
+    let dialogIdx = 0;
+    page.on('dialog', d => { d.accept(answers[dialogIdx] || ''); dialogIdx++; });
+    await page.click('button[onclick="openAddServer()"]');
+    await page.waitForTimeout(200);
+    await expect(page.locator('#serverGridWrap')).toContainText('שרת חדש');
+    expect(Object.keys(serverComponents.servers).length).toBe(2);
+
+    // אותו handler מתמיד עדיין רשום ומקבל כל דיאלוג נוסף (כולל ה-confirm() כאן)
+    await page.click('button[onclick="deleteComponent(\'DH\')"]');
+    await page.waitForTimeout(200);
+    await expect(page.locator('#serverGridWrap')).not.toContainText('DH');
+    // מחיקה רכה - הרכיב נשאר ב-DB, רק מסומן ומסונן מהתצוגה
+    expect(serverComponents.components.DH.deleted).toBe(true);
+  });
+});
