@@ -2156,6 +2156,75 @@ test.describe('שרתים - השוואת רכיבים בין שרתי Focus', ()
     await expect(svBHeaderNow.locator('button[title="הזז ימינה"]')).toBeDisabled();
     await expect(svAHeaderNow.locator('button[title="הזז שמאלה"]')).toBeDisabled();
   });
+
+  test('כותרת הטבלה ועמודת הרכיב קפואות (position:sticky) בתוך פאנל שבאמת גולל בעצמו, כמו הקפאת חלוניות באקסל', async ({ page }) => {
+    const seed = {
+      servers: { sv1: { id: 'sv1', name: 'srv1.dhl.com', desc: 'שרת א' } },
+      components: { DH: { code: 'DH' } },
+      values: {}
+    };
+    await mockFirebase(page, { serverComponents: seed });
+    await page.goto('/index.html');
+    await login(page, 'testadmin', 'pw');
+    await page.click('.tab[data-tab="6"]');
+    await expect(page.locator('#serverGridWrap')).toContainText('שרת א');
+
+    // #serverGridWrap עצמו חייב להיות פאנל עם גובה מוגבל וגלילה אמיתית -
+    // בלי זה position:sticky על הכותרת לא נצמד לכלום בפועל (התיבה לעולם לא
+    // גוללת בתוך עצמה, אז אין למה "להידבק" בזמן גלילת הדף)
+    const wrapStyle = await page.locator('#serverGridWrap').evaluate(el => {
+      const cs = getComputedStyle(el);
+      return { overflowY: cs.overflowY, maxHeight: cs.maxHeight };
+    });
+    expect(['auto', 'scroll']).toContain(wrapStyle.overflowY);
+    expect(wrapStyle.maxHeight).not.toBe('none');
+
+    // פינת "רכיב" קפואה גם למעלה וגם בצד (top+right)
+    const cornerPos = await page.locator('#serverGridWrap thead th').first().evaluate(el => {
+      const cs = getComputedStyle(el);
+      return { position: cs.position, top: cs.top, right: cs.right };
+    });
+    expect(cornerPos.position).toBe('sticky');
+    expect(cornerPos.top).toBe('0px');
+    expect(cornerPos.right).toBe('0px');
+
+    // כותרת השרת קפואה למעלה
+    const serverPos = await page.locator('#serverGridWrap thead th').nth(1).evaluate(el => getComputedStyle(el).position);
+    expect(serverPos).toBe('sticky');
+  });
+
+  test('תא עם גודל שונה מהגודל השכיח מודגש בצבע אדום; תאים שתואמים לגודל השכיח נשארים ניטרליים', async ({ page }) => {
+    const seed = {
+      servers: {
+        sv1: { id: 'sv1', name: 'srv1.dhl.com', desc: 'שרת א' },
+        sv2: { id: 'sv2', name: 'srv2.dhl.com', desc: 'שרת ב' },
+        sv3: { id: 'sv3', name: 'srv3.dhl.com', desc: 'שרת ג' }
+      },
+      components: { DH: { code: 'DH' } },
+      values: {
+        sv1: { DH: '08/12/2026 09:33:05 (913.37 KB)' },
+        sv2: { DH: '08/12/2026 09:33:05 (913.37 KB)' },
+        sv3: { DH: '09/12/2026 10:00:00 (920 KB)' }
+      },
+      order: ['sv1', 'sv2', 'sv3']
+    };
+    await mockFirebase(page, { serverComponents: seed });
+    await page.goto('/index.html');
+    await login(page, 'testadmin', 'pw');
+    await page.click('.tab[data-tab="6"]');
+
+    const dhRow = page.locator('#serverGridWrap tr', { hasText: 'DH' });
+    await expect(dhRow).toContainText('⚠️');
+
+    const cells = dhRow.locator('td');
+    // cells: [0]=תווית הרכיב DH, [1]=שרת א (הגודל השכיח - 913.37), [2]=שרת ב (גם 913.37), [3]=שרת ג (הבודד - 920, מודגש)
+    const sv1Html = await cells.nth(1).innerHTML();
+    const sv2Html = await cells.nth(2).innerHTML();
+    const sv3Html = await cells.nth(3).innerHTML();
+    expect(sv1Html).not.toContain('fde8e8');
+    expect(sv2Html).not.toContain('fde8e8');
+    expect(sv3Html).toContain('fde8e8');
+  });
 });
 
 test.describe('ייבוא רשימת קבצים (.ecf) משרת - זיהוי גרסאות ושינויים אוטומטי', () => {

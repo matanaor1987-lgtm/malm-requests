@@ -3819,16 +3819,27 @@ function renderServerGrid(){
     return;
   }
 
+  // colgroup - עמודת הרכיב ברוחב קבוע, עמודות השרתים מתחלקות שווה בשווה
+  // ביתרת הרוחב (table-layout:fixed) - כך הטבלה תופסת בדיוק את הרוחב הפנוי
+  // בלי רווחים גדולים מיותרים בין העמודות ובלי לגלוש מעבר לתיבה.
+  var colgroup = '<colgroup><col style="width:110px">' + servers.map(function(){ return '<col>'; }).join('') + '</colgroup>';
+
+  // שורת הכותרת "קפואה" (position:sticky;top:0) יחד עם #serverGridWrap שמוגבל
+  // בגובה וגולל בפועל (overflow:auto;max-height) - זה מה שמאפשר לה להישאר
+  // צמודה למעלה בזמן גלילה, כמו הקפאת חלוניות באקסל. פינת "רכיב" קפואה גם
+  // למעלה וגם בצד (top+right) כדי שתישאר קבועה בשני הכיוונים.
   var head = '<tr style="background:#1a1a2e;color:#fff">'
-    + '<th style="padding:8px 10px;text-align:right;white-space:nowrap;position:sticky;right:0;background:#1a1a2e">רכיב</th>'
+    + '<th style="padding:8px 10px;text-align:right;white-space:nowrap;position:sticky;top:0;right:0;z-index:3;background:#1a1a2e;border-bottom:2px solid #0d0d1a">רכיב</th>'
     + servers.map(function(s, i){
         var atRight = i===0, atLeft = i===servers.length-1;
-        return '<th style="padding:8px 10px;text-align:center;white-space:nowrap" title="'+esc(s.name)+'">'
-          + '<button onclick="moveServerColumn(\''+s.id+'\',-1)" title="הזז ימינה"'+(atRight?' disabled':'')+' style="background:none;border:none;color:'+(atRight?'#555':'#b3d9ff')+';cursor:'+(atRight?'default':'pointer')+';font-size:11px">▶</button>'
-          + esc(s.desc||s.name)
-          + ' <button onclick="openEditServer(\''+s.id+'\')" title="ערוך שם/תיאור שרת" style="background:none;border:none;color:#b3d9ff;cursor:pointer;font-size:11px">✏️</button>'
-          + '<button onclick="deleteServer(\''+s.id+'\')" title="הסר שרת" style="background:none;border:none;color:#ffb3b3;cursor:pointer;font-size:11px">✕</button>'
-          + '<button onclick="moveServerColumn(\''+s.id+'\',1)" title="הזז שמאלה"'+(atLeft?' disabled':'')+' style="background:none;border:none;color:'+(atLeft?'#555':'#b3d9ff')+';cursor:'+(atLeft?'default':'pointer')+';font-size:11px">◀</button>'
+        return '<th style="padding:8px 6px;text-align:center;position:sticky;top:0;z-index:2;background:#1a1a2e;border-bottom:2px solid #0d0d1a" title="'+esc(s.name)+'">'
+          + '<div style="font-size:12.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(s.desc||s.name)+'</div>'
+          + '<div style="display:flex;justify-content:center;gap:1px;margin-top:2px">'
+            + '<button onclick="moveServerColumn(\''+s.id+'\',-1)" title="הזז ימינה"'+(atRight?' disabled':'')+' style="background:none;border:none;color:'+(atRight?'#555':'#b3d9ff')+';cursor:'+(atRight?'default':'pointer')+';font-size:11px;padding:2px">▶</button>'
+            + '<button onclick="openEditServer(\''+s.id+'\')" title="ערוך שם/תיאור שרת" style="background:none;border:none;color:#b3d9ff;cursor:pointer;font-size:11px;padding:2px">✏️</button>'
+            + '<button onclick="deleteServer(\''+s.id+'\')" title="הסר שרת" style="background:none;border:none;color:#ffb3b3;cursor:pointer;font-size:11px;padding:2px">✕</button>'
+            + '<button onclick="moveServerColumn(\''+s.id+'\',1)" title="הזז שמאלה"'+(atLeft?' disabled':'')+' style="background:none;border:none;color:'+(atLeft?'#555':'#b3d9ff')+';cursor:'+(atLeft?'default':'pointer')+';font-size:11px;padding:2px">◀</button>'
+          + '</div>'
         + '</th>';
       }).join('')
     + '</tr>';
@@ -3838,27 +3849,49 @@ function renderServerGrid(){
     // תאריך/שעה שונים אבל אותו גודל בפועל לא מסומנים כ-⚠️ (זה יכול לקרות
     // מהעתקה/סנכרון בלי שינוי תוכן אמיתי).
     var sizes = servers.map(function(s){ return parseServerValue((SERVER_VALUES[s.id]||{})[c.code]||'').size; });
-    var distinctSizes = Array.from(new Set(sizes.filter(Boolean)));
+    var nonEmptySizes = sizes.filter(Boolean);
+    var distinctSizes = Array.from(new Set(nonEmptySizes));
     var mismatch = distinctSizes.length > 1;
-    var bg = mismatch ? '#fdecea' : (i%2 ? '#f9f9f9' : '#fff');
+    // הגודל השכיח ביותר בין השרתים - כל תא עם גודל שונה ממנו מודגש בצבע, כדי
+    // שיהיה ברור מיד *איזה* שרת סוטה, לא רק שיש הבדל כלשהו בשורה.
+    var majoritySize = null;
+    if(mismatch){
+      var counts = {};
+      nonEmptySizes.forEach(function(sz){ counts[sz] = (counts[sz]||0)+1; });
+      var best = -1;
+      distinctSizes.forEach(function(sz){ if(counts[sz]>best){ best = counts[sz]; majoritySize = sz; } });
+    }
+    var bg = mismatch ? '#fff7f5' : (i%2 ? '#f9f9f9' : '#fff');
     return '<tr style="background:'+bg+'">'
-      + '<td style="padding:6px 10px;border-bottom:1px solid #eee;font-weight:700;white-space:nowrap;position:sticky;right:0;background:'+bg+'">'
+      + '<td style="padding:6px 10px;border-bottom:1px solid #eee;font-weight:700;white-space:nowrap;position:sticky;right:0;z-index:1;background:'+bg+'">'
         + (mismatch?'⚠️ ':'') + esc(c.code)
         + ' <button onclick="deleteComponent(\''+esc(c.code)+'\')" title="הסר רכיב" style="background:none;border:none;color:#c62828;cursor:pointer;font-size:10px">✕</button>'
       + '</td>'
       + servers.map(function(s){
           var v = (SERVER_VALUES[s.id]||{})[c.code] || '';
           var d = parseServerValue(v);
-          return '<td onclick="openEditServerValue(\''+s.id+'\',\''+esc(c.code)+'\')" title="לחץ לעריכה ידנית" style="padding:4px 8px;border-bottom:1px solid #eee;text-align:center;cursor:pointer;min-width:100px">'
-            + (d.size ? '<div style="font-weight:700;font-size:13px;direction:ltr">'+esc(d.size)+'</div>' : '<div style="color:#bbb;font-size:12px">—</div>')
-            + (d.dateTime ? '<div style="font-size:10px;color:#888;direction:ltr">'+esc(d.dateTime)+'</div>' : '')
+          var isOutlier = mismatch && d.size && d.size!==majoritySize;
+          var valueHtml;
+          if(!d.size){
+            valueHtml = '<span style="color:#c7cbd3;font-size:12px">–</span>';
+          }else if(isOutlier){
+            valueHtml = '<div style="background:#fde8e8;border-right:3px solid #c62828;border-radius:4px;padding:3px 7px;display:inline-block">'
+              + '<div style="font-weight:800;font-size:13px;color:#c62828;direction:ltr">'+esc(d.size)+'</div>'
+              + (d.dateTime ? '<div style="font-size:10px;color:#c62828;direction:ltr;opacity:.85">'+esc(d.dateTime)+'</div>' : '')
+            + '</div>';
+          }else{
+            valueHtml = '<div style="font-weight:700;font-size:13px;direction:ltr">'+esc(d.size)+'</div>'
+              + (d.dateTime ? '<div style="font-size:10px;color:#888;direction:ltr">'+esc(d.dateTime)+'</div>' : '');
+          }
+          return '<td onclick="openEditServerValue(\''+s.id+'\',\''+esc(c.code)+'\')" title="לחץ לעריכה ידנית" style="padding:6px 6px;border-bottom:1px solid #eee;text-align:center;cursor:pointer">'
+            + valueHtml
           + '</td>';
         }).join('')
       + '</tr>';
   }).join('');
 
-  wrap.innerHTML = '<table style="border-collapse:collapse;font-size:12px;min-width:100%">'
-    + '<thead>'+head+'</thead><tbody>'+rows+'</tbody></table>';
+  wrap.innerHTML = '<table style="border-collapse:separate;border-spacing:0;font-size:12px;width:100%;table-layout:fixed">'
+    + colgroup + '<thead>'+head+'</thead><tbody>'+rows+'</tbody></table>';
 }
 
 function openEditServerValue(serverId, code){
@@ -4336,7 +4369,7 @@ function updateChangeLogNote(id, note){
     <div style="font-size:11px;color:#999;margin-top:8px">מזהה רכיב אוטומטית מכל שם קובץ (למשל DHCTL.ecf → DH), ומתעלם מקבצים בתת-תיקיות. אפשר לייבא שוב באותו אופן בכל פעם שרוצים לבדוק מה השתנה.</div>
   </div>
 
-  <div id="serverGridWrap" style="overflow-x:auto;border:1px solid #eee;border-radius:8px"></div>
+  <div id="serverGridWrap" style="overflow:auto;max-height:600px;border:1px solid #eee;border-radius:8px"></div>
 
   <div style="margin-top:22px">
     <div style="font-size:14px;font-weight:700;color:#1a1a2e;margin-bottom:10px">🕒 יומן שינויים - תיעוד מהות התיקון</div>
