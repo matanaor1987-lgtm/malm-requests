@@ -4047,32 +4047,147 @@ function parseEcfFileList(text){
   return result;
 }
 
+// מזהה שרת לפי שם המחשב (env:COMPUTERNAME) שמוטמע בשם הקובץ ע"י הסקריפט
+// המעודכן (filelist_<שם מחשב>_<תאריך_שעה>.txt). שם המחשב לרוב מייצג רק את
+// התווית הראשונה ב-FQDN של השרת (למשל "CZCHOWSPC001064" מול
+// "czchowspc001064.prg-dc.dhl.com") - לכן ההשוואה היא גם מול התווית
+// הראשונה וגם מול השם המלא, לא תלויית רישיות.
+function matchServerByComputerName(computerName){
+  var target = (computerName||'').trim().toLowerCase();
+  if(!target) return null;
+  var candidates = orderedServers();
+  for(var i=0;i<candidates.length;i++){
+    var s = candidates[i];
+    var name = (s.name||'').trim().toLowerCase();
+    if(!name) continue;
+    var shortName = name.split('.')[0];
+    if(shortName===target || name===target) return s;
+  }
+  return null;
+}
+
+// מחיל תוצאה מפורסרת (מ-parseEcfFileList) על שרת נתון: מוסיף רכיבים חדשים
+// שזוהו, מעדכן את SERVER_VALUES ובונה רשומות יומן שינויים. לא שומר בפועל -
+// saveServerData נקרא בנפרד פעם אחת אחרי שכל קבצי הבאץ' הוחלו, כדי שייבוא
+// של כמה שרתים יחד יתבצע בכתיבה אחת מאומתת במקום כתיבה נפרדת לכל קובץ.
+function applyParsedServerImport(server, parsed){
+  var codes = Object.keys(parsed);
+  var prevValues = SERVER_VALUES[server.id] || {};
+  var serverName = server.desc || server.name || '';
+  var changedCount = 0;
+  codes.forEach(function(code){
+    if(!COMPONENTS[code]) COMPONENTS[code] = { code: code };
+    var oldVal = prevValues[code] || '';
+    var newVal = parsed[code];
+    if(oldVal && oldVal!==newVal){
+      CHANGE_LOG.unshift({ id: genId(), serverId: server.id, serverName: serverName, code: code, oldValue: oldVal, newValue: newVal, importedAt: new Date().toISOString(), note: '' });
+      changedCount++;
+    }
+  });
+  SERVER_VALUES[server.id] = Object.assign({}, prevValues, parsed);
+  return { codes: codes, changedCount: changedCount };
+}
+
+var BATCH_FILENAME_RE = /^filelist_(.+)_\d{8}_\d{6}\.txt$/i;
+
+// ייבוא בבת אחת של כמה קבצים (אחד לכל שרת) - לכל קובץ מזוהה השרת המתאים
+// אוטומטית לפי שם המחשב בשם הקובץ, בלי לבחור שרת ידנית. קובץ שלא תואם
+// (שם לא בפורמט הצפוי, או שאין שרת תואם) מדווח עם שגיאה מפורטת, בלי לעצור
+// את הייבוא של שאר הקבצים בבאץ'.
+async function importServerFilesBatch(){
+  var fileInput = document.getElementById('importBatchFileInput');
+  var files = Array.from(fileInput.files||[]);
+  if(!files.length){ alert('יש לבחור קבצים לייבוא'); return; }
+
+  var results = [];
+  var anyMatched = false;
+
+  for(var i=0;i<files.length;i++){
+    var file = files[i];
+    var fname = file.name;
+    var m = fname.match(BATCH_FILENAME_RE);
+    if(!m){
+      results.push({ fileName: fname, ok: false, message: 'שם הקובץ לא תואם לפורמט הצפוי (filelist_<שם מחשב>_<תאריך>_<שעה>.txt)' });
+      continue;
+    }
+    var computerName = m[1];
+    var server = matchServerByComputerName(computerName);
+    if(!server){
+      results.push({ fileName: fname, ok: false, message: 'לא נמצא שרת תואם לשם המחשב "'+computerName+'" - יש להוסיף אותו (+ הוסף שרת) או לוודא ששם השרת הקיים תואם' });
+      continue;
+    }
+    var text;
+    try{ text = await file.text(); }catch(e){
+      results.push({ fileName: fname, ok: false, message: 'שגיאה בקריאת הקובץ: '+e.message });
+      continue;
+    }
+    var parsed = parseEcfFileList(text);
+    if(!Object.keys(parsed).length){
+      results.push({ fileName: fname, ok: false, message: 'לא נמצאו שורות תקינות בקובץ (שרת: '+(server.desc||server.name)+')' });
+      continue;
+    }
+    var applied = applyParsedServerImport(server, parsed);
+    anyMatched = true;
+    results.push({
+      fileName: fname, ok: true, pending: true,
+      message: 'שרת "'+(server.desc||server.name)+'" - '+applied.codes.length+' רכיבים'+(applied.changedCount ? (', '+applied.changedCount+' שינויים תועדו') : '')
+    });
+  }
+
+  if(anyMatched){
+    var btn = document.querySelector('button[onclick="importServerFilesBatch()"]');
+    if(btn) btn.disabled = true;
+    var ok = await saveServerData();
+    if(btn) btn.disabled = false;
+    if(!ok){
+      results.forEach(function(r){
+        if(r.pending){ r.ok = false; r.message = 'השמירה נכשלה בפועל - נסו לייבא שוב (פירוט: '+r.message+')'; delete r.pending; }
+      });
+      renderBatchImportResults(results);
+      return; // saveServerData כבר הציג את השגיאה ב-#savingMsg
+    }
+  }
+
+  results.forEach(function(r){ delete r.pending; });
+  fileInput.value = '';
+  renderServerGrid();
+  renderChangeLog();
+  renderBatchImportResults(results);
+}
+
+function renderBatchImportResults(results){
+  var wrap = document.getElementById('batchImportResults');
+  if(!wrap) return;
+  if(!results || !results.length){ wrap.innerHTML = ''; return; }
+  var okCount = results.filter(function(r){ return r.ok; }).length;
+  var failCount = results.length - okCount;
+  wrap.innerHTML = '<div style="margin-top:10px;font-size:11.5px;color:#444;font-weight:700">'
+      + okCount + ' קבצים עודכנו בהצלחה' + (failCount ? (', ' + failCount + ' עם שגיאה') : '') + ':'
+    + '</div>'
+    + '<div style="margin-top:5px;display:flex;flex-direction:column;gap:4px">'
+    + results.map(function(r){
+        return '<div style="font-size:11.5px;padding:5px 8px;border-radius:6px;background:'+(r.ok?'#e8f5ea':'#fdecea')+';color:'+(r.ok?'#2e7d32':'#c62828')+'">'
+          + (r.ok?'✅ ':'❌ ') + '<b>'+esc(r.fileName)+'</b> — ' + esc(r.message)
+        + '</div>';
+      }).join('')
+    + '</div>';
+}
+
 async function importServerFile(){
   var serverId = document.getElementById('importServerSelect').value;
   var fileInput = document.getElementById('importFileInput');
   if(!serverId){ alert('יש לבחור שרת לייבוא'); return; }
   var file = fileInput.files[0];
   if(!file){ alert('יש לבחור קובץ לייבוא'); return; }
+  var server = SERVERS[serverId];
+  if(!server){ alert('השרת שנבחר לא נמצא'); return; }
 
   var text;
   try{ text = await file.text(); }catch(e){ alert('שגיאה בקריאת הקובץ: '+e.message); return; }
   var parsed = parseEcfFileList(text);
-  var codes = Object.keys(parsed);
-  if(!codes.length){ alert('לא נמצאו שורות תקינות בקובץ - ודא/י שזה הפלט המקורי של הסקריפט (תאריך, גודל ונתיב לכל שורה)'); return; }
+  if(!Object.keys(parsed).length){ alert('לא נמצאו שורות תקינות בקובץ - ודא/י שזה הפלט המקורי של הסקריפט (תאריך, גודל ונתיב לכל שורה)'); return; }
 
-  var prevValues = SERVER_VALUES[serverId] || {};
-  var serverName = (SERVERS[serverId]||{}).desc || (SERVERS[serverId]||{}).name || '';
-  var changedCount = 0;
-  codes.forEach(function(code){
-    if(!COMPONENTS[code]) COMPONENTS[code] = { code: code }; // רכיב חדש שזוהה בקובץ - נוסף אוטומטית
-    var oldVal = prevValues[code] || '';
-    var newVal = parsed[code];
-    if(oldVal && oldVal!==newVal){
-      CHANGE_LOG.unshift({ id: genId(), serverId: serverId, serverName: serverName, code: code, oldValue: oldVal, newValue: newVal, importedAt: new Date().toISOString(), note: '' });
-      changedCount++;
-    }
-  });
-  SERVER_VALUES[serverId] = Object.assign({}, prevValues, parsed);
+  var applied = applyParsedServerImport(server, parsed);
 
   var importBtn = document.querySelector('button[onclick="importServerFile()"]');
   if(importBtn) importBtn.disabled = true;
@@ -4083,7 +4198,7 @@ async function importServerFile(){
   fileInput.value = '';
   renderServerGrid();
   renderChangeLog();
-  alert('✅ יובאו ' + codes.length + ' רכיבים עבור ' + serverName + '.' + (changedCount ? ' זוהו ' + changedCount + ' שינויים לעומת הייבוא הקודם - ראה/י ביומן השינויים.' : ' אין שינויים לעומת הייבוא הקודם.'));
+  alert('✅ יובאו ' + applied.codes.length + ' רכיבים עבור ' + (server.desc||server.name) + '.' + (applied.changedCount ? ' זוהו ' + applied.changedCount + ' שינויים לעומת הייבוא הקודם - ראה/י ביומן השינויים.' : ' אין שינויים לעומת הייבוא הקודם.'));
 }
 
 // יומן שינויים - כל רשומה היא שינוי שזוהה בייבוא (ערך ישן -> חדש), עם שדה
@@ -4376,8 +4491,18 @@ function updateChangeLogNote(id, note){
     שורה עם ⚠️ ורקע ורוד - יש לרכיב הזה יותר מערך אחד שונה בין השרתים. אפשר להזין ערך ידנית בכל תא, או לייבא קובץ שלם לשרת מלמטה.
   </div>
 
+  <div style="background:#eef7ef;border:1px solid #cde9d1;border-radius:8px;padding:14px 16px;margin-bottom:12px">
+    <div style="font-size:13px;font-weight:700;color:#1a1a2e;margin-bottom:8px">📥 ייבוא בבת אחת מכל השרתים (פלט הסקריפט המעודכן: filelist_&lt;שם מחשב&gt;_&lt;תאריך_שעה&gt;.txt)</div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+      <input type="file" id="importBatchFileInput" accept=".txt" multiple style="font-size:12px">
+      <button onclick="importServerFilesBatch()" style="background:#2e7d32;color:#fff;border:none;border-radius:6px;padding:7px 16px;cursor:pointer;font-size:12px;font-weight:700;font-family:Arial">ייבא הכל</button>
+    </div>
+    <div style="font-size:11px;color:#999;margin-top:8px">בוחרים יחד את כל קובצי ה-filelist שיוצאו מהשרתים - השרת המתאים לכל קובץ מזוהה אוטומטית לפי שם המחשב שבתוך שם הקובץ. קובץ שלא תואם לאף שרת מוצג עם פירוט השגיאה, בלי לפגוע בייבוא שאר הקבצים.</div>
+    <div id="batchImportResults"></div>
+  </div>
+
   <div style="background:#f9f9fb;border:1px solid #eee;border-radius:8px;padding:14px 16px;margin-bottom:16px">
-    <div style="font-size:13px;font-weight:700;color:#1a1a2e;margin-bottom:8px">📥 ייבוא רשימת קבצים משרת (פלט הסקריפט: Get-ChildItem *.ecf)</div>
+    <div style="font-size:13px;font-weight:700;color:#1a1a2e;margin-bottom:8px">📥 ייבוא ידני לשרת בודד (בחירה ידנית, לקובץ שלא תואם לפורמט השם האוטומטי)</div>
     <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
       <select id="importServerSelect" style="padding:7px 10px;border:1px solid #ddd;border-radius:6px;font-size:12px;font-family:Arial;direction:rtl"></select>
       <input type="file" id="importFileInput" accept=".txt" style="font-size:12px">

@@ -2263,6 +2263,69 @@ test.describe('שרתים - השוואת רכיבים בין שרתי Focus', ()
   });
 });
 
+test.describe('ייבוא בבת אחת מכל השרתים - זיהוי שרת אוטומטי לפי שם קובץ (filelist_<שם מחשב>_<תאריך>_<שעה>.txt)', () => {
+  test('כמה קבצים בבת אחת מתעדכנים כל אחד לשרת הנכון לפי שם המחשב בשם הקובץ; קובץ עם שם מחשב לא מוכר מדווח כשגיאה בלי לפגוע באחרים', async ({ page }) => {
+    const seed = {
+      servers: {
+        sv1: { id: 'sv1', name: 'czchowspc001064.prg-dc.dhl.com', desc: 'אפליקציה1' },
+        sv2: { id: 'sv2', name: 'czchowstc000991.prg-dc.dhl.com', desc: 'שרת טסט' }
+      },
+      components: {}, values: {}, changeLog: []
+    };
+    const { serverComponents } = await mockFirebase(page, { serverComponents: seed });
+    await page.goto('/index.html');
+    await login(page, 'testadmin', 'pw');
+    await page.click('.tab[data-tab="6"]');
+
+    const file1 = '05/27/2026 10:27:38\t1256.16 KB\tD:\\FocusXPA\\Focus\\APCTL.ecf';
+    const file2 = '08/12/2026 09:33:05\t913.37 KB\tD:\\FocusXPA\\Focus\\DHCTL.ecf';
+    const file3 = '06/01/2026 12:00:00\t50 KB\tD:\\FocusXPA\\Focus\\ATCTL.ecf';
+
+    await page.setInputFiles('#importBatchFileInput', [
+      { name: 'filelist_CZCHOWSPC001064_20260911_083000.txt', mimeType: 'text/plain', buffer: Buffer.from(file1, 'utf-8') },
+      { name: 'filelist_CZCHOWSTC000991_20260911_083005.txt', mimeType: 'text/plain', buffer: Buffer.from(file2, 'utf-8') },
+      { name: 'filelist_UNKNOWNHOST_20260911_083010.txt', mimeType: 'text/plain', buffer: Buffer.from(file3, 'utf-8') }
+    ]);
+    await page.click('button[onclick="importServerFilesBatch()"]');
+    await page.waitForTimeout(300);
+
+    // שני הקבצים התואמים עודכנו כל אחד לשרת הנכון שלו לפי שם המחשב
+    expect(serverComponents.values.sv1.AP).toContain('1256.16 KB');
+    expect(serverComponents.values.sv2.DH).toContain('913.37 KB');
+    // הקובץ עם שם המחשב הלא מוכר לא עודכן בכלל (לא הודבק בטעות לאף שרת)
+    expect(serverComponents.values.sv1.AT).toBeUndefined();
+    expect(serverComponents.values.sv2.AT).toBeUndefined();
+
+    // פאנל התוצאות מציג בבירור מה הצליח ומה נכשל, כולל שם המחשב הבעייתי
+    await expect(page.locator('#batchImportResults')).toContainText('2 קבצים עודכנו בהצלחה');
+    await expect(page.locator('#batchImportResults')).toContainText('1 עם שגיאה');
+    await expect(page.locator('#batchImportResults')).toContainText('UNKNOWNHOST');
+    await expect(page.locator('#batchImportResults')).toContainText('filelist_CZCHOWSPC001064_20260911_083000.txt');
+  });
+
+  test('קובץ ששם שלו לא תואם לפורמט filelist_<שם מחשב>_<תאריך>_<שעה>.txt מדווח כשגיאה ברורה ולא קורס את שאר הייבוא', async ({ page }) => {
+    const seed = {
+      servers: { sv1: { id: 'sv1', name: 'czchowspc001064.prg-dc.dhl.com', desc: 'אפליקציה1' } },
+      components: {}, values: {}, changeLog: []
+    };
+    const { serverComponents } = await mockFirebase(page, { serverComponents: seed });
+    await page.goto('/index.html');
+    await login(page, 'testadmin', 'pw');
+    await page.click('.tab[data-tab="6"]');
+
+    await page.setInputFiles('#importBatchFileInput', [
+      { name: 'randomfile.txt', mimeType: 'text/plain', buffer: Buffer.from('05/27/2026 10:27:38\t1256.16 KB\tD:\\FocusXPA\\Focus\\APCTL.ecf', 'utf-8') },
+      { name: 'filelist_CZCHOWSPC001064_20260911_083000.txt', mimeType: 'text/plain', buffer: Buffer.from('08/12/2026 09:33:05\t913.37 KB\tD:\\FocusXPA\\Focus\\DHCTL.ecf', 'utf-8') }
+    ]);
+    await page.click('button[onclick="importServerFilesBatch()"]');
+    await page.waitForTimeout(300);
+
+    await expect(page.locator('#batchImportResults')).toContainText('שם הקובץ לא תואם לפורמט הצפוי');
+    // הקובץ השני, שכן תואם, כן יובא בהצלחה
+    expect(serverComponents.values.sv1.DH).toContain('913.37 KB');
+  });
+});
+
 test.describe('ייבוא רשימת קבצים (.ecf) משרת - זיהוי גרסאות ושינויים אוטומטי', () => {
   const fileV1 = [
     '05/27/2026 10:27:38\t1256.16 KB\tD:\\FocusXPA\\Focus\\APCTL.ecf',
