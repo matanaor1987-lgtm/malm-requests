@@ -1722,7 +1722,7 @@ function switchTab(i) {
   if(i===3){Promise.all([loadDevLists(),loadDevTasks()]).then(function(){renderDevTable();populateDevFilters();filterDevTable();});}
   if(i===4)loadSanityTab();
   if(i===5){loadLaunchTab().then(function(){renderLaunchTable();});}
-  if(i===6){loadServerData().then(function(){renderServerGrid();renderChangeLog();});}
+  if(i===6){SERVER_EDIT_MODE=false;loadServerData().then(function(){renderServerGrid();renderChangeLog();});}
 }
 
 // Auth events
@@ -3674,6 +3674,15 @@ var SERVER_VALUES = {};
 // ההזזה בכותרת כל עמודה. שרתים שעדיין לא מופיעים במערך (למשל אחרי ייבוא
 // ישן בלי סדר שמור) מתווספים אוטומטית בסוף לפי orderedServers().
 var SERVER_ORDER = [];
+// מצב "עריכת טבלה" - שולט רק על תצוגת האייקונים המבניים (הזזת עמודה,
+// עריכת/מחיקת שרת, מחיקת רכיב). לא נשמר ל-DB (מצב תצוגה בלבד, מתאפס בכל
+// כניסה לטאב) ולא משפיע על עריכת ערכי תאים או הערות - אלה תמיד ניתנים
+// לעריכה בלחיצה, גם כשמצב העריכה כבוי.
+var SERVER_EDIT_MODE = false;
+function toggleServerEditMode(){
+  SERVER_EDIT_MODE = !SERVER_EDIT_MODE;
+  renderServerGrid();
+}
 // יומן שינויים: כל פעם שייבוא קובץ מזהה שהערך של רכיב מסוים על שרת השתנה
 // לעומת מה שהיה ידוע קודם (לא בייבוא ראשון - אין למה להשוות), נוצרת כאן
 // רשומה חדשה שאפשר לתעד עליה את מהות התיקון. מערך רגיל (לא אובייקט לפי id)
@@ -3810,6 +3819,13 @@ function renderServerGrid(){
   var components = Object.values(COMPONENTS).filter(function(c){ return !c.deleted; })
     .sort(function(a,b){ return a.code.localeCompare(b.code,'he'); });
 
+  var editBtn = document.getElementById('serverEditModeBtn');
+  if(editBtn){
+    editBtn.textContent = SERVER_EDIT_MODE ? '✓ סיום עריכה' : '✏️ ערוך טבלה';
+    editBtn.style.background = SERVER_EDIT_MODE ? '#1565c0' : '#fff';
+    editBtn.style.color = SERVER_EDIT_MODE ? '#fff' : '#1565c0';
+  }
+
   if(!servers.length){
     wrap.innerHTML = '<div style="padding:30px;text-align:center;color:#aaa">אין עדיין שרתים מוגדרים — לחץ "+ הוסף שרת"</div>';
     return;
@@ -3834,12 +3850,14 @@ function renderServerGrid(){
         var atRight = i===0, atLeft = i===servers.length-1;
         return '<th style="padding:8px 6px;text-align:center;position:sticky;top:0;z-index:2;background:#1a1a2e;border-bottom:2px solid #0d0d1a" title="'+esc(s.name)+'">'
           + '<div style="font-size:12.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(s.desc||s.name)+'</div>'
-          + '<div style="display:flex;justify-content:center;gap:1px;margin-top:2px">'
-            + '<button onclick="moveServerColumn(\''+s.id+'\',-1)" title="הזז ימינה"'+(atRight?' disabled':'')+' style="background:none;border:none;color:'+(atRight?'#555':'#b3d9ff')+';cursor:'+(atRight?'default':'pointer')+';font-size:11px;padding:2px">▶</button>'
-            + '<button onclick="openEditServer(\''+s.id+'\')" title="ערוך שם/תיאור שרת" style="background:none;border:none;color:#b3d9ff;cursor:pointer;font-size:11px;padding:2px">✏️</button>'
-            + '<button onclick="deleteServer(\''+s.id+'\')" title="הסר שרת" style="background:none;border:none;color:#ffb3b3;cursor:pointer;font-size:11px;padding:2px">✕</button>'
-            + '<button onclick="moveServerColumn(\''+s.id+'\',1)" title="הזז שמאלה"'+(atLeft?' disabled':'')+' style="background:none;border:none;color:'+(atLeft?'#555':'#b3d9ff')+';cursor:'+(atLeft?'default':'pointer')+';font-size:11px;padding:2px">◀</button>'
-          + '</div>'
+          + (SERVER_EDIT_MODE ? (
+              '<div style="display:flex;justify-content:center;gap:1px;margin-top:2px">'
+              + '<button onclick="moveServerColumn(\''+s.id+'\',-1)" title="הזז ימינה"'+(atRight?' disabled':'')+' style="background:none;border:none;color:'+(atRight?'#555':'#b3d9ff')+';cursor:'+(atRight?'default':'pointer')+';font-size:11px;padding:2px">▶</button>'
+              + '<button onclick="openEditServer(\''+s.id+'\')" title="ערוך שם/תיאור שרת" style="background:none;border:none;color:#b3d9ff;cursor:pointer;font-size:11px;padding:2px">✏️</button>'
+              + '<button onclick="deleteServer(\''+s.id+'\')" title="הסר שרת" style="background:none;border:none;color:#ffb3b3;cursor:pointer;font-size:11px;padding:2px">✕</button>'
+              + '<button onclick="moveServerColumn(\''+s.id+'\',1)" title="הזז שמאלה"'+(atLeft?' disabled':'')+' style="background:none;border:none;color:'+(atLeft?'#555':'#b3d9ff')+';cursor:'+(atLeft?'default':'pointer')+';font-size:11px;padding:2px">◀</button>'
+            + '</div>'
+            ) : '')
         + '</th>';
       }).join('')
     + '<th style="padding:8px 10px;text-align:right;white-space:nowrap;position:sticky;top:0;z-index:2;background:#1a1a2e;border-bottom:2px solid #0d0d1a">הערות</th>'
@@ -3866,7 +3884,7 @@ function renderServerGrid(){
     return '<tr style="background:'+bg+'">'
       + '<td style="padding:6px 10px;border-bottom:1px solid #eee;font-weight:700;white-space:nowrap;position:sticky;right:0;z-index:1;background:'+bg+'">'
         + (mismatch?'⚠️ ':'') + esc(c.code)
-        + ' <button onclick="deleteComponent(\''+esc(c.code)+'\')" title="הסר רכיב" style="background:none;border:none;color:#c62828;cursor:pointer;font-size:10px">✕</button>'
+        + (SERVER_EDIT_MODE ? ' <button onclick="deleteComponent(\''+esc(c.code)+'\')" title="הסר רכיב" style="background:none;border:none;color:#c62828;cursor:pointer;font-size:10px">✕</button>' : '')
       + '</td>'
       + servers.map(function(s){
           var v = (SERVER_VALUES[s.id]||{})[c.code] || '';
@@ -4483,6 +4501,7 @@ function updateChangeLogNote(id, note){
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:10px">
     <div style="font-size:16px;font-weight:700;color:#1a1a2e">🖥️ שרתים — השוואת רכיבים בין שרתי Focus</div>
     <div style="display:flex;gap:8px">
+      <button id="serverEditModeBtn" onclick="toggleServerEditMode()" style="background:#fff;color:#1565c0;border:1.5px solid #1565c0;border-radius:6px;padding:8px 16px;cursor:pointer;font-size:13px;font-weight:700;font-family:Arial">✏️ ערוך טבלה</button>
       <button onclick="openAddServer()" style="background:#1565c0;color:#fff;border:none;border-radius:6px;padding:8px 16px;cursor:pointer;font-size:13px;font-weight:700;font-family:Arial">+ הוסף שרת</button>
       <button onclick="openAddComponents()" style="background:#D40511;color:#fff;border:none;border-radius:6px;padding:8px 16px;cursor:pointer;font-size:13px;font-weight:700;font-family:Arial">+ הוסף רכיבים</button>
     </div>

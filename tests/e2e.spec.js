@@ -2097,6 +2097,8 @@ test.describe('שרתים - השוואת רכיבים בין שרתי Focus', ()
     await expect(page.locator('#serverGridWrap')).toContainText('שרת חדש');
     expect(Object.keys(serverComponents.servers).length).toBe(2);
 
+    // כפתור מחיקת רכיב הוא אייקון מבני - מוצג רק אחרי כניסה למצב "עריכת טבלה"
+    await page.click('#serverEditModeBtn');
     // אותו handler מתמיד עדיין רשום ומקבל כל דיאלוג נוסף (כולל ה-confirm() כאן)
     await page.click('button[onclick="deleteComponent(\'DH\')"]');
     await page.waitForTimeout(200);
@@ -2140,6 +2142,8 @@ test.describe('שרתים - השוואת רכיבים בין שרתי Focus', ()
     expect(headersBefore[1]).toContain('שרת א');
     expect(headersBefore[2]).toContain('שרת ב');
 
+    // כפתורי ההזזה הם אייקונים מבניים - מוצגים רק אחרי כניסה למצב "עריכת טבלה"
+    await page.click('#serverEditModeBtn');
     // הזזת "שרת ב" ימינה (לכיוון עמודת ה"רכיב") - מתחלף עם "שרת א"
     const svBHeader = page.locator('#serverGridWrap th', { hasText: 'שרת ב' });
     await svBHeader.locator('button[title="הזז ימינה"]').click();
@@ -2224,6 +2228,48 @@ test.describe('שרתים - השוואת רכיבים בין שרתי Focus', ()
     expect(sv1Html).not.toContain('fde8e8');
     expect(sv2Html).not.toContain('fde8e8');
     expect(sv3Html).toContain('fde8e8');
+  });
+
+  test('כפתור "ערוך טבלה" שולט רק על האייקונים המבניים (הזזה/עריכת שרת/מחיקה) - מוסתרים כברירת מחדל; עריכת ערך תא והערה תמיד זמינה בלי ללחוץ עליו', async ({ page }) => {
+    const seed = {
+      servers: { sv1: { id: 'sv1', name: 'srv1.dhl.com', desc: 'שרת א' } },
+      components: { DH: { code: 'DH' } },
+      values: { sv1: { DH: '08/12/2026 09:33:05 (913.37 KB)' } },
+      changeLog: []
+    };
+    const { serverComponents } = await mockFirebase(page, { serverComponents: seed });
+    await page.goto('/index.html');
+    await login(page, 'testadmin', 'pw');
+    await page.click('.tab[data-tab="6"]');
+    await expect(page.locator('#serverGridWrap')).toContainText('913.37 KB');
+
+    // ברירת מחדל: מצב עריכה כבוי - אף אחד מהאייקונים המבניים לא מוצג
+    await expect(page.locator('button[title="הזז ימינה"]')).toHaveCount(0);
+    await expect(page.locator('button[onclick="openEditServer(\'sv1\')"]')).toHaveCount(0);
+    await expect(page.locator('button[onclick="deleteServer(\'sv1\')"]')).toHaveCount(0);
+    await expect(page.locator('button[onclick="deleteComponent(\'DH\')"]')).toHaveCount(0);
+
+    // אבל עריכת ערך תא והערה עובדות בלחיצה ישירה, בלי צורך במצב עריכה בכלל
+    const dhRow = page.locator('#serverGridWrap tr', { hasText: 'DH' });
+    page.once('dialog', d => d.accept('01/01/2026 10:00:00 (5 KB)'));
+    await dhRow.locator('td').nth(1).click();
+    await page.waitForTimeout(200);
+    expect(serverComponents.values.sv1.DH).toContain('5 KB');
+
+    page.once('dialog', d => d.accept('הערה לבדיקה'));
+    await dhRow.locator('td').last().click();
+    await page.waitForTimeout(200);
+    expect(serverComponents.components.DH.note).toBe('הערה לבדיקה');
+
+    // לחיצה על "ערוך טבלה" חושפת את האייקונים המבניים
+    await page.click('#serverEditModeBtn');
+    await expect(page.locator('button[title="הזז ימינה"]')).toHaveCount(1);
+    await expect(page.locator('button[onclick="openEditServer(\'sv1\')"]')).toHaveCount(1);
+    await expect(page.locator('button[onclick="deleteComponent(\'DH\')"]')).toHaveCount(1);
+
+    // לחיצה נוספת מחזירה למצב תצוגה - האייקונים מוסתרים שוב
+    await page.click('#serverEditModeBtn');
+    await expect(page.locator('button[title="הזז ימינה"]')).toHaveCount(0);
   });
 
   test('אפשר לכתוב הערה חופשית ליד כל רכיב בעמודת "הערות" ייעודית (לחיצה פותחת prompt), והיא נשמרת ומתמידה', async ({ page }) => {
@@ -2457,6 +2503,8 @@ test.describe('עריכת שם/תיאור שרת - בלי לאבד נתונים 
     await expect(page.locator('#serverGridWrap')).toContainText('תיאור ישן');
     await expect(page.locator('#serverGridWrap')).toContainText('913.37 KB');
 
+    // כפתור עריכת שרת הוא אייקון מבני - מוצג רק אחרי כניסה למצב "עריכת טבלה"
+    await page.click('#serverEditModeBtn');
     const answers = ['new-name.dhl.com', 'תיאור חדש'];
     let dialogIdx = 0;
     page.on('dialog', d => { d.accept(answers[dialogIdx] || ''); dialogIdx++; });
@@ -2486,6 +2534,8 @@ test.describe('עריכת שם/תיאור שרת - בלי לאבד נתונים 
     await page.click('.tab[data-tab="6"]');
     await expect(page.locator('#serverGridWrap')).toContainText('תיאור ישן');
 
+    // כפתור עריכת שרת הוא אייקון מבני - מוצג רק אחרי כניסה למצב "עריכת טבלה"
+    await page.click('#serverEditModeBtn');
     page.once('dialog', d => d.dismiss());
     await page.click('button[onclick="openEditServer(\'sv1\')"]');
     await page.waitForTimeout(200);
