@@ -340,7 +340,7 @@ tr:hover td{background:#fffbf0}
           <textarea id="chatInput" placeholder="כתוב הערה..."></textarea>
           <div class="chat-send-col">
             <div id="chatSenderLabel" style="font-size:11px;color:#555;text-align:center;padding:2px 6px;background:#f0f0f0;border-radius:5px;white-space:nowrap"></div>
-            <button class="btn-send" onclick="sendMsg()">שלח ↵</button>
+            <button class="btn-send" onclick="sendMsg()">שלח</button>
           </div>
         </div>
 
@@ -2151,12 +2151,6 @@ function sendMsg(){
   if(editSheet==='malm')r1();else r2();
   saveRecord(editSheet, editIdx, rec);
 }
-
-document.addEventListener('keydown',e=>{
-  if(e.key==='Enter'&&!e.shiftKey&&document.activeElement.id==='chatInput'){
-    e.preventDefault();sendMsg();
-  }
-});
 
 function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 

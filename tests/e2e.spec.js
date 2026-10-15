@@ -873,7 +873,7 @@ test.describe('רגרסיה: עריכה מקבילה של אותה רשומה מ
     await expect(page.locator('#modalBg')).toHaveClass(/open/);
 
     await page.fill('#chatInput', 'הערה תוך כדי עריכה');
-    await page.keyboard.press('Enter');
+    await page.click('.btn-send');
     await page.waitForTimeout(200);
 
     let dialogShown = false;
@@ -884,6 +884,31 @@ test.describe('רגרסיה: עריכה מקבילה של אותה רשומה מ
 
     expect(dialogShown).toBe(false);
     await expect(page.locator('#modalBg')).not.toHaveClass(/open/);
+  });
+
+  test('הודעת צ\'אט נשלחת רק בלחיצה על "שלח" - Enter במקלדת לא שולח (רק מוסיף שורה חדשה בשדה)', async ({ page }) => {
+    const rec = { _id: 'r_enter_1', נ: 'משימה לבדיקת Enter', מב: 'מנהלת בדיקה', ת: '2026-07-01', כ: 'כותרת', ב: 'b', ע: 1, ס: 'פתוח', chat: {} };
+    const { db } = await mockFirebase(page, { rivka: [rec] });
+    await page.goto('/index.html');
+    await login(page, 'testadmin', 'pw');
+    await page.click('.tab[data-tab="1"]');
+    await page.click('tr:has-text("משימה לבדיקת Enter") .act-btn');
+    await expect(page.locator('#modalBg')).toHaveClass(/open/);
+
+    await page.fill('#chatInput', 'הודעה שלא אמורה להישלח ב-Enter');
+    await page.locator('#chatInput').press('Enter');
+    await page.waitForTimeout(200);
+
+    // הטקסט עדיין בשדה (לא נשלח ולא נוקה) וההודעה לא נוספה לרשימה/נשמרה
+    await expect(page.locator('#chatInput')).toHaveValue(/הודעה שלא אמורה להישלח ב-Enter/);
+    await expect(page.locator('#chatMessages')).not.toContainText('הודעה שלא אמורה להישלח ב-Enter');
+    expect((db.rivka[0].chat && db.rivka[0].chat.malm) || []).toHaveLength(0);
+
+    // לחיצה על כפתור "שלח" כן שולחת - השדה מתרוקן וההודעה מופיעה
+    await page.click('.btn-send');
+    await page.waitForTimeout(200);
+    await expect(page.locator('#chatInput')).toHaveValue('');
+    await expect(page.locator('#chatMessages')).toContainText('הודעה שלא אמורה להישלח ב-Enter');
   });
 
   test('אותו דבר במשימות בעליה לאוויר - עריכה מקבילה מתריעה לפני דריסה', async ({ page }) => {
