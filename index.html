@@ -53,6 +53,7 @@ tr:hover td{background:#fffbf0}
 .s-טופל{background:#e8f5e9;color:#1b5e20}
 .s-בוטל{background:#f5f5f5;color:#9e9e9e}
 .s-ממתין-לבדיקה{background:#e8eaf6;color:#3949ab}
+.s-ממתין-לגרסה{background:#e0f7fa;color:#00838f}
 .s-בטיפול{background:#e0f2f1;color:#00695c}
 .s-נכשל{background:#fde8e8;color:#c62828}
 .muted{color:#ccc}
@@ -219,6 +220,7 @@ tr:hover td{background:#fffbf0}
         <label style="display:flex;align-items:center;gap:8px;padding:5px 12px;cursor:pointer;font-size:12px;font-family:Arial;direction:rtl"><input type="checkbox" class="st1cb" value="בטיפול" onchange="onStatusChange('1')" checked> <span class="badge s-בטיפול">בטיפול</span></label>
         <label style="display:flex;align-items:center;gap:8px;padding:5px 12px;cursor:pointer;font-size:12px;font-family:Arial;direction:rtl"><input type="checkbox" class="st1cb" value="בבדיקה" onchange="onStatusChange('1')" checked> <span class="badge s-בבדיקה">בבדיקה</span></label>
         <label style="display:flex;align-items:center;gap:8px;padding:5px 12px;cursor:pointer;font-size:12px;font-family:Arial;direction:rtl"><input type="checkbox" class="st1cb" value="מוקפא" onchange="onStatusChange('1')"> <span class="badge s-מוקפא">מוקפא</span></label>
+        <label style="display:flex;align-items:center;gap:8px;padding:5px 12px;cursor:pointer;font-size:12px;font-family:Arial;direction:rtl"><input type="checkbox" class="st1cb" value="ממתין לגרסה" onchange="onStatusChange('1')"> <span class="badge s-ממתין-לגרסה">ממתין לגרסה</span></label>
         <label style="display:flex;align-items:center;gap:8px;padding:5px 12px;cursor:pointer;font-size:12px;font-family:Arial;direction:rtl"><input type="checkbox" class="st1cb" value="בוטל" onchange="onStatusChange('1')"> <span class="badge s-בוטל">בוטל</span></label>
         <label style="display:flex;align-items:center;gap:8px;padding:5px 12px;cursor:pointer;font-size:12px;font-family:Arial;direction:rtl"><input type="checkbox" class="st1cb" value="בוצע" onchange="onStatusChange('1')"> <span class="badge s-בוצע">בוצע</span></label>
       </div>
@@ -273,6 +275,7 @@ tr:hover td{background:#fffbf0}
     <label style="display:flex;align-items:center;gap:8px;padding:5px 12px;cursor:pointer;font-size:12px;font-family:Arial;direction:rtl"><input type="checkbox" class="st2cb" value="בטיפול" onchange="onStatusChange()" checked> <span class="badge s-בטיפול">בטיפול</span></label>
     <label style="display:flex;align-items:center;gap:8px;padding:5px 12px;cursor:pointer;font-size:12px;font-family:Arial;direction:rtl"><input type="checkbox" class="st2cb" value="בבדיקה" onchange="onStatusChange()" checked> <span class="badge s-בבדיקה">בבדיקה</span></label>
     <label style="display:flex;align-items:center;gap:8px;padding:5px 12px;cursor:pointer;font-size:12px;font-family:Arial;direction:rtl"><input type="checkbox" class="st2cb" value="מוקפא" onchange="onStatusChange()" checked> <span class="badge s-מוקפא">מוקפא</span></label>
+    <label style="display:flex;align-items:center;gap:8px;padding:5px 12px;cursor:pointer;font-size:12px;font-family:Arial;direction:rtl"><input type="checkbox" class="st2cb" value="ממתין לגרסה" onchange="onStatusChange()"> <span class="badge s-ממתין-לגרסה">ממתין לגרסה</span></label>
     <label style="display:flex;align-items:center;gap:8px;padding:5px 12px;cursor:pointer;font-size:12px;font-family:Arial;direction:rtl"><input type="checkbox" class="st2cb" value="בוטל" onchange="onStatusChange()"> <span class="badge s-בוטל">בוטל</span></label>
     <label style="display:flex;align-items:center;gap:8px;padding:5px 12px;cursor:pointer;font-size:12px;font-family:Arial;direction:rtl"><input type="checkbox" class="st2cb" value="בוצע" onchange="onStatusChange()"> <span class="badge s-בוצע">בוצע</span></label>
   </div>
@@ -388,9 +391,9 @@ let editOpenSnapshot=null;
 let selectedMalmIds=new Set(), selectedRivkaIds=new Set();
 const PAGE_SIZE=100;
 let page1=1,page2=1,lastFilterKey1='',lastFilterKey2='';
-const SM=['פתוח','בטיפול','בבדיקה','ממתין לבדיקה','מוקפא','הושהה','בוצע','טופל','בוטל'];
+const SM=['פתוח','בטיפול','בבדיקה','ממתין לבדיקה','ממתין לגרסה','מוקפא','הושהה','בוצע','טופל','בוטל'];
 const SR=['פתוח','בטיפול','בוצע'];
-const SR_ADMIN=['פתוח','בטיפול','בוצע','מוקפא','בבדיקה','בוטל'];
+const SR_ADMIN=['פתוח','בטיפול','בוצע','מוקפא','בבדיקה','ממתין לגרסה','בוטל'];
 
 // ═══════════════════════════════════════
 // AUTH SYSTEM
@@ -730,6 +733,14 @@ function releaseTagHtml(item){
   return '<div style="margin-top:2px"><span style="display:inline-block;background:#ede7f6;color:#5e35b1;border-radius:8px;padding:1px 7px;font-size:10px">🏷️ '+esc(RELEASES[item.releaseId].name)+'</span></div>';
 }
 
+// "ממתין לגרסה" פתח אוטומטית משימת פיתוח מקושרת (ראו createLinkedDevTaskForRequest) -
+// התג הזה מציג קישור ישיר אליה משורת הבקשה/משימה עצמה, ומוצג כל עוד הקישור קיים
+// (גם אחרי שסטטוס הבקשה כבר השתנה הלאה).
+function linkedDevBadgeHtml(r){
+  if(!r.linkedDevUid) return '';
+  return '<div style="margin-top:2px"><button onclick="jumpToDevTask(\''+esc(r.linkedDevUid)+'\')" title="עבר למשימת הפיתוח המקושרת" style="background:#00838f;color:#fff;border:none;border-radius:10px;padding:1px 7px;cursor:pointer;font-size:10px;font-family:Arial">🔧 ממתין לגרסה - מקושר למשימת פיתוח'+(r.linkedDevTaskNum?(' '+esc(r.linkedDevTaskNum)):'')+'</button></div>';
+}
+
 // בחירה מרובה בשורות רבקה/מלמ + שיוך בבאץ' לגרסה - ראו selectedMalmIds/selectedRivkaIds.
 function toggleSel(sheet, id, checked){
   var set = sheet==='malm' ? selectedMalmIds : selectedRivkaIds;
@@ -1053,7 +1064,7 @@ function r1(){
         ${isAdmin()?`<button class="act-btn" onclick="deleteRec('malm',${idx})" title="מחק" style="color:#D40511">🗑️</button>`:''}
       </td>
       <td style="color:#888;font-size:11px">${r.ת||''}</td>
-      <td>${r.ד?`<div class="dtag">${r.ד}</div><br>`:''} ${r.מ||''}${releaseTagHtml(r)}</td>
+      <td>${r.ד?`<div class="dtag">${r.ד}</div><br>`:''} ${r.מ||''}${releaseTagHtml(r)}${linkedDevBadgeHtml(r)}</td>
       <td>${pc(r.ע)}</td><td>${sc(r.ס)}</td><td>${m(r.dhl)}</td><td>${m(r.א)}</td>
       <td>${hasUnread(r)?'<span class="unread-dot" title="הערה חדשה"></span>':''}${chatPreviewHtml(r)}</td></tr>`}).join('')
     :'<tr><td colspan="9" class="nores">לא נמצאו תוצאות</td></tr>';
@@ -1101,7 +1112,7 @@ function r2(){
       <td style="white-space:nowrap">${eb}${tb2}${db2}</td>
       <td>${m(r.נ)}</td><td>${m(r.מב)}</td>
       <td style="color:#888;font-size:11px">${r.ת||''}</td>
-      <td>${r.כ?`<strong>${r.כ}</strong><br>`:''} ${r.ב||''}${releaseTagHtml(r)}</td>
+      <td>${r.כ?`<strong>${r.כ}</strong><br>`:''} ${r.ב||''}${releaseTagHtml(r)}${linkedDevBadgeHtml(r)}</td>
       <td>${m(r.מט)}</td><td>${pc(r.ע)}</td><td>${sc(r.ס)}</td>
       <td>${hasUnread(r)?'<span class="unread-dot" title="הערה חדשה"></span>':''}${chatPreviewHtml(r)}</td></tr>`}).join('')
     :'<tr><td colspan="10" class="nores">לא נמצאו תוצאות</td></tr>';
@@ -1317,7 +1328,56 @@ function closeModal(force){
 }
 function g(id){const el=document.getElementById(id);return el?el.value.trim():''}
 
-function saveModal(){
+// "ממתין לגרסה" במשימת רבקה/מלמ: יוצרים אוטומטית משימת פיתוח חדשה בטאב
+// "פיתוחים ותיקונים לבדיקה", מקושרת למשימת המקור (לא כפילות עצמאית) - בדיוק
+// כמו הקישור הקיים בין משימת פיתוח למשימת עליה-לאוויר. linkedSourceSheet/
+// linkedSourceId על משימת הפיתוח מאפשרים לדעת לאן לחזור ולסגור אוטומטית
+// (ראו closeLinkedSourceTask) כש"סטטוס פיתוח" משתנה ל"נסגר" - כלומר הגרסה
+// עלתה ל-PROD. נכשל בשקט (לא חוסם את שמירת הבקשה עצמה) אם יצירת משימת
+// הפיתוח לא מצליחה - אפשר תמיד לפתוח אחת ידנית.
+async function createLinkedDevTaskForRequest(sourceSheet, rec){
+  var taskUid = genId();
+  // מלמ אין לו שדה כותרת קצר ייעודי - "מ" (תוכן המשימה) מזהה אותה הרבה יותר
+  // מ"ד" (תחום/קטגוריה, שעשוי להיות גנרי); מקוצר אם ארוך כדי שהתיאור יישאר קריא.
+  var sourceTitleRaw = sourceSheet==='rivka' ? (rec.נ || rec.כ || '') : (rec.מ || rec.ד || '');
+  var sourceTitle = sourceTitleRaw.length>80 ? (sourceTitleRaw.slice(0,80)+'…') : sourceTitleRaw;
+  var task = {
+    _uid: taskUid,
+    id: '',
+    dev: '',
+    status: 'פתוח',
+    desc: 'ממתין לגרסה - ' + (sourceSheet==='rivka' ? 'בקשת רבקה' : 'משימת מלמ') + (sourceTitle ? (': ' + sourceTitle) : ''),
+    notes: '',
+    comp: '',
+    ver: '',
+    iface: '',
+    specLink: '',
+    tester: '',
+    testerUid: '',
+    tNotes: '',
+    tStatus: '',
+    releaseId: (getCurrentRelease()||{}).id || '',
+    linkedSourceSheet: sourceSheet,
+    linkedSourceId: rec._id
+  };
+  try{
+    var BASE = 'https://malm-focus-default-rtdb.firebaseio.com';
+    var putRes = await fetch(BASE+'/devTasksByUid/'+encodeURIComponent(taskUid)+'.json', {
+      method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(task)
+    });
+    if(!putRes.ok) throw new Error('סטטוס '+putRes.status);
+    var verifyRes = await fetch(BASE+'/devTasksByUid/'+encodeURIComponent(taskUid)+'.json?t='+Date.now());
+    var verifyData = (await verifyRes.json())||{};
+    if(!deepEqual(verifyData, task)) throw new Error('האימות מול השרת נכשל');
+    DEV_TASKS.push(task);
+    rec.linkedDevUid = taskUid;
+    rec.linkedDevTaskNum = task.id;
+  }catch(e){
+    console.warn('createLinkedDevTaskForRequest failed:', e);
+  }
+}
+
+async function saveModal(){
   // העברה מרבקה למלמ עוברת בזרימה נפרדת (יצירה במלמ, ורק אם היא מאומתת בשרת -
   // מחיקה רכה של המקור ברבקה) - לא הזרימה הרגילה, כי היא כותבת לשני גיליונות.
   if(transferSourceRivkaId){ saveTransferToMalm(); return; }
@@ -1333,7 +1393,9 @@ function saveModal(){
       dhl:g('f_dhl'), א:g('f_א'),
       ה:r?r.ה||'':'',
       chat:r?r.chat||{}:{},
-      reads:r?r.reads||{}:{}
+      reads:r?r.reads||{}:{},
+      linkedDevUid:r?r.linkedDevUid||'':'',
+      linkedDevTaskNum:r?r.linkedDevTaskNum||'':''
     };
   }else{
     // "מטפל" ו"מבקש" נבחרים ב-DROPDOWN לפי _uid של משתמש אמיתי (ראו buildUserSelectOptionsHtml).
@@ -1357,9 +1419,15 @@ function saveModal(){
       ס:r?(g('f_ס')||r.ס):'פתוח',
       ה:r?r.ה||'':'',
       chat:r?r.chat||{}:{},
-      reads:r?r.reads||{}:{}
+      reads:r?r.reads||{}:{},
+      linkedDevUid:r?r.linkedDevUid||'':'',
+      linkedDevTaskNum:r?r.linkedDevTaskNum||'':''
     };
   }
+  // מזהה יציב - נקבע כאן (לא רק בהמשך, יחד עם מיזוג ל-DB המקומי) כי
+  // createLinkedDevTaskForRequest למטה צריך אותו כדי לקשר את משימת הפיתוח
+  // בחזרה למשימה הזו.
+  rec._id = editIdx===-1 ? genId() : editRecId;
   const wasStatus = r ? r.ס : null;
   // מעקב שינויי סטטוס — נשמר לצורך דוח "אילו משימות עברו לסטטוס X בטווח תאריכים".
   // "!r" (רשומה חדשה) נכנס לתנאי גם הוא - אחרת הסטטוס ההתחלתי (למשל "פתוח") של
@@ -1367,6 +1435,12 @@ function saveModal(){
   rec.statusLog = r ? (r.statusLog||[]) : [];
   if(!r || wasStatus !== rec.ס){
     rec.statusLog = rec.statusLog.concat([{s:rec.ס, t:Date.now(), by:CU?CU.name:''}]);
+  }
+  // "ממתין לגרסה" (מלמ/רבקה) פותח אוטומטית משימת פיתוח מקושרת בטאב "פיתוחים
+  // ותיקונים לבדיקה" - רק על שינוי סטטוס אמיתי לתוך הערך הזה, ורק אם אין כבר
+  // קישור קיים (לא יוצרים כפילות בעריכות חוזרות).
+  if((!r || wasStatus !== rec.ס) && rec.ס === 'ממתין לגרסה' && !rec.linkedDevUid){
+    await createLinkedDevTaskForRequest(editSheet, rec);
   }
   // Attach pending files to new record
   if(pendingFiles.length && editIdx===-1){
@@ -1389,10 +1463,8 @@ function saveModal(){
     }
   }
   if(editIdx===-1){
-    rec._id = genId();
     DB[editSheet].unshift(rec);
   } else {
-    rec._id = editRecId;
     // עדכן את הרשומה הנכונה לפי _id (לא לפי אינדקס שעלול להיות מיושן)
     var localIdx = DB[editSheet].findIndex(function(x){ return x._id===editRecId; });
     if(localIdx===-1) localIdx = editIdx; // נפילה לאחור אם לא נמצא
@@ -2545,6 +2617,40 @@ function openEditDevTask(idx){
 function closeDevEditModal(){
   document.getElementById('devEditModal').style.display='none';
 }
+
+// משימת פיתוח שנפתחה אוטומטית מ"ממתין לגרסה" (ראו createLinkedDevTaskForRequest)
+// נושאת linkedSourceSheet/linkedSourceId. כשסטטוס הפיתוח שלה משתנה ל"נסגר" -
+// כלומר הגרסה עלתה ל-PROD - המשימה המקושרת אצל רבקה/מלמ נסגרת אוטומטית
+// (סטטוס -> "בוצע"). כתיבה מאומתת נפרדת, ישירות לגיליון המקור - לא דרך
+// saveRecord, כדי לא לדרוס שדות שנערכו שם במקביל; מעדכנים רק את שדה הסטטוס.
+async function closeLinkedSourceTask(sheet, sourceId){
+  try{
+    var BASE = 'https://malm-focus-default-rtdb.firebaseio.com';
+    var fresh = await fetch(BASE+'/db/'+sheet+'.json?t='+Date.now());
+    if(!fresh.ok) return false;
+    var arr = (await fresh.json()) || [];
+    var fi = arr.findIndex(function(x){ return x._id===sourceId; });
+    if(fi===-1) return false;
+    if(arr[fi].ס === 'בוצע') return true; // כבר סגורה - אין מה לעשות
+    arr[fi] = Object.assign({}, arr[fi], {
+      ס: 'בוצע',
+      statusLog: (arr[fi].statusLog||[]).concat([{s:'בוצע', t:Date.now(), by:'מערכת (גרסה עלתה ל-PROD)'}])
+    });
+    var putRes = await fetch(BASE+'/db/'+sheet+'.json', { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(arr) });
+    if(!putRes.ok) return false;
+    var verifyRes = await fetch(BASE+'/db/'+sheet+'.json?t='+Date.now());
+    var verifyArr = (await verifyRes.json()) || [];
+    var saved = verifyArr.find(function(x){ return x._id===sourceId; });
+    if(!saved || saved.ס!=='בוצע') return false;
+    DB[sheet] = verifyArr;
+    if(sheet==='malm') r1(); else r2();
+    return true;
+  }catch(e){
+    console.warn('closeLinkedSourceTask failed:', e);
+    return false;
+  }
+}
+
 async function saveDevTaskModal(){
   var taskUid=document.getElementById('devEditIdx').value;
   // מאתרים תמיד לפי המזהה הפנימי היציב, לא לפי מיקום - כדי שכל שינוי שקרה בסדר
@@ -2592,6 +2698,10 @@ async function saveDevTaskModal(){
   var sLogAdditions = [];
   if (newStatus !== t.status) sLogAdditions.push({field:'סטטוס פיתוח', s:newStatus, t:Date.now(), by:CU?CU.name:''});
   if (newTStatus !== t.tStatus) sLogAdditions.push({field:'סטטוס בדיקה', s:newTStatus, t:Date.now(), by:CU?CU.name:''});
+  // "נסגר" = הגרסה עלתה ל-PROD. נבדק כאן (לפני Object.assign(t, updatedFields) למטה,
+  // שדורס את t.status) כדי לתפוס רק מעבר אמיתי לתוך "נסגר" - לא כל שמירה בזמן
+  // שהמשימה כבר סגורה.
+  var devBecameClosed = (newStatus === 'נסגר' && newStatus !== t.status);
 
   var saveBtn = document.getElementById('devEditSaveBtn');
   saveBtn.disabled = true;
@@ -2675,12 +2785,19 @@ async function saveDevTaskModal(){
       sendDevTesterEmail(testerUser, fullRecord);
     }
 
+    var sourceClosed = false;
+    if (devBecameClosed && t.linkedSourceSheet && t.linkedSourceId) {
+      sourceClosed = await closeLinkedSourceTask(t.linkedSourceSheet, t.linkedSourceId);
+    }
+
     document.getElementById('devEditMsg').style.color='#2e7d32';
-    document.getElementById('devEditMsg').textContent='✅ נשמר ואומת מול השרת בהצלחה' + (launchCreated ? ' + נוצרה משימה מקושרת בטאב עליה לאוויר' : '');
+    document.getElementById('devEditMsg').textContent='✅ נשמר ואומת מול השרת בהצלחה'
+      + (launchCreated ? ' + נוצרה משימה מקושרת בטאב עליה לאוויר' : '')
+      + (sourceClosed ? (' + המשימה המקושרת אצל ' + (t.linkedSourceSheet==='rivka'?'רבקה':'מלמ') + ' נסגרה אוטומטית') : '');
     renderDevTable();
     populateDevFilters();
     filterDevTable();
-    setTimeout(closeDevEditModal, launchCreated ? 1400 : 600);
+    setTimeout(closeDevEditModal, (launchCreated || sourceClosed) ? 1400 : 600);
   } catch(e) {
     document.getElementById('devEditMsg').style.color='#c62828';
     document.getElementById('devEditMsg').textContent='❌ ' + e.message;

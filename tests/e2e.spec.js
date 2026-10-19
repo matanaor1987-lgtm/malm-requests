@@ -550,6 +550,85 @@ test.describe('רגרסיה: איבוד רשומות ביומן שינויים �
   });
 });
 
+test.describe('"ממתין לגרסה" - קישור אוטומטי בין משימת רבקה/מלמ למשימת פיתוח', () => {
+  test('שינוי סטטוס רבקה ל"ממתין לגרסה" יוצר אוטומטית משימת פיתוח מקושרת; הסטטוס מוסתר כברירת מחדל ומוצג רק אחרי סימון בפילטר', async ({ page }) => {
+    const rec = { _id: 'r_waitver_1', נ: 'בקשה לממתין לגרסה', מב: 'מנהלת בדיקה', ת: '2026-07-01', כ: 'k', ב: 'b', ע: 1, ס: 'פתוח', chat: {} };
+    const { db, devTasksByUid } = await mockFirebase(page, { rivka: [rec] });
+    await page.goto('/index.html');
+    await login(page, 'testadmin', 'pw');
+    await page.click('.tab[data-tab="1"]');
+    await page.click('tr:has-text("בקשה לממתין לגרסה") .act-btn');
+    await page.selectOption('#f_ס', 'ממתין לגרסה');
+    await page.click('button.btn-save');
+    await page.waitForTimeout(300);
+
+    // נוצרה משימת פיתוח חדשה, מקושרת בחזרה למשימת הרבקה
+    const newTask = Object.values(devTasksByUid).find(t => t.linkedSourceSheet === 'rivka' && t.linkedSourceId === 'r_waitver_1');
+    expect(newTask).toBeTruthy();
+    expect(newTask.desc).toContain('בקשה לממתין לגרסה');
+
+    // משימת הרבקה עצמה שומרת קישור חזרה למשימת הפיתוח
+    const savedRivka = db.rivka.find(x => x._id === 'r_waitver_1');
+    expect(savedRivka.ס).toBe('ממתין לגרסה');
+    expect(savedRivka.linkedDevUid).toBe(newTask._uid);
+
+    // ברירת מחדל: "ממתין לגרסה" לא מסומן בפילטר - השורה לא מוצגת
+    await expect(page.locator('#b2')).not.toContainText('בקשה לממתין לגרסה');
+
+    // סימון הסטטוס בפילטר חושף את השורה, כולל תג הקישור למשימת הפיתוח
+    await page.click('#st2btn');
+    await page.click('input.st2cb[value="ממתין לגרסה"]');
+    await expect(page.locator('#b2')).toContainText('בקשה לממתין לגרסה');
+    await expect(page.locator('tr:has-text("בקשה לממתין לגרסה")')).toContainText('מקושר למשימת פיתוח');
+  });
+
+  test('אותו דבר במלמ כולל - גם אם עדיין לא היה קיים שם', async ({ page }) => {
+    const rec = { _id: 'm_waitver_1', ת: '2026-07-01', ד: 'תחום בדיקה', מ: 'משימת מלמ לממתין לגרסה', ע: 2, ס: 'פתוח', dhl: '', א: '', chat: {} };
+    const { db, devTasksByUid } = await mockFirebase(page, { malm: [rec] });
+    await page.goto('/index.html');
+    await login(page, 'testadmin', 'pw');
+    await page.click('.tab[data-tab="0"]');
+    await page.click('tr:has-text("משימת מלמ לממתין לגרסה") .act-btn');
+    await page.selectOption('#f_ס', 'ממתין לגרסה');
+    await page.click('button.btn-save');
+    await page.waitForTimeout(300);
+
+    const newTask = Object.values(devTasksByUid).find(t => t.linkedSourceSheet === 'malm' && t.linkedSourceId === 'm_waitver_1');
+    expect(newTask).toBeTruthy();
+    expect(newTask.desc).toContain('משימת מלמ לממתין לגרסה');
+
+    const savedMalm = db.malm.find(x => x._id === 'm_waitver_1');
+    expect(savedMalm.linkedDevUid).toBe(newTask._uid);
+  });
+
+  test('כשסטטוס פיתוח של משימה מקושרת משתנה ל"נסגר" (הגרסה עלתה ל-PROD) - המשימה המקושרת ברבקה נסגרת אוטומטית', async ({ page }) => {
+    const rivkaRec = { _id: 'r_waitver_2', נ: 'בקשה שממתינה לגרסה', מב: 'מנהלת בדיקה', ת: '2026-07-01', כ: 'k', ב: 'b', ע: 1, ס: 'ממתין לגרסה', chat: {}, linkedDevUid: 'dt_link_1' };
+    const devSeed = {
+      dt_link_1: {
+        _uid: 'dt_link_1', id: '', dev: '', status: 'בפיתוח',
+        desc: 'ממתין לגרסה - בקשת רבקה: בקשה שממתינה לגרסה',
+        notes: '', comp: '', ver: '', iface: '', specLink: '', tester: '', testerUid: '', tNotes: '', tStatus: '',
+        linkedSourceSheet: 'rivka', linkedSourceId: 'r_waitver_2'
+      }
+    };
+    const { db } = await mockFirebase(page, { rivka: [rivkaRec], devTasksByUid: devSeed });
+    await page.goto('/index.html');
+    await login(page, 'testadmin', 'pw');
+    await page.click('.tab[data-tab="3"]');
+    await expect(page.locator('#devBody')).toContainText('בקשה שממתינה לגרסה');
+
+    const row = page.locator('#devBody tr', { hasText: 'בקשה שממתינה לגרסה' });
+    await row.locator('button', { hasText: 'עריכה' }).click();
+    await expect(page.locator('#devEditModal')).toBeVisible();
+    await page.selectOption('#devEditStatus', 'נסגר');
+    await page.click('button[onclick="saveDevTaskModal()"]');
+    await page.waitForTimeout(300);
+
+    const closedRivka = db.rivka.find(x => x._id === 'r_waitver_2');
+    expect(closedRivka.ס).toBe('בוצע');
+  });
+});
+
 test.describe('משימות בעליה לאוויר', () => {
   test('אדמין רואה את הטאב, יכול להוסיף משימה חדשה ולראות אותה ברשימה', async ({ page }) => {
     const { launchTasks: liveLaunch } = await mockFirebase(page, {});
