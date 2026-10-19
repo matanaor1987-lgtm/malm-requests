@@ -1415,7 +1415,16 @@ function closeRivkaToMalmModal(){
 function retryRivkaToMalmHandoff(rivkaId){
   var r = DB.rivka.find(function(x){ return x._id===rivkaId; });
   if(!r) return;
-  openRivkaToMalmHandoffModal({ sourceId: r._id, nSubject: r.נ||r.כ||'', priority: r.ע||'' });
+  openRivkaToMalmHandoffModal(rivkaToMalmCtxFromRec(r));
+}
+// כל התוכן הרלוונטי של הבקשה המקורית ברבקה (לא רק הכותרת) - כדי ש"פירוט
+// הבקשה המקורית" במשימת המלמ החדשה יכלול באמת הכל: נושא, כותרת (אם שונה
+// מהנושא), תוכן הבקשה, מטפל/ת, והיסטוריית הצ'אט (אם הייתה).
+function rivkaToMalmCtxFromRec(r){
+  return {
+    sourceId: r._id, subject: r.נ||'', title: r.כ||'', body: r.ב||'',
+    requester: r.מב||'', handler: r.מט||'', priority: r.ע||'', chat: r.chat||{}
+  };
 }
 async function saveRivkaToMalmHandoff(){
   if(!rivkaToMalmCtx) return;
@@ -1429,16 +1438,26 @@ async function saveRivkaToMalmHandoff(){
   var ver = document.getElementById('rtmVer').value.trim();
   var ctx = rivkaToMalmCtx;
 
-  var taskText = 'הועבר מרבקה' + (ctx.nSubject?(' - '+ctx.nSubject):'')
+  // אותו עיקרון צירוף כמו בהעברה הידנית הקיימת (openTransferToMalm) - נושא +
+  // כותרת (אם שונה מהנושא) + תוכן הבקשה, כולם כפי שהם, בלי לקצר כלום.
+  var originalContent = [ctx.subject, (ctx.title && ctx.title!==ctx.subject ? ctx.title : ''), ctx.body].filter(Boolean).join('\n');
+  var taskText = 'הועבר מרבקה' + (ctx.requester?(' - '+ctx.requester):'')
     + (taskNum ? ('\nמספר משימה: '+taskNum) : '')
     + (ver ? ('\nגרסה: '+ver) : '')
+    + (originalContent ? ('\n\nפירוט הבקשה המקורית:\n'+originalContent) : '')
     + '\n\nפירוט למפתח:\n' + details;
+
+  // היסטוריית הצ'אט (אם הייתה) מועתקת כמו שהיא - בלי לעבור דרך sendMsg(),
+  // כדי שלא יישלחו מיילים מחדש על כל הודעה ישנה; רק השינוי היחיד (סגירת
+  // המשימה ברבקה) עובר דרך זרימת השמירה הרגילה כמו כל סטטוס אחר. שכפול
+  // עמוק כדי שלא לשתף את אותו אובייקט chat בין שתי הרשומות בזיכרון.
+  var copiedChat = ctx.chat ? JSON.parse(JSON.stringify(ctx.chat)) : {};
 
   var malmRec = {
     _id: genId(),
     ת: new Date().toISOString().slice(0,10),
     ד: '', מ: taskText, ע: ctx.priority||'',
-    ס: 'פתוח', dhl:'', א:'', ה:'', chat:{}, reads:{},
+    ס: 'פתוח', dhl:'', א:ctx.handler||'', ה:'', chat:copiedChat, reads:{},
     linkedRivkaId: ctx.sourceId
   };
 
@@ -1555,7 +1574,7 @@ async function saveModal(){
   // את מודל ה-handoff שאוסף פרטים למפתח ויוצר את משימת המלמ המקושרת.
   var openHandoffCtx = null;
   if(editSheet==='rivka' && (!r || wasStatus !== rec.ס) && rec.ס === 'הועבר למלמ' && !rec.linkedMalmId){
-    openHandoffCtx = { sourceId: rec._id, nSubject: rec.נ||rec.כ||'', priority: rec.ע||'' };
+    openHandoffCtx = rivkaToMalmCtxFromRec(rec);
   }
   // Attach pending files to new record
   if(pendingFiles.length && editIdx===-1){

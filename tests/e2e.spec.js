@@ -727,6 +727,57 @@ test.describe('"הועבר למלמ" - סטטוס ברבקה שסוגר את ה�
     await expect(page.locator('#rivkaToMalmModal')).toBeVisible();
     expect(db.malm.some(x => x.linkedRivkaId === 'r_tomalm_3')).toBe(false);
   });
+
+  test('מעביר את כל תוכן הבקשה המקורית (נושא + כותרת שונה + גוף) ואת היסטוריית הצ\'אט במלואה, בלי לשלוח מייל על אף הודעה שהועתקה', async ({ page }) => {
+    const rec = {
+      _id: 'r_tomalm_full', נ: 'נושא הבקשה המקורית', מב: 'מנהלת בדיקה', מט: 'דני מהתמיכה',
+      ת: '2026-07-01', כ: 'כותרת שונה לגמרי מהנושא', ב: 'תוכן מפורט של הבקשה המקורית עם כל הפרטים הרלוונטיים',
+      ע: 1, ס: 'פתוח',
+      chat: {
+        malm: [{ sender: 'אדמין', side: 'malm', text: 'הערה ישנה מהצוות הפנימי', time: '01/07/2026 10:00', ts: 1000, files: [] }],
+        dhl: [{ sender: 'מנהלת בדיקה', side: 'dhl', text: 'תגובה קודמת של רבקה', time: '01/07/2026 11:00', ts: 2000, files: [] }]
+      }
+    };
+    const { db } = await mockFirebase(page, { rivka: [rec] });
+    await page.goto('/index.html');
+    await login(page, 'testadmin', 'pw');
+
+    // סופרים קריאות ל-sendEmailNotification מרגע זה - צריך להישאר 0 לאורך כל
+    // תהליך ההעברה (כולל העתקת ההודעות הישנות), כי לא מדובר בהודעות חדשות
+    await page.evaluate(() => {
+      window.__emailCallCount = 0;
+      const orig = window.sendEmailNotification;
+      window.sendEmailNotification = function(...args) { window.__emailCallCount++; return orig.apply(this, args); };
+    });
+
+    await page.click('.tab[data-tab="1"]');
+    await page.click('tr:has-text("נושא הבקשה המקורית") .act-btn');
+    await page.selectOption('#f_ס', 'הועבר למלמ');
+    await page.click('button.btn-save');
+    await page.waitForTimeout(300);
+    await expect(page.locator('#rivkaToMalmModal')).toBeVisible();
+
+    await page.fill('#rtmDetails', 'פרטי ביצוע עבור המפתח');
+    await page.click('#rtmSaveBtn');
+    await page.waitForTimeout(300);
+
+    const newMalm = db.malm.find(x => x.linkedRivkaId === 'r_tomalm_full');
+    expect(newMalm).toBeTruthy();
+    // כל חלקי התוכן המקורי עברו - לא רק הנושא
+    expect(newMalm.מ).toContain('נושא הבקשה המקורית');
+    expect(newMalm.מ).toContain('כותרת שונה לגמרי מהנושא');
+    expect(newMalm.מ).toContain('תוכן מפורט של הבקשה המקורית עם כל הפרטים הרלוונטיים');
+    expect(newMalm.מ).toContain('פרטי ביצוע עבור המפתח');
+    expect(newMalm.א).toBe('דני מהתמיכה');
+
+    // היסטוריית הצ'אט הועתקה במלואה
+    expect(newMalm.chat.malm[0].text).toBe('הערה ישנה מהצוות הפנימי');
+    expect(newMalm.chat.dhl[0].text).toBe('תגובה קודמת של רבקה');
+
+    // לא נשלח אף מייל על ההודעות שהועתקו (או בכלל, בתהליך הזה)
+    const emailCallCount = await page.evaluate(() => window.__emailCallCount);
+    expect(emailCallCount).toBe(0);
+  });
 });
 
 test.describe('משימות בעליה לאוויר', () => {
