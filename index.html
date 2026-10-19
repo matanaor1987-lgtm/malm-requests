@@ -1456,7 +1456,7 @@ async function saveRivkaToMalmHandoff(){
   var malmRec = {
     _id: genId(),
     ת: new Date().toISOString().slice(0,10),
-    ד: '', מ: taskText, ע: ctx.priority||'',
+    ד: ctx.title||'', מ: taskText, ע: ctx.priority||'',
     ס: 'פתוח', dhl:'', א:ctx.handler||'', ה:'', chat:copiedChat, reads:{},
     linkedRivkaId: ctx.sourceId
   };
