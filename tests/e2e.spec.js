@@ -629,6 +629,106 @@ test.describe('"ממתין לגרסה" - קישור אוטומטי בין משי
   });
 });
 
+test.describe('"הועבר למלמ" - סטטוס ברבקה שסוגר את המשימה ומעביר אותה למלמ (אדמין בלבד)', () => {
+  test('בחירת "הועבר למלמ" + שמירה סוגרת את המשימה ברבקה ופותחת טופס פרטים למפתח; שמירת הטופס יוצרת משימת מלמ מקושרת', async ({ page }) => {
+    const rec = { _id: 'r_tomalm_1', נ: 'בקשה להעברה למלמ', מב: 'מנהלת בדיקה', ת: '2026-07-01', כ: 'k', ב: 'b', ע: 2, ס: 'פתוח', chat: {} };
+    const { db } = await mockFirebase(page, { rivka: [rec] });
+    await page.goto('/index.html');
+    await login(page, 'testadmin', 'pw');
+    await page.click('.tab[data-tab="1"]');
+    await page.click('tr:has-text("בקשה להעברה למלמ") .act-btn');
+    await page.selectOption('#f_ס', 'הועבר למלמ');
+    await page.click('button.btn-save');
+    await page.waitForTimeout(300);
+
+    // המשימה נסגרת ברבקה מיד - לא ממתינה למילוי הטופס
+    const closedRivka1 = db.rivka.find(x => x._id === 'r_tomalm_1');
+    expect(closedRivka1.ס).toBe('הועבר למלמ');
+
+    // הטופס נפתח אוטומטית
+    await expect(page.locator('#rivkaToMalmModal')).toBeVisible();
+
+    await page.fill('#rtmTaskNum', '99999');
+    await page.fill('#rtmVer', '5.9999');
+    await page.fill('#rtmDetails', 'לבדוק את הממשק X ולתקן את שדה Y');
+    await page.click('#rtmSaveBtn');
+    await page.waitForTimeout(300);
+
+    await expect(page.locator('#rivkaToMalmModal')).toBeHidden();
+
+    const newMalm = db.malm.find(x => x.linkedRivkaId === 'r_tomalm_1');
+    expect(newMalm).toBeTruthy();
+    expect(newMalm.מ).toContain('בקשה להעברה למלמ');
+    expect(newMalm.מ).toContain('99999');
+    expect(newMalm.מ).toContain('5.9999');
+    expect(newMalm.מ).toContain('לבדוק את הממשק X ולתקן את שדה Y');
+    expect(newMalm.ע).toBe('2');
+    expect(newMalm.ס).toBe('פתוח');
+
+    const closedRivka2 = db.rivka.find(x => x._id === 'r_tomalm_1');
+    expect(closedRivka2.linkedMalmId).toBe(newMalm._id);
+
+    // ברירת מחדל: "הועבר למלמ" לא מסומן בפילטר - השורה לא מוצגת
+    await expect(page.locator('#b2')).not.toContainText('בקשה להעברה למלמ');
+    await page.click('#st2btn');
+    await page.click('input.st2cb[value="הועבר למלמ"]');
+    await expect(page.locator('#b2 tr:has-text("בקשה להעברה למלמ")')).toContainText('הועבר למלמ - צפה במשימה');
+  });
+
+  test('ביטול טופס הפרטים משאיר את המשימה סגורה ברבקה בלי משימת מלמ מקושרת; כפתור "נסיון חוזר" פותח את הטופס שוב', async ({ page }) => {
+    const rec = { _id: 'r_tomalm_2', נ: 'בקשה שתועבר אחר כך', מב: 'מנהלת בדיקה', ת: '2026-07-01', כ: 'k', ב: 'b', ע: 3, ס: 'פתוח', chat: {} };
+    const { db } = await mockFirebase(page, { rivka: [rec] });
+    await page.goto('/index.html');
+    await login(page, 'testadmin', 'pw');
+    await page.click('.tab[data-tab="1"]');
+    await page.click('tr:has-text("בקשה שתועבר אחר כך") .act-btn');
+    await page.selectOption('#f_ס', 'הועבר למלמ');
+    await page.click('button.btn-save');
+    await page.waitForTimeout(300);
+    await expect(page.locator('#rivkaToMalmModal')).toBeVisible();
+
+    await page.click('button[onclick="closeRivkaToMalmModal()"]');
+    await expect(page.locator('#rivkaToMalmModal')).toBeHidden();
+
+    expect(db.malm.some(x => x.linkedRivkaId === 'r_tomalm_2')).toBe(false);
+    const closedRivka = db.rivka.find(x => x._id === 'r_tomalm_2');
+    expect(closedRivka.ס).toBe('הועבר למלמ');
+    expect(closedRivka.linkedMalmId).toBeFalsy();
+
+    await page.click('#st2btn');
+    await page.click('input.st2cb[value="הועבר למלמ"]');
+    await expect(page.locator('#b2 tr:has-text("בקשה שתועבר אחר כך")')).toContainText('צור משימת מלמ מקושרת');
+
+    await page.click('#b2 tr:has-text("בקשה שתועבר אחר כך") button[onclick*="retryRivkaToMalmHandoff"]');
+    await expect(page.locator('#rivkaToMalmModal')).toBeVisible();
+    await page.fill('#rtmDetails', 'פרטים שהושלמו בנסיון השני');
+    await page.click('#rtmSaveBtn');
+    await page.waitForTimeout(300);
+
+    const newMalm = db.malm.find(x => x.linkedRivkaId === 'r_tomalm_2');
+    expect(newMalm).toBeTruthy();
+    expect(newMalm.מ).toContain('פרטים שהושלמו בנסיון השני');
+  });
+
+  test('שדה "פירוט למפתח" חובה - שמירה ריקה מציגה שגיאה ולא יוצרת משימת מלמ', async ({ page }) => {
+    const rec = { _id: 'r_tomalm_3', נ: 'בקשה לבדיקת ולידציה', מב: 'מנהלת בדיקה', ת: '2026-07-01', כ: 'k', ב: 'b', ע: 1, ס: 'פתוח', chat: {} };
+    const { db } = await mockFirebase(page, { rivka: [rec] });
+    await page.goto('/index.html');
+    await login(page, 'testadmin', 'pw');
+    await page.click('.tab[data-tab="1"]');
+    await page.click('tr:has-text("בקשה לבדיקת ולידציה") .act-btn');
+    await page.selectOption('#f_ס', 'הועבר למלמ');
+    await page.click('button.btn-save');
+    await page.waitForTimeout(300);
+    await expect(page.locator('#rivkaToMalmModal')).toBeVisible();
+
+    await page.click('#rtmSaveBtn');
+    await expect(page.locator('#rtmMsg')).toContainText('חובה למלא פירוט למפתח');
+    await expect(page.locator('#rivkaToMalmModal')).toBeVisible();
+    expect(db.malm.some(x => x.linkedRivkaId === 'r_tomalm_3')).toBe(false);
+  });
+});
+
 test.describe('משימות בעליה לאוויר', () => {
   test('אדמין רואה את הטאב, יכול להוסיף משימה חדשה ולראות אותה ברשימה', async ({ page }) => {
     const { launchTasks: liveLaunch } = await mockFirebase(page, {});

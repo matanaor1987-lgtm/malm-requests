@@ -54,6 +54,7 @@ tr:hover td{background:#fffbf0}
 .s-בוטל{background:#f5f5f5;color:#9e9e9e}
 .s-ממתין-לבדיקה{background:#e8eaf6;color:#3949ab}
 .s-ממתין-לגרסה{background:#e0f7fa;color:#00838f}
+.s-הועבר-למלמ{background:#e1f5fe;color:#0277bd}
 .s-בטיפול{background:#e0f2f1;color:#00695c}
 .s-נכשל{background:#fde8e8;color:#c62828}
 .muted{color:#ccc}
@@ -276,6 +277,7 @@ tr:hover td{background:#fffbf0}
     <label style="display:flex;align-items:center;gap:8px;padding:5px 12px;cursor:pointer;font-size:12px;font-family:Arial;direction:rtl"><input type="checkbox" class="st2cb" value="בבדיקה" onchange="onStatusChange()" checked> <span class="badge s-בבדיקה">בבדיקה</span></label>
     <label style="display:flex;align-items:center;gap:8px;padding:5px 12px;cursor:pointer;font-size:12px;font-family:Arial;direction:rtl"><input type="checkbox" class="st2cb" value="מוקפא" onchange="onStatusChange()" checked> <span class="badge s-מוקפא">מוקפא</span></label>
     <label style="display:flex;align-items:center;gap:8px;padding:5px 12px;cursor:pointer;font-size:12px;font-family:Arial;direction:rtl"><input type="checkbox" class="st2cb" value="ממתין לגרסה" onchange="onStatusChange()"> <span class="badge s-ממתין-לגרסה">ממתין לגרסה</span></label>
+    <label style="display:flex;align-items:center;gap:8px;padding:5px 12px;cursor:pointer;font-size:12px;font-family:Arial;direction:rtl"><input type="checkbox" class="st2cb" value="הועבר למלמ" onchange="onStatusChange()"> <span class="badge s-הועבר-למלמ">הועבר למלמ</span></label>
     <label style="display:flex;align-items:center;gap:8px;padding:5px 12px;cursor:pointer;font-size:12px;font-family:Arial;direction:rtl"><input type="checkbox" class="st2cb" value="בוטל" onchange="onStatusChange()"> <span class="badge s-בוטל">בוטל</span></label>
     <label style="display:flex;align-items:center;gap:8px;padding:5px 12px;cursor:pointer;font-size:12px;font-family:Arial;direction:rtl"><input type="checkbox" class="st2cb" value="בוצע" onchange="onStatusChange()"> <span class="badge s-בוצע">בוצע</span></label>
   </div>
@@ -393,7 +395,7 @@ const PAGE_SIZE=100;
 let page1=1,page2=1,lastFilterKey1='',lastFilterKey2='';
 const SM=['פתוח','בטיפול','בבדיקה','ממתין לבדיקה','ממתין לגרסה','מוקפא','הושהה','בוצע','טופל','בוטל'];
 const SR=['פתוח','בטיפול','בוצע'];
-const SR_ADMIN=['פתוח','בטיפול','בוצע','מוקפא','בבדיקה','ממתין לגרסה','בוטל'];
+const SR_ADMIN=['פתוח','בטיפול','בוצע','מוקפא','בבדיקה','ממתין לגרסה','הועבר למלמ','בוטל'];
 
 // ═══════════════════════════════════════
 // AUTH SYSTEM
@@ -739,6 +741,20 @@ function releaseTagHtml(item){
 function linkedDevBadgeHtml(r){
   if(!r.linkedDevUid) return '';
   return '<div style="margin-top:2px"><button onclick="jumpToDevTask(\''+esc(r.linkedDevUid)+'\')" title="עבר למשימת הפיתוח המקושרת" style="background:#00838f;color:#fff;border:none;border-radius:10px;padding:1px 7px;cursor:pointer;font-size:10px;font-family:Arial">🔧 ממתין לגרסה - מקושר למשימת פיתוח'+(r.linkedDevTaskNum?(' '+esc(r.linkedDevTaskNum)):'')+'</button></div>';
+}
+
+// "הועבר למלמ" (רבקה בלבד) פותח אוטומטית מודל handoff ליצירת משימת מלמ מקושרת
+// (ראו openRivkaToMalmHandoffModal/saveRivkaToMalmHandoff). אם המודל בוטל לפני
+// שהמשימה נוצרה - מוצג כפתור "נסיון חוזר" במקום תג הקישור, כדי שלא תישאר
+// משימת רבקה סגורה בלי שהתוכן שלה הגיע לשום מקום.
+function rivkaToMalmStatusHtml(r){
+  if(r.linkedMalmId){
+    return '<div style="margin-top:2px"><button onclick="jumpToMalmTask(\''+esc(r.linkedMalmId)+'\')" title="עבר למשימת המלמ המקושרת" style="background:#0277bd;color:#fff;border:none;border-radius:10px;padding:1px 7px;cursor:pointer;font-size:10px;font-family:Arial">🔀 הועבר למלמ - צפה במשימה</button></div>';
+  }
+  if(r.ס==='הועבר למלמ'){
+    return '<div style="margin-top:2px"><button onclick="retryRivkaToMalmHandoff(\''+esc(r._id)+'\')" title="עדיין לא נוצרה משימת המלמ המקושרת" style="background:#fff3e0;color:#e65100;border:1px solid #e65100;border-radius:10px;padding:1px 7px;cursor:pointer;font-size:10px;font-family:Arial">⚠️ צור משימת מלמ מקושרת</button></div>';
+  }
+  return '';
 }
 
 // בחירה מרובה בשורות רבקה/מלמ + שיוך בבאץ' לגרסה - ראו selectedMalmIds/selectedRivkaIds.
@@ -1112,7 +1128,7 @@ function r2(){
       <td style="white-space:nowrap">${eb}${tb2}${db2}</td>
       <td>${m(r.נ)}</td><td>${m(r.מב)}</td>
       <td style="color:#888;font-size:11px">${r.ת||''}</td>
-      <td>${r.כ?`<strong>${r.כ}</strong><br>`:''} ${r.ב||''}${releaseTagHtml(r)}${linkedDevBadgeHtml(r)}</td>
+      <td>${r.כ?`<strong>${r.כ}</strong><br>`:''} ${r.ב||''}${releaseTagHtml(r)}${linkedDevBadgeHtml(r)}${rivkaToMalmStatusHtml(r)}</td>
       <td>${m(r.מט)}</td><td>${pc(r.ע)}</td><td>${sc(r.ס)}</td>
       <td>${hasUnread(r)?'<span class="unread-dot" title="הערה חדשה"></span>':''}${chatPreviewHtml(r)}</td></tr>`}).join('')
     :'<tr><td colspan="10" class="nores">לא נמצאו תוצאות</td></tr>';
@@ -1377,6 +1393,96 @@ async function createLinkedDevTaskForRequest(sourceSheet, rec){
   }
 }
 
+// "הועבר למלמ" (רבקה, אדמין בלבד): אחרי שמירת הסטטוס הזה (שכבר סוגר את
+// המשימה ברבקה, דרך זרימת השמירה הרגילה), נפתח מודל קטן שמבקש פרטים
+// ייעודיים למפתח (מספר משימה, גרסה, פירוט) - מתוכם נבנית משימת מלמ חדשה,
+// מקושרת חזרה. rivkaToMalmCtx מחזיק את ההקשר (מאיזו משימת רבקה) בזמן
+// שהמודל פתוח; אם בוטל לפני יצירה - rivkaToMalmStatusHtml מציג כפתור
+// נסיון חוזר בשורה במקום להשאיר משימה "תקועה" בלי תוכן שהגיע לשום מקום.
+var rivkaToMalmCtx = null;
+function openRivkaToMalmHandoffModal(ctx){
+  rivkaToMalmCtx = ctx;
+  document.getElementById('rtmTaskNum').value='';
+  document.getElementById('rtmVer').value='';
+  document.getElementById('rtmDetails').value='';
+  document.getElementById('rtmMsg').textContent='';
+  document.getElementById('rivkaToMalmModal').style.display='flex';
+}
+function closeRivkaToMalmModal(){
+  rivkaToMalmCtx = null;
+  document.getElementById('rivkaToMalmModal').style.display='none';
+}
+function retryRivkaToMalmHandoff(rivkaId){
+  var r = DB.rivka.find(function(x){ return x._id===rivkaId; });
+  if(!r) return;
+  openRivkaToMalmHandoffModal({ sourceId: r._id, nSubject: r.נ||r.כ||'', priority: r.ע||'' });
+}
+async function saveRivkaToMalmHandoff(){
+  if(!rivkaToMalmCtx) return;
+  var details = document.getElementById('rtmDetails').value.trim();
+  if(!details){
+    document.getElementById('rtmMsg').style.color='#c62828';
+    document.getElementById('rtmMsg').textContent='חובה למלא פירוט למפתח';
+    return;
+  }
+  var taskNum = document.getElementById('rtmTaskNum').value.trim();
+  var ver = document.getElementById('rtmVer').value.trim();
+  var ctx = rivkaToMalmCtx;
+
+  var taskText = 'הועבר מרבקה' + (ctx.nSubject?(' - '+ctx.nSubject):'')
+    + (taskNum ? ('\nמספר משימה: '+taskNum) : '')
+    + (ver ? ('\nגרסה: '+ver) : '')
+    + '\n\nפירוט למפתח:\n' + details;
+
+  var malmRec = {
+    _id: genId(),
+    ת: new Date().toISOString().slice(0,10),
+    ד: '', מ: taskText, ע: ctx.priority||'',
+    ס: 'פתוח', dhl:'', א:'', ה:'', chat:{}, reads:{},
+    linkedRivkaId: ctx.sourceId
+  };
+
+  var saveBtn = document.getElementById('rtmSaveBtn');
+  saveBtn.disabled = true;
+  document.getElementById('rtmMsg').style.color='#666';
+  document.getElementById('rtmMsg').textContent='שומר...';
+  try{
+    var BASE = 'https://malm-focus-default-rtdb.firebaseio.com';
+    var fresh = await fetch(BASE+'/db/malm.json?t='+Date.now());
+    if(!fresh.ok) throw new Error('שגיאה בטעינה טרייה מהשרת (סטטוס '+fresh.status+')');
+    var arr = (await fresh.json()) || [];
+    arr.unshift(malmRec);
+    var putRes = await fetch(BASE+'/db/malm.json', { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(arr) });
+    if(!putRes.ok) throw new Error('השרת דחה את הכתיבה (סטטוס '+putRes.status+')');
+    var verifyRes = await fetch(BASE+'/db/malm.json?t='+Date.now());
+    var verifyArr = (await verifyRes.json()) || [];
+    var saved = verifyArr.find(function(x){ return x._id===malmRec._id; });
+    if(!saved || !deepEqual(saved, malmRec)) throw new Error('האימות מול השרת נכשל - המשימה לא נשמרה בפועל במלמ. נסה/י שוב.');
+    DB.malm = verifyArr;
+
+    // קישור חזרה ברבקה - best-effort: אם זה נכשל, משימת המלמ כבר נוצרה
+    // בהצלחה (העיקר) והאדמין פשוט יראה כפתור "נסיון חוזר" במקום תג קישור.
+    try{
+      var rFresh = await fetch(BASE+'/db/rivka.json?t='+Date.now());
+      var rArr = (rFresh.ok ? await rFresh.json() : []) || [];
+      var ri = rArr.findIndex(function(x){ return x._id===ctx.sourceId; });
+      if(ri>-1){
+        rArr[ri] = Object.assign({}, rArr[ri], { linkedMalmId: malmRec._id });
+        var rPutRes = await fetch(BASE+'/db/rivka.json', { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(rArr) });
+        if(rPutRes.ok) DB.rivka = rArr;
+      }
+    }catch(e){ console.warn('קישור חזרה ברבקה נכשל:', e); }
+
+    closeRivkaToMalmModal();
+    initFilters(); r1(); r2();
+  }catch(e){
+    document.getElementById('rtmMsg').style.color='#c62828';
+    document.getElementById('rtmMsg').textContent='❌ '+e.message;
+  }finally{
+    saveBtn.disabled = false;
+  }
+}
+
 async function saveModal(){
   // העברה מרבקה למלמ עוברת בזרימה נפרדת (יצירה במלמ, ורק אם היא מאומתת בשרת -
   // מחיקה רכה של המקור ברבקה) - לא הזרימה הרגילה, כי היא כותבת לשני גיליונות.
@@ -1395,7 +1501,8 @@ async function saveModal(){
       chat:r?r.chat||{}:{},
       reads:r?r.reads||{}:{},
       linkedDevUid:r?r.linkedDevUid||'':'',
-      linkedDevTaskNum:r?r.linkedDevTaskNum||'':''
+      linkedDevTaskNum:r?r.linkedDevTaskNum||'':'',
+      linkedRivkaId:r?r.linkedRivkaId||'':''
     };
   }else{
     // "מטפל" ו"מבקש" נבחרים ב-DROPDOWN לפי _uid של משתמש אמיתי (ראו buildUserSelectOptionsHtml).
@@ -1421,7 +1528,8 @@ async function saveModal(){
       chat:r?r.chat||{}:{},
       reads:r?r.reads||{}:{},
       linkedDevUid:r?r.linkedDevUid||'':'',
-      linkedDevTaskNum:r?r.linkedDevTaskNum||'':''
+      linkedDevTaskNum:r?r.linkedDevTaskNum||'':'',
+      linkedMalmId:r?r.linkedMalmId||'':''
     };
   }
   // מזהה יציב - נקבע כאן (לא רק בהמשך, יחד עם מיזוג ל-DB המקומי) כי
@@ -1441,6 +1549,13 @@ async function saveModal(){
   // קישור קיים (לא יוצרים כפילות בעריכות חוזרות).
   if((!r || wasStatus !== rec.ס) && rec.ס === 'ממתין לגרסה' && !rec.linkedDevUid){
     await createLinkedDevTaskForRequest(editSheet, rec);
+  }
+  // "הועבר למלמ" (רבקה, אדמין בלבד): הסטטוס עצמו כבר סוגר את המשימה ברבקה
+  // (נשמר כרגיל, בהמשך הפונקציה) - כאן רק מחליטים אם לפתוח, אחרי השמירה,
+  // את מודל ה-handoff שאוסף פרטים למפתח ויוצר את משימת המלמ המקושרת.
+  var openHandoffCtx = null;
+  if(editSheet==='rivka' && (!r || wasStatus !== rec.ס) && rec.ס === 'הועבר למלמ' && !rec.linkedMalmId){
+    openHandoffCtx = { sourceId: rec._id, nSubject: rec.נ||rec.כ||'', priority: rec.ע||'' };
   }
   // Attach pending files to new record
   if(pendingFiles.length && editIdx===-1){
@@ -1487,6 +1602,7 @@ async function saveModal(){
   initFilters();
   if(savedSheet==='malm')r1();else r2();
   saveRecord(savedSheet, savedIdx, rec, savedOpenSnapshot);
+  if(openHandoffCtx) openRivkaToMalmHandoffModal(openHandoffCtx);
 }
 
 // יוצר את משימת המלמ החדשה (עם אימות מול השרת, כמו כל שמירה אחרת במערכת) ורק
@@ -3725,6 +3841,13 @@ function jumpToDevTask(uid) {
     if (idx > -1) openEditDevTask(idx);
   });
 }
+// ניווט ממשימת רבקה שהועברה למלמ (ראו rivkaToMalmStatusHtml), בחזרה למשימת
+// המלמ המקושרת שנוצרה ממנה.
+function jumpToMalmTask(malmId) {
+  switchTab(0);
+  var idx = DB.malm.findIndex(function(x){ return x._id === malmId; });
+  if (idx > -1) openEdit('malm', idx);
+}
 // ניווט ממשימת "עליה לאוויר" שנוצרה מקישור לבדיקת שפיות, בחזרה לבדיקה עצמה.
 function jumpToSanityTask(id) {
   switchTab(4);
@@ -4733,6 +4856,35 @@ function updateChangeLogNote(id, note){
     <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px">
       <button onclick="closeNewDevModal()" style="padding:8px 16px;border:1px solid #ddd;border-radius:6px;cursor:pointer;font-size:13px;font-family:Arial;background:#fff">ביטול</button>
       <button onclick="saveNewDevTask()" style="padding:8px 16px;background:#D40511;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px;font-weight:700;font-family:Arial">שמור</button>
+    </div>
+  </div>
+</div>
+
+<!-- RIVKA -> MALM HANDOFF MODAL: נפתח אחרי שמירת סטטוס "הועבר למלמ" במשימת רבקה
+     (ראו saveModal/openRivkaToMalmHandoffModal) - פרטים למפתח שמהם נבנית משימת
+     מלמ חדשה, מקושרת חזרה למשימת הרבקה שנסגרה. -->
+<div id="rivkaToMalmModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9000;align-items:center;justify-content:center">
+  <div style="background:#fff;border-radius:12px;padding:24px;width:90%;max-width:480px;direction:rtl">
+    <div style="font-size:15px;font-weight:700;margin-bottom:16px;color:#1a1a2e">🔀 העברה למלמ - פרטים למפתח</div>
+    <div style="font-size:12px;color:#666;margin-bottom:14px;line-height:1.6">המשימה ברבקה נסגרה. הפרטים כאן ייפתחו כמשימה חדשה בטאב "משימות מלמ כולל".</div>
+    <div style="display:flex;gap:8px;margin-bottom:10px">
+      <div style="flex:1">
+        <label style="font-size:11px;color:#666;font-weight:700;display:block;margin-bottom:3px">מספר משימה</label>
+        <input id="rtmTaskNum" style="width:100%;padding:8px 10px;border:1.5px solid #ddd;border-radius:6px;font-size:13px;font-family:Arial;direction:ltr;box-sizing:border-box">
+      </div>
+      <div style="flex:1">
+        <label style="font-size:11px;color:#666;font-weight:700;display:block;margin-bottom:3px">גרסה</label>
+        <input id="rtmVer" style="width:100%;padding:8px 10px;border:1.5px solid #ddd;border-radius:6px;font-size:13px;font-family:Arial;direction:ltr;box-sizing:border-box">
+      </div>
+    </div>
+    <div style="margin-bottom:10px">
+      <label style="font-size:11px;color:#666;font-weight:700;display:block;margin-bottom:3px">פירוט למפתח *</label>
+      <textarea id="rtmDetails" rows="4" style="width:100%;padding:8px 10px;border:1.5px solid #ddd;border-radius:6px;font-size:13px;font-family:Arial;direction:rtl;resize:vertical;box-sizing:border-box"></textarea>
+    </div>
+    <div id="rtmMsg" style="margin-bottom:6px;font-size:12px;font-weight:700"></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px">
+      <button onclick="closeRivkaToMalmModal()" style="padding:8px 16px;border:1px solid #ddd;border-radius:6px;cursor:pointer;font-size:13px;font-family:Arial;background:#fff">ביטול</button>
+      <button id="rtmSaveBtn" onclick="saveRivkaToMalmHandoff()" style="padding:8px 16px;background:#D40511;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px;font-weight:700;font-family:Arial">שמור והעבר למלמ</button>
     </div>
   </div>
 </div>
