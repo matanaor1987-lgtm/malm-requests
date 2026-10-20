@@ -2800,4 +2800,23 @@ test.describe('עריכת שם/תיאור שרת - בלי לאבד נתונים 
     expect(serverComponents.servers.sv1.name).toBe('old-name.dhl.com');
     expect(serverComponents.servers.sv1.desc).toBe('תיאור ישן');
   });
+  test('קוד רכיב עם גרש לא שובר את כפתורי השורה (בריחת JS ב-onclick)', async ({ page }) => {
+    const seed = {
+      servers: { sv1: { id: 'sv1', name: 'srv1.dhl.com', desc: 'שרת א' } },
+      components: { "D'H": { code: "D'H" } },
+      values: {}
+    };
+    const { serverComponents } = await mockFirebase(page, { serverComponents: seed });
+    const errors = [];
+    page.on('pageerror', e => { if (!/ServiceWorker/.test(e.message)) errors.push(e.message); });
+    page.on('dialog', d => d.accept());
+    await page.goto('/index.html');
+    await login(page, 'testadmin', 'pw');
+    await page.click('.tab[data-tab="6"]');
+    await page.click('#serverEditModeBtn');
+    await page.click('button[title="הסר רכיב"]');
+    await page.waitForTimeout(200);
+    expect(errors).toEqual([]);
+    expect(serverComponents.components["D'H"].deleted).toBe(true);
+  });
 });

@@ -382,6 +382,7 @@ tr:hover td{background:#fffbf0}
 
 <script src="config.js"></script>
 <script>
+const FB='https://malm-focus-default-rtdb.firebaseio.com';
 const OWNER=window.APP_CONFIG.owner,REPO=window.APP_CONFIG.repo,TOKEN=window.APP_CONFIG.token;
 let DB={malm:[],rivka:[]},currentTab=0,editIdx=-1,editSheet='',editRecId=null,sortCol2='ע',sortDir2=1,sortCol1='',sortDir1=1,transferSourceRivkaId=null;
 let formSnapshot=null;
@@ -558,7 +559,7 @@ var RELEASES = {};
 
 async function loadReleases(){
   try{
-    var r = await fetch('https://malm-focus-default-rtdb.firebaseio.com/releases.json?t='+Date.now());
+    var r = await fetch(FB+'/releases.json?t='+Date.now());
     var data = await r.json();
     RELEASES = data || {};
   }catch(e){ RELEASES = {}; }
@@ -665,7 +666,7 @@ function openNewReleaseForm(){
 function saveRelease(rec){
   return chainedWrite('release:'+rec.id, async function(){
     try{
-      await fetch('https://malm-focus-default-rtdb.firebaseio.com/releases/'+rec.id+'.json', {
+      await fetch(FB+'/releases/'+rec.id+'.json', {
         method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(rec)
       });
     }catch(e){}
@@ -740,7 +741,7 @@ function releaseTagHtml(item){
 // (גם אחרי שסטטוס הבקשה כבר השתנה הלאה).
 function linkedDevBadgeHtml(r){
   if(!r.linkedDevUid) return '';
-  return '<div style="margin-top:2px"><button onclick="jumpToDevTask(\''+esc(r.linkedDevUid)+'\')" title="עבר למשימת הפיתוח המקושרת" style="background:#00838f;color:#fff;border:none;border-radius:10px;padding:1px 7px;cursor:pointer;font-size:10px;font-family:Arial">🔧 ממתין לגרסה - מקושר למשימת פיתוח'+(r.linkedDevTaskNum?(' '+esc(r.linkedDevTaskNum)):'')+'</button></div>';
+  return '<div style="margin-top:2px"><button onclick="jumpToDevTask(\''+jsq(r.linkedDevUid)+'\')" title="עבר למשימת הפיתוח המקושרת" style="background:#00838f;color:#fff;border:none;border-radius:10px;padding:1px 7px;cursor:pointer;font-size:10px;font-family:Arial">🔧 ממתין לגרסה - מקושר למשימת פיתוח'+(r.linkedDevTaskNum?(' '+esc(r.linkedDevTaskNum)):'')+'</button></div>';
 }
 
 // "הועבר למלמ" (רבקה בלבד) פותח אוטומטית מודל handoff ליצירת משימת מלמ מקושרת
@@ -749,10 +750,10 @@ function linkedDevBadgeHtml(r){
 // משימת רבקה סגורה בלי שהתוכן שלה הגיע לשום מקום.
 function rivkaToMalmStatusHtml(r){
   if(r.linkedMalmId){
-    return '<div style="margin-top:2px"><button onclick="jumpToMalmTask(\''+esc(r.linkedMalmId)+'\')" title="עבר למשימת המלמ המקושרת" style="background:#0277bd;color:#fff;border:none;border-radius:10px;padding:1px 7px;cursor:pointer;font-size:10px;font-family:Arial">🔀 הועבר למלמ - צפה במשימה</button></div>';
+    return '<div style="margin-top:2px"><button onclick="jumpToMalmTask(\''+jsq(r.linkedMalmId)+'\')" title="עבר למשימת המלמ המקושרת" style="background:#0277bd;color:#fff;border:none;border-radius:10px;padding:1px 7px;cursor:pointer;font-size:10px;font-family:Arial">🔀 הועבר למלמ - צפה במשימה</button></div>';
   }
   if(r.ס==='הועבר למלמ'){
-    return '<div style="margin-top:2px"><button onclick="retryRivkaToMalmHandoff(\''+esc(r._id)+'\')" title="עדיין לא נוצרה משימת המלמ המקושרת" style="background:#fff3e0;color:#e65100;border:1px solid #e65100;border-radius:10px;padding:1px 7px;cursor:pointer;font-size:10px;font-family:Arial">⚠️ צור משימת מלמ מקושרת</button></div>';
+    return '<div style="margin-top:2px"><button onclick="retryRivkaToMalmHandoff(\''+jsq(r._id)+'\')" title="עדיין לא נוצרה משימת המלמ המקושרת" style="background:#fff3e0;color:#e65100;border:1px solid #e65100;border-radius:10px;padding:1px 7px;cursor:pointer;font-size:10px;font-family:Arial">⚠️ צור משימת מלמ מקושרת</button></div>';
   }
   return '';
 }
@@ -810,12 +811,12 @@ async function batchAssignRelease(sheet, ids, releaseId){
   var el=document.getElementById('savingMsg');
   el.style.display='block'; el.style.background='#1a1a2e'; el.textContent='⏳ משייך לגרסה...';
   try{
-    var fresh = await fetch('https://malm-focus-default-rtdb.firebaseio.com/db/'+sheet+'.json?t='+Date.now());
+    var fresh = await fetch(FB+'/db/'+sheet+'.json?t='+Date.now());
     if(!fresh.ok) throw new Error('שגיאה בטעינה טרייה מהשרת (סטטוס '+fresh.status+')');
     var arr = await fresh.json() || [];
     var idSet = new Set(ids);
     arr.forEach(function(rec){ if(idSet.has(rec._id)) rec.releaseId = releaseId; });
-    var putRes = await fetch('https://malm-focus-default-rtdb.firebaseio.com/db/'+sheet+'.json', {
+    var putRes = await fetch(FB+'/db/'+sheet+'.json', {
       method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(arr)
     });
     if(!putRes.ok) throw new Error('השרת דחה את הכתיבה (סטטוס '+putRes.status+')');
@@ -884,7 +885,7 @@ async function ensureIds(){
   });
   if(changed){
     try{
-      await fetch('https://malm-focus-default-rtdb.firebaseio.com/db.json',{
+      await fetch(FB+'/db.json',{
         method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(DB)
       });
     }catch(e){ console.warn('ensureIds save failed:', e); }
@@ -893,7 +894,7 @@ async function ensureIds(){
 
 async function loadDB(){
   try{
-    const fbUrl='https://malm-focus-default-rtdb.firebaseio.com/db.json?t='+Date.now();
+    const fbUrl=FB+'/db.json?t='+Date.now();
     const raw=await fetch(fbUrl);
     if(!raw.ok)throw new Error('firebase fetch failed: '+raw.status);
     DB=await raw.json();
@@ -929,7 +930,7 @@ async function saveDB(){
   el.style.background='#1a1a2e';
   el.textContent='⏳ שומר...';
   try{
-    const r=await fetch('https://malm-focus-default-rtdb.firebaseio.com/db.json',{
+    const r=await fetch(FB+'/db.json',{
       method:'PUT',
       headers:{'Content-Type':'application/json'},
       body:JSON.stringify(DB)
@@ -954,7 +955,7 @@ async function saveRecord(sheet, idx, rec, openSnapshot){
   el.textContent='⏳ שומר...';
   try{
     // טען טרי מ-Firebase כדי לא לדרוס שינויים של אחרים
-    const fresh = await fetch('https://malm-focus-default-rtdb.firebaseio.com/db/'+sheet+'.json?t='+Date.now());
+    const fresh = await fetch(FB+'/db/'+sheet+'.json?t='+Date.now());
     if(!fresh.ok) throw new Error('שגיאה בטעינה טרייה מהשרת (סטטוס '+fresh.status+')');
     let arr = await fresh.json() || [];
 
@@ -983,7 +984,7 @@ async function saveRecord(sheet, idx, rec, openSnapshot){
       arr.unshift(rec);
     }
 
-    const r=await fetch('https://malm-focus-default-rtdb.firebaseio.com/db/'+sheet+'.json',{
+    const r=await fetch(FB+'/db/'+sheet+'.json',{
       method:'PUT',
       headers:{'Content-Type':'application/json'},
       body:JSON.stringify(arr)
@@ -994,7 +995,7 @@ async function saveRecord(sheet, idx, rec, openSnapshot){
     }
 
     // אימות: קוראים שוב מהשרת ומוודאים שהרשומה באמת שם - לא מסתפקים בכך שה-HTTP הגיב 200
-    const verifyRes = await fetch('https://malm-focus-default-rtdb.firebaseio.com/db/'+sheet+'.json?t='+Date.now());
+    const verifyRes = await fetch(FB+'/db/'+sheet+'.json?t='+Date.now());
     const verifyArr = await verifyRes.json() || [];
     const saved = verifyArr.find(function(x){ return x._id===rec._id; });
     if(!saved || !deepEqual(saved, rec)){
@@ -1377,7 +1378,7 @@ async function createLinkedDevTaskForRequest(sourceSheet, rec){
     linkedSourceId: rec._id
   };
   try{
-    var BASE = 'https://malm-focus-default-rtdb.firebaseio.com';
+    var BASE = FB;
     var putRes = await fetch(BASE+'/devTasksByUid/'+encodeURIComponent(taskUid)+'.json', {
       method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(task)
     });
@@ -1466,7 +1467,7 @@ async function saveRivkaToMalmHandoff(){
   document.getElementById('rtmMsg').style.color='#666';
   document.getElementById('rtmMsg').textContent='שומר...';
   try{
-    var BASE = 'https://malm-focus-default-rtdb.firebaseio.com';
+    var BASE = FB;
     var fresh = await fetch(BASE+'/db/malm.json?t='+Date.now());
     if(!fresh.ok) throw new Error('שגיאה בטעינה טרייה מהשרת (סטטוס '+fresh.status+')');
     var arr = (await fresh.json()) || [];
@@ -1647,7 +1648,7 @@ async function saveTransferToMalm(){
 
   var el=document.getElementById('savingMsg');
   el.style.display='block'; el.style.background='#1a1a2e'; el.textContent='⏳ מעביר למלמ...';
-  var BASE='https://malm-focus-default-rtdb.firebaseio.com';
+  var BASE=FB;
   try{
     var freshRes = await fetch(BASE+'/db/malm.json?t='+Date.now());
     if(!freshRes.ok) throw new Error('שגיאה בטעינה טרייה מהשרת (סטטוס '+freshRes.status+')');
@@ -1842,7 +1843,7 @@ function undoDeleteUser(username){
 function saveUserDeletedFlag(username, deletedFlag){
   return chainedWrite('userDel:'+username, async function(){
   try{
-    var BASE = 'https://malm-focus-default-rtdb.firebaseio.com';
+    var BASE = FB;
     var fresh = await fetch(BASE + '/db/users.json?t=' + Date.now());
     var arr = await fresh.json() || [];
     var fi = arr.findIndex(function(x){ return x.username===username; });
@@ -1892,7 +1893,7 @@ function showUndoToast(sheet, recId, name){
     : sheet==='sanity' ? ('undoDeleteSanity(\''+recId+'\')')
     : sheet==='users' ? ('undoDeleteUser(\''+recId+'\')')
     : ('undoDelete(\''+sheet+'\',\''+recId+'\')');
-  el.innerHTML='🗑️ "'+escapeHtml(name)+'" נמחקה. <a href="#" onclick="'+undoCall+';return false" style="color:#FECC02;text-decoration:underline;font-weight:700;margin-right:6px">ביטול</a>';
+  el.innerHTML='🗑️ "'+esc(name)+'" נמחקה. <a href="#" onclick="'+undoCall+';return false" style="color:#FECC02;text-decoration:underline;font-weight:700;margin-right:6px">ביטול</a>';
   clearTimeout(window._undoTimer);
   window._undoTimer=setTimeout(function(){ el.style.display='none'; el.innerHTML=''; },6000);
 }
@@ -1901,13 +1902,13 @@ function showUndoToast(sheet, recId, name){
 function saveDeletedFlag(sheet, recId, deletedFlag){
   return chainedWrite('del:'+sheet+':'+recId, async function(){
   try{
-    const fresh = await fetch('https://malm-focus-default-rtdb.firebaseio.com/db/'+sheet+'.json?t='+Date.now());
+    const fresh = await fetch(FB+'/db/'+sheet+'.json?t='+Date.now());
     let arr = await fresh.json() || [];
     const fi = arr.findIndex(function(x){ return x._id===recId; });
     if(fi>=0){
       if(deletedFlag) arr[fi].deleted=true; else delete arr[fi].deleted;
     }
-    const r=await fetch('https://malm-focus-default-rtdb.firebaseio.com/db/'+sheet+'.json',{
+    const r=await fetch(FB+'/db/'+sheet+'.json',{
       method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(arr)
     });
     if(!r.ok)throw new Error('Firebase error: '+r.status);
@@ -2018,7 +2019,7 @@ function restoreDB(input) {
       const dbData = parsed.db || parsed;
       const devTasksByUidData = parsed.devTasksByUid || null;
       const devListsData = parsed.devLists || null;
-      const r = await fetch('https://malm-focus-default-rtdb.firebaseio.com/db.json', {
+      const r = await fetch(FB+'/db.json', {
         method: 'PUT',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify(dbData)
@@ -2027,14 +2028,14 @@ function restoreDB(input) {
       DB = dbData;
       await ensureIds();
       if (devTasksByUidData) {
-        await fetch('https://malm-focus-default-rtdb.firebaseio.com/devTasksByUid.json', {
+        await fetch(FB+'/devTasksByUid.json', {
           method: 'PUT',
           headers: {'Content-Type': 'application/json'},
           body: JSON.stringify(devTasksByUidData)
         });
       }
       if (devListsData) {
-        await fetch('https://malm-focus-default-rtdb.firebaseio.com/devLists.json', {
+        await fetch(FB+'/devLists.json', {
           method: 'PUT',
           headers: {'Content-Type': 'application/json'},
           body: JSON.stringify(devListsData)
@@ -2057,12 +2058,12 @@ async function backupDB() {
   const filename = 'backup_malm_' + date + '_' + time + '.json';
   let devTasksByUid = {};
   try {
-    const r = await fetch('https://malm-focus-default-rtdb.firebaseio.com/devTasksByUid.json?t='+Date.now());
+    const r = await fetch(FB+'/devTasksByUid.json?t='+Date.now());
     devTasksByUid = (await r.json()) || {};
   } catch(e) {}
   let devLists = {};
   try {
-    const r2 = await fetch('https://malm-focus-default-rtdb.firebaseio.com/devLists.json?t='+Date.now());
+    const r2 = await fetch(FB+'/devLists.json?t='+Date.now());
     devLists = (await r2.json()) || {};
   } catch(e) {}
   const fullBackup = {db: DB, devTasksByUid: devTasksByUid, devLists: devLists};
@@ -2081,7 +2082,7 @@ async function refreshDB(){
   const btn = document.querySelector('[onclick="refreshDB()"]');
   if(btn){ btn.textContent='⏳'; btn.disabled=true; }
   try {
-    const raw=await fetch('https://malm-focus-default-rtdb.firebaseio.com/db.json?t='+Date.now());
+    const raw=await fetch(FB+'/db.json?t='+Date.now());
     DB=await raw.json();
     initFilters(); r1(); r2();
     if(btn){ btn.textContent='✅'; setTimeout(()=>{ btn.textContent='🔄'; btn.disabled=false; },1500); }
@@ -2193,18 +2194,12 @@ function renderAttachments(){
   el.innerHTML=pendingFiles.map((f,i)=>`
     <div class="att-item">
       ${attachLink(f.url,f.name)}
-      <span class="att-size">${escapeHtml(f.size||'')}</span>
+      <span class="att-size">${esc(f.size||'')}</span>
       <span style="cursor:pointer;color:#999" onclick="pendingFiles.splice(${i},1);renderAttachments()">✕</span>
     </div>`).join('');
 }
 
 let chatTab='malm';
-
-function switchChatTab(tab){
-  chatTab=tab;
-  document.querySelectorAll('.chat-tab').forEach((t,i)=>t.classList.toggle('active',(tab==='malm'&&i===0)||(tab==='dhl'&&i===1)));
-  renderChat();
-}
 
 function getEditRec(){
   if(editIdx===-1)return null;
@@ -2227,13 +2222,13 @@ function hasUnread(r){
 async function markRead(sheet, recId){
   if(!CU||!recId)return;
   try{
-    const fresh=await fetch('https://malm-focus-default-rtdb.firebaseio.com/db/'+sheet+'.json?t='+Date.now());
+    const fresh=await fetch(FB+'/db/'+sheet+'.json?t='+Date.now());
     let arr=await fresh.json()||[];
     const fi=arr.findIndex(function(x){ return x._id===recId; });
     if(fi>=0){
       if(!arr[fi].reads)arr[fi].reads={};
       arr[fi].reads[CU.username]=Date.now();
-      await fetch('https://malm-focus-default-rtdb.firebaseio.com/db/'+sheet+'.json',{
+      await fetch(FB+'/db/'+sheet+'.json',{
         method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(arr)
       });
       DB[sheet]=arr;
@@ -2242,7 +2237,6 @@ async function markRead(sheet, recId){
   }catch(e){ console.warn('markRead failed:', e); }
 }
 
-function escapeHtml(s){return String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 
 // מחזיר את הסיומת של שם קובץ / URL (בלי query string), באותיות קטנות
 function fileExt(s){
@@ -2276,8 +2270,8 @@ async function downloadFile(url, name, ev){
 }
 // בונה קישור לקובץ: PDF נפתח בכרטיסייה חדשה, כל השאר יורד
 function attachLink(url, name, size, style){
-  const safeName=escapeHtml(name||'קובץ');
-  const sizePart=size?` <span style="color:#999">${escapeHtml(size)}</span>`:'';
+  const safeName=esc(name||'קובץ');
+  const sizePart=size?` <span style="color:#999">${esc(size)}</span>`:'';
   const label=`📎 ${safeName}${sizePart}`;
   const st=style?` style="${style}"`:'';
   if(shouldOpenLink(name)){
@@ -2287,7 +2281,7 @@ function attachLink(url, name, size, style){
 }
 
 function linkify(text){
-  return escapeHtml(text).replace(/(https?:\/\/[^\s<]+)/g,url=>{
+  return esc(text).replace(/(https?:\/\/[^\s<]+)/g,url=>{
     if(shouldOpenLink(url)) return `<a href="${url}" target="_blank" rel="noopener">${url}</a>`;
     return `<a href="${url}" onclick="downloadFile(this.href,'',event);return false">${url}</a>`;
   });
@@ -2324,7 +2318,7 @@ function renderAllFiles(messages){
   if(!files.length){wrap.style.display='none';el.innerHTML='';return}
   wrap.style.display='block';
   el.innerHTML=files.map(f=>`
-    <div class="att-item">${attachLink(f.url,f.name)}<span class="att-size">${escapeHtml(f.size||'')}</span></div>`).join('');
+    <div class="att-item">${attachLink(f.url,f.name)}<span class="att-size">${esc(f.size||'')}</span></div>`).join('');
 }
 
 function sendMsg(){
@@ -2359,7 +2353,9 @@ function sendMsg(){
   saveRecord(editSheet, editIdx, rec);
 }
 
-function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
+// ערך שנכנס למחרוזת JS בתוך onclick="f('...')": קודם בריחה ל-JS ואז ל-HTML
+function jsq(s){return esc(String(s==null?'':s).replace(/\\/g,'\\\\').replace(/'/g,"\\'"));}
 
 // רשימות האפשרויות ל-2 ה-DROPDOWN-ים בטאב פיתוחים ותיקונים לבדיקה (סטטוס פיתוח,
 // סטטוס בדיקה). אלו ערכי ברירת מחדל; אדמין יכול לערוך אותן מתוך המערכת
@@ -2374,7 +2370,7 @@ var DEV_LIST_LABELS = { status: 'סטטוס פיתוח', tStatus: 'סטטוס ב
 
 async function loadDevLists() {
   try {
-    var r = await fetch('https://malm-focus-default-rtdb.firebaseio.com/devLists.json?t=' + Date.now());
+    var r = await fetch(FB+'/devLists.json?t=' + Date.now());
     var saved = await r.json();
     if (saved) {
       Object.keys(DEV_LISTS).forEach(function(key) {
@@ -2385,7 +2381,7 @@ async function loadDevLists() {
 }
 
 async function saveDevLists() {
-  var BASE = 'https://malm-focus-default-rtdb.firebaseio.com';
+  var BASE = FB;
   var putRes = await fetch(BASE + '/devLists.json', {
     method: 'PUT',
     headers: {'Content-Type': 'application/json'},
@@ -2527,7 +2523,7 @@ function renderDevTable(){
       '<td style="padding:7px 10px;border-bottom:1px solid #eee;white-space:nowrap;font-size:11px">'+esc(t.tester||'—')+'</td>'+
       '<td style="padding:7px 10px;border-bottom:1px solid #eee;font-size:11px;color:#555;line-height:1.5">'+esc(t.tNotes)+'</td>'+
       '<td style="padding:7px 10px;border-bottom:1px solid #eee;white-space:nowrap;font-size:11px">'+esc(t.tStatus||'—')+
-        (t.linkedLaunchId?' <button onclick="jumpToLaunchTask(\''+esc(t.linkedLaunchId)+'\')" title="עבר למשימה המקושרת בטאב עליה לאוויר" style="background:#e65100;color:#fff;border:none;border-radius:4px;padding:2px 6px;cursor:pointer;font-size:10px;font-family:Arial">🚀</button>':'')+
+        (t.linkedLaunchId?' <button onclick="jumpToLaunchTask(\''+jsq(t.linkedLaunchId)+'\')" title="עבר למשימה המקושרת בטאב עליה לאוויר" style="background:#e65100;color:#fff;border:none;border-radius:4px;padding:2px 6px;cursor:pointer;font-size:10px;font-family:Arial">🚀</button>':'')+
       '</td>'+
       '<td style="padding:7px 10px;border-bottom:1px solid #eee;white-space:nowrap">'+
         '<button onclick="openEditDevTask('+i+')" style="background:#1565c0;color:#fff;border:none;border-radius:4px;padding:4px 10px;cursor:pointer;font-size:11px;font-family:Arial">עריכה</button>'+
@@ -2636,7 +2632,7 @@ async function saveNewDevTask(){
   document.getElementById('newDevMsg').style.color='#666';
   document.getElementById('newDevMsg').textContent='שומר...';
   try{
-    var BASE='https://malm-focus-default-rtdb.firebaseio.com';
+    var BASE=FB;
     var putRes=await fetch(BASE+'/devTasksByUid/'+encodeURIComponent(taskUid)+'.json',{
       method:'PUT',
       headers:{'Content-Type':'application/json'},
@@ -2760,7 +2756,7 @@ function closeDevEditModal(){
 // saveRecord, כדי לא לדרוס שדות שנערכו שם במקביל; מעדכנים רק את שדה הסטטוס.
 async function closeLinkedSourceTask(sheet, sourceId){
   try{
-    var BASE = 'https://malm-focus-default-rtdb.firebaseio.com';
+    var BASE = FB;
     var fresh = await fetch(BASE+'/db/'+sheet+'.json?t='+Date.now());
     if(!fresh.ok) return false;
     var arr = (await fresh.json()) || [];
@@ -2844,7 +2840,7 @@ async function saveDevTaskModal(){
   document.getElementById('devEditMsg').textContent='שומר...';
 
   try {
-    var BASE = 'https://malm-focus-default-rtdb.firebaseio.com';
+    var BASE = FB;
     var launchCreated = false;
 
     // אם סטטוס הבדיקה משתנה ל"לבדיקה בעליה לאוויר" ואין עדיין משימה מקושרת - יוצרים
@@ -2968,7 +2964,7 @@ var DEV_OVERRIDE_FIELDS = ['tester','testerUid','tStatus','tNotes','status','sLo
 // על עצמו - בדיוק כמו ה-_id שכבר קיים למשימות רבקה/מלמ.
 async function loadDevTasks() {
   try {
-    var r = await fetch('https://malm-focus-default-rtdb.firebaseio.com/devTasksByUid.json?t=' + Date.now());
+    var r = await fetch(FB+'/devTasksByUid.json?t=' + Date.now());
     var saved = await r.json();
     if (saved) {
       var byUid = {};
@@ -3009,11 +3005,11 @@ var SANITY_SEED = {"sanity_001": {"id": "sanity_001", "name": "לבצע חיפו
 
 async function loadSanityTab() {
   try {
-    var r = await fetch('https://malm-focus-default-rtdb.firebaseio.com/sanity.json?t=' + Date.now());
+    var r = await fetch(FB+'/sanity.json?t=' + Date.now());
     var data = await r.json();
     // Seed if empty
     if (!data || Object.keys(data).length === 0) {
-      await fetch('https://malm-focus-default-rtdb.firebaseio.com/sanity.json', {
+      await fetch(FB+'/sanity.json', {
         method: 'PUT',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify(SANITY_SEED)
@@ -3065,7 +3061,7 @@ function renderSanityAdmin() {
     var bg = i%2 ? '#f9f9f9' : '#fff';
     var statusColor = t.status==='בוצע' ? '#2e7d32' : t.status==='נכשל' ? '#c62828' : t.status==='לבדיקה בעליה לאוויר' ? '#6a1b9a' : t.status==='פתוח' ? '#e65100' : '#888';
     var closedInfo = (t.status==='בוצע' || t.status==='נכשל') ? ' <span style="font-size:10px;color:#666">(ע"י ' + esc(t.closedBy||'') + ')</span>' : '';
-    var launchLink = t.linkedLaunchId ? ' <button onclick="jumpToLaunchTask(\'' + esc(t.linkedLaunchId) + '\')" title="עבר למשימה המקושרת בטאב עליה לאוויר" style="background:#e65100;color:#fff;border:none;border-radius:4px;padding:2px 6px;cursor:pointer;font-size:10px;font-family:Arial">🚀</button>' : '';
+    var launchLink = t.linkedLaunchId ? ' <button onclick="jumpToLaunchTask(\'' + jsq(t.linkedLaunchId) + '\')" title="עבר למשימה המקושרת בטאב עליה לאוויר" style="background:#e65100;color:#fff;border:none;border-radius:4px;padding:2px 6px;cursor:pointer;font-size:10px;font-family:Arial">🚀</button>' : '';
     var envBg = t.env==='RDP' ? '#e3f2fd' : t.env==='טסט' ? '#f3e5f5' : '#fff8e1';
     var envColor = t.env==='RDP' ? '#1565c0' : t.env==='טסט' ? '#6a1b9a' : '#e65100';
     return '<tr style="background:' + bg + ';vertical-align:top" data-assignee="' + esc(t.assignee) + '" data-status="' + esc(t.status||'פתוח') + '">' +
@@ -3211,7 +3207,7 @@ async function saveSanityTask() {
   var existing = {};
   if (editId) {
     try {
-      var freshRes = await fetch('https://malm-focus-default-rtdb.firebaseio.com/sanity/' + editId + '.json?t=' + Date.now());
+      var freshRes = await fetch(FB+'/sanity/' + editId + '.json?t=' + Date.now());
       existing = (await freshRes.json()) || {};
     } catch (e) { existing = SANITY_TASKS[editId] || {}; }
   }
@@ -3222,7 +3218,7 @@ async function saveSanityTask() {
   if (saveBtn) saveBtn.disabled = true;
   if (msgEl) { msgEl.style.color = '#666'; msgEl.textContent = 'שומר...'; }
 
-  var BASE = 'https://malm-focus-default-rtdb.firebaseio.com';
+  var BASE = FB;
   var launchId = existing.linkedLaunchId || '';
   try {
     // אם סטטוס הבדיקה משתנה ל"לבדיקה בעליה לאוויר" ואין עדיין משימה מקושרת - יוצרים
@@ -3346,7 +3342,7 @@ function undoDeleteSanity(id){
 function saveSanityDeletedFlag(id, deletedFlag){
   return chainedWrite('sanityDel:'+id, async function(){
   try{
-    var BASE = 'https://malm-focus-default-rtdb.firebaseio.com';
+    var BASE = FB;
     var fresh = await fetch(BASE + '/sanity/' + id + '.json?t=' + Date.now());
     var rec = await fresh.json();
     if(!rec) return;
@@ -3387,7 +3383,7 @@ async function confirmCloseSanity() {
     notes: notes,
     closedAt: new Date().toISOString()
   };
-  await fetch('https://malm-focus-default-rtdb.firebaseio.com/sanity/' + id + '.json', {
+  await fetch(FB+'/sanity/' + id + '.json', {
     method: 'PATCH',
     headers: {'Content-Type': 'application/json'},
     body: JSON.stringify(updates)
@@ -3405,7 +3401,7 @@ async function confirmCloseSanity() {
 // Check on login for open sanity tasks
 async function checkSanityOnLogin() {
   try {
-    var r = await fetch('https://malm-focus-default-rtdb.firebaseio.com/sanity.json?t=' + Date.now());
+    var r = await fetch(FB+'/sanity.json?t=' + Date.now());
     var tasks = await r.json();
     if (!tasks) return;
     var myName = CU ? CU.name : '';
@@ -3436,7 +3432,7 @@ async function resetSanityTasks() {
   var adminUser = (DB.users||[]).find(function(u){ return u.role==='admin' && u.password===pwd; });
   if (!adminUser) { alert('סיסמה שגויה'); return; }
   if (!confirm('לאפס את כל הבדיקות לברירת המחדל?\nכל השיוכים והסטטוסים יימחקו.')) return;
-  await fetch('https://malm-focus-default-rtdb.firebaseio.com/sanity.json', {
+  await fetch(FB+'/sanity.json', {
     method: 'PUT',
     headers: {'Content-Type': 'application/json'},
     body: JSON.stringify(SANITY_SEED)
@@ -3587,7 +3583,7 @@ document.addEventListener('click', function(e){
 async function updateSanityField(id, field, val) {
   if (!SANITY_TASKS[id]) return;
   SANITY_TASKS[id][field] = val;
-  await fetch('https://malm-focus-default-rtdb.firebaseio.com/sanity/' + id + '.json', {
+  await fetch(FB+'/sanity/' + id + '.json', {
     method: 'PATCH',
     headers: {'Content-Type': 'application/json'},
     body: JSON.stringify({ [field]: val })
@@ -3605,7 +3601,7 @@ var launchEditSnapshot = null;
 
 async function loadLaunchTab() {
   try {
-    var r = await fetch('https://malm-focus-default-rtdb.firebaseio.com/launchTasks.json?t=' + Date.now());
+    var r = await fetch(FB+'/launchTasks.json?t=' + Date.now());
     var data = await r.json();
     LAUNCH_TASKS = data || {};
   } catch (e) { LAUNCH_TASKS = {}; }
@@ -3656,9 +3652,9 @@ function renderLaunchTable() {
     var statusColor = t.status === 'בוצע' ? '#2e7d32' : '#e65100';
     var linkedBadge = '';
     if (t.linkedDevUid) {
-      linkedBadge = '<div style="margin-top:4px"><button onclick="jumpToDevTask(\'' + esc(t.linkedDevUid) + '\')" title="עבר למשימת הפיתוח המקושרת" style="background:#1565c0;color:#fff;border:none;border-radius:10px;padding:2px 8px;cursor:pointer;font-size:10px;font-family:Arial">🔧 מקושר למשימת פיתוח ' + esc(t.linkedDevTaskNum || '') + '</button></div>';
+      linkedBadge = '<div style="margin-top:4px"><button onclick="jumpToDevTask(\'' + jsq(t.linkedDevUid) + '\')" title="עבר למשימת הפיתוח המקושרת" style="background:#1565c0;color:#fff;border:none;border-radius:10px;padding:2px 8px;cursor:pointer;font-size:10px;font-family:Arial">🔧 מקושר למשימת פיתוח ' + esc(t.linkedDevTaskNum || '') + '</button></div>';
     } else if (t.linkedSanityId) {
-      linkedBadge = '<div style="margin-top:4px"><button onclick="jumpToSanityTask(\'' + esc(t.linkedSanityId) + '\')" title="עבר לבדיקת השפיות המקושרת" style="background:#6a1b9a;color:#fff;border:none;border-radius:10px;padding:2px 8px;cursor:pointer;font-size:10px;font-family:Arial">🧪 מקושר לבדיקת שפיות: ' + esc(t.linkedSanityName || '') + '</button></div>';
+      linkedBadge = '<div style="margin-top:4px"><button onclick="jumpToSanityTask(\'' + jsq(t.linkedSanityId) + '\')" title="עבר לבדיקת השפיות המקושרת" style="background:#6a1b9a;color:#fff;border:none;border-radius:10px;padding:2px 8px;cursor:pointer;font-size:10px;font-family:Arial">🧪 מקושר לבדיקת שפיות: ' + esc(t.linkedSanityName || '') + '</button></div>';
     }
     return '<tr style="background:' + bg + ';vertical-align:top" data-launch-id="' + esc(t.id) + '">' +
       '<td style="padding:8px 10px;border-bottom:1px solid #eee;font-size:12px;line-height:1.5;white-space:pre-wrap">' + esc(t.task) + linkedBadge + '</td>' +
@@ -3718,7 +3714,7 @@ async function saveLaunchTask() {
   var status = document.getElementById('launchStatus').value;
   var timing = document.getElementById('launchTiming').value;
   var notes = document.getElementById('launchNotes').value.trim();
-  var BASE = 'https://malm-focus-default-rtdb.firebaseio.com';
+  var BASE = FB;
 
   var id = editId || 'launch_' + Date.now() + '_' + Math.random().toString(36).slice(2,9);
   var existing = {};
@@ -3821,7 +3817,7 @@ function undoDeleteLaunch(id){
 function saveLaunchDeletedFlag(id, deletedFlag){
   return chainedWrite('launchDel:'+id, async function(){
   try{
-    var BASE = 'https://malm-focus-default-rtdb.firebaseio.com';
+    var BASE = FB;
     var fresh = await fetch(BASE + '/launchTasks/' + id + '.json?t=' + Date.now());
     var rec = await fresh.json();
     if(!rec) return;
@@ -3875,43 +3871,6 @@ function jumpToSanityTask(id) {
   });
 }
 
-// פונקציה חד-פעמית לסימון רשומות כפולות (תוכן זהה לחלוטין למעט _id) כמחוקות -
-// הופעלה ידנית ע"י מתן לניקוי כפילויות היסטוריות. מסמנת deleted:true במקום
-// להסיר בפועל - אף רשומה לא נעלמת לצמיתות מה-DB, בדיוק כמו כל מחיקה אחרת
-// במערכת (לפני כן זו הייתה מסירה מלאה מהמערך).
-async function dedupRecords(sheet) {
-  if (!isAdmin()) { alert('רק אדמין יכול להריץ ניקוי'); return; }
-  const fresh = await fetch('https://malm-focus-default-rtdb.firebaseio.com/db/'+sheet+'.json?t='+Date.now());
-  let arr = await fresh.json() || [];
-  const seen = new Map();
-  let removedCount = 0;
-  arr.forEach(function(rec) {
-    if (rec.deleted) return; // כבר מסומן כמחוק - לא נוגעים
-    // מפתח השוואה: כל השדות חוץ מ-_id ו-deleted (כדי לא להתבלבל מהבדלי תכתובת)
-    const key = JSON.stringify(Object.keys(rec).filter(k=>k!=='_id'&&k!=='deleted').sort().reduce(function(o,k){o[k]=rec[k];return o;},{}));
-    if (seen.has(key)) {
-      rec.deleted = true;
-      removedCount++;
-    } else {
-      seen.set(key, true);
-    }
-  });
-  if (removedCount === 0) {
-    alert('לא נמצאו כפילויות ב-' + sheet);
-    return;
-  }
-  if (!confirm('נמצאו ' + removedCount + ' רשומות כפולות ב-' + sheet + '. לסמן אותן כמחוקות (מחיקה רכה - ניתנות לשחזור מה-DB במידת הצורך)?')) return;
-  await fetch('https://malm-focus-default-rtdb.firebaseio.com/db/'+sheet+'.json', {
-    method: 'PUT',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify(arr)
-  });
-  DB[sheet] = arr;
-  initFilters();
-  if (sheet==='malm') r1(); else r2();
-  alert('✅ סומנו ' + removedCount + ' כפילויות כמחוקות ב-' + sheet);
-}
-
 // ══════════════════════════════════════
 // שרתים ורכיבים (Focus) - השוואת גרסאות/ערכים בין שרתים
 // ══════════════════════════════════════
@@ -3956,7 +3915,7 @@ var DEFAULT_COMPONENTS = ['AP','AT','BA','BC','CD','CK','DH','DP','EC','EX','FF'
 
 async function loadServerData(){
   try{
-    var r = await fetch('https://malm-focus-default-rtdb.firebaseio.com/serverComponents.json?t='+Date.now());
+    var r = await fetch(FB+'/serverComponents.json?t='+Date.now());
     var data = await r.json();
     SERVERS = (data && data.servers) || {};
     COMPONENTS = (data && data.components) || {};
@@ -4021,7 +3980,7 @@ function saveServerData(){
     var el = document.getElementById('savingMsg');
     if(el){ el.style.display='block'; el.style.background='#1a1a2e'; el.textContent='⏳ שומר...'; }
     try{
-      var BASE = 'https://malm-focus-default-rtdb.firebaseio.com';
+      var BASE = FB;
       var payload = { servers:SERVERS, components:COMPONENTS, values:SERVER_VALUES, changeLog:CHANGE_LOG, order:SERVER_ORDER };
       var putRes = await fetch(BASE+'/serverComponents.json', {
         method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload)
@@ -4137,7 +4096,7 @@ function renderServerGrid(){
     return '<tr style="background:'+bg+'">'
       + '<td style="padding:6px 10px;border-bottom:1px solid #eee;font-weight:700;white-space:nowrap;position:sticky;right:0;z-index:1;background:'+bg+'">'
         + (mismatch?'⚠️ ':'') + esc(c.code)
-        + (SERVER_EDIT_MODE ? ' <button onclick="deleteComponent(\''+esc(c.code)+'\')" title="הסר רכיב" style="background:none;border:none;color:#c62828;cursor:pointer;font-size:10px">✕</button>' : '')
+        + (SERVER_EDIT_MODE ? ' <button onclick="deleteComponent(\''+jsq(c.code)+'\')" title="הסר רכיב" style="background:none;border:none;color:#c62828;cursor:pointer;font-size:10px">✕</button>' : '')
       + '</td>'
       + servers.map(function(s){
           var v = (SERVER_VALUES[s.id]||{})[c.code] || '';
@@ -4155,11 +4114,11 @@ function renderServerGrid(){
             valueHtml = '<div style="font-weight:700;font-size:13px;direction:ltr">'+esc(d.size)+'</div>'
               + (d.dateTime ? '<div style="font-size:10px;color:#888;direction:ltr">'+esc(d.dateTime)+'</div>' : '');
           }
-          return '<td onclick="openEditServerValue(\''+s.id+'\',\''+esc(c.code)+'\')" title="לחץ לעריכה ידנית" style="padding:6px 6px;border-bottom:1px solid #eee;text-align:center;cursor:pointer">'
+          return '<td onclick="openEditServerValue(\''+s.id+'\',\''+jsq(c.code)+'\')" title="לחץ לעריכה ידנית" style="padding:6px 6px;border-bottom:1px solid #eee;text-align:center;cursor:pointer">'
             + valueHtml
           + '</td>';
         }).join('')
-      + '<td onclick="openEditComponentNote(\''+esc(c.code)+'\')" title="לחץ לעריכה" style="padding:6px 10px;border-bottom:1px solid #eee;text-align:right;cursor:pointer;font-size:11.5px;color:#555;white-space:normal;word-break:break-word">'
+      + '<td onclick="openEditComponentNote(\''+jsq(c.code)+'\')" title="לחץ לעריכה" style="padding:6px 10px;border-bottom:1px solid #eee;text-align:right;cursor:pointer;font-size:11.5px;color:#555;white-space:normal;word-break:break-word">'
         + (c.note ? esc(c.note) : '<span style="color:#c7cbd3">— לחץ להוספת הערה —</span>')
       + '</td>'
       + '</tr>';
@@ -4194,7 +4153,7 @@ function updateServerValue(serverId, code, val){
   SERVER_VALUES[serverId][code] = val;
   chainedWrite('serverComponents', async function(){
     try{
-      await fetch('https://malm-focus-default-rtdb.firebaseio.com/serverComponents/values/'+serverId+'.json', {
+      await fetch(FB+'/serverComponents/values/'+serverId+'.json', {
         method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ [code]: val })
       });
     }catch(e){ console.warn('updateServerValue failed:', e); }
