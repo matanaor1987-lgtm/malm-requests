@@ -2820,3 +2820,116 @@ test.describe('עריכת שם/תיאור שרת - בלי לאבד נתונים 
     expect(serverComponents.components["D'H"].deleted).toBe(true);
   });
 });
+
+test.describe('גרסאות - סביבות התקנה (שרת טסט / סיטריקס טסט / PROD)', () => {
+  const seedReleases = () => ({
+    r0: { id: 'r0', name: '5.1559', status: 'closed', date: '2026-01-01', createdAt: '2026-01-01T00:00:00.000Z', closedAt: '2026-09-01T00:00:00.000Z' },
+    r1: { id: 'r1', name: '5.1575', status: 'current', date: '2026-10-01', createdAt: '2026-10-01T00:00:00.000Z' },
+  });
+  // prompt מקבל תאריך, alert נאסף - כדי לבדוק את הודעת ההתראה על PROD
+  const answerDialogs = (page, date, alerts) => page.on('dialog', d => {
+    if (d.type() === 'prompt') d.accept(date);
+    else { alerts.push(d.message()); d.accept(); }
+  });
+
+  test('סימון גרסה כהותקנה בסביבה נשמר עם תאריך ומופיע בסיכום הסביבות', async ({ page }) => {
+    const { releases } = await mockFirebase(page, { releases: seedReleases() });
+    answerDialogs(page, '2026-10-20', []);
+    await page.goto('/index.html');
+    await login(page, 'testadmin', 'pw');
+    await page.click('button[onclick="openReleaseManager()"]');
+    await page.click('#rmCurrent button[onclick="setReleaseEnv(\'r1\',\'test\')"]');
+    await page.click('#rmCurrent button[onclick="setReleaseEnv(\'r1\',\'citrix\')"]');
+    await expect(page.locator('#rmCurrent')).toContainText('שרת טסט: 5.1575');
+    await expect(page.locator('#rmCurrent')).toContainText('PROD: —');
+    expect(releases.r1.envs).toEqual({ test: '2026-10-20', citrix: '2026-10-20' });
+  });
+
+  test('גרסת טסט יכולה להקדים את PROD: כל סביבה מציגה את הגרסה האחרונה שסומנה בה', async ({ page }) => {
+    const rels = seedReleases();
+    rels.r0.envs = { test: '2026-01-05', citrix: '2026-01-05', prod: '2026-01-10' };
+    rels.r0.prodExportDone = true;
+    rels.r1.envs = { test: '2026-10-20' };
+    await mockFirebase(page, { releases: rels });
+    await page.goto('/index.html');
+    await login(page, 'testadmin', 'pw');
+    await page.click('button[onclick="openReleaseManager()"]');
+    const cur = page.locator('#rmCurrent');
+    await expect(cur).toContainText('שרת טסט: 5.1575');
+    await expect(cur).toContainText('סיטריקס טסט: 5.1559');
+    await expect(cur).toContainText('PROD: 5.1559');
+  });
+
+  test('סימון עלייה ל-PROD מתריע על ייצוא מחדש של רכיבים (בלי סיטריקס), באנר בטאב השרתים עד אישור', async ({ page }) => {
+    const { releases } = await mockFirebase(page, { releases: seedReleases() });
+    const alerts = [];
+    answerDialogs(page, '2026-10-21', alerts);
+    await page.goto('/index.html');
+    await login(page, 'testadmin', 'pw');
+    await page.click('button[onclick="openReleaseManager()"]');
+    await page.click('#rmCurrent button[onclick="setReleaseEnv(\'r1\',\'prod\')"]');
+    expect(alerts.join('\n')).toContain('ייצא מחדש');
+    expect(alerts.join('\n')).toContain('סיטריקס לא נכלל');
+    expect(releases.r1.envs.prod).toBe('2026-10-21');
+    await page.click('button[onclick="closeReleaseManager()"]');
+
+    await page.click('.tab[data-tab="6"]');
+    await expect(page.locator('#serverProdBanner')).toContainText('5.1575');
+    await expect(page.locator('#serverProdBanner')).toContainText('RPD');
+    await page.click('#serverProdBanner button');
+    await expect(page.locator('#serverProdBanner')).toBeEmpty();
+    expect(releases.r1.prodExportDone).toBe(true);
+  });
+
+  test('תאריך לא תקין נדחה ולא נשמר', async ({ page }) => {
+    const { releases } = await mockFirebase(page, { releases: seedReleases() });
+    const alerts = [];
+    answerDialogs(page, '20/10/2026', alerts);
+    await page.goto('/index.html');
+    await login(page, 'testadmin', 'pw');
+    await page.click('button[onclick="openReleaseManager()"]');
+    await page.click('#rmCurrent button[onclick="setReleaseEnv(\'r1\',\'test\')"]');
+    expect(alerts.join('\n')).toContain('תאריך לא תקין');
+    expect(releases.r1.envs).toBeUndefined();
+  });
+
+  test('ביטול סימון PROD מסיר את האנר', async ({ page }) => {
+    const rels = seedReleases();
+    rels.r1.envs = { prod: '2026-10-21' };
+    rels.r1.prodExportDone = false;
+    const { releases } = await mockFirebase(page, { releases: rels });
+    page.on('dialog', d => d.accept());
+    await page.goto('/index.html');
+    await login(page, 'testadmin', 'pw');
+    await page.click('.tab[data-tab="6"]');
+    await expect(page.locator('#serverProdBanner')).toContainText('5.1575');
+    await page.click('button[onclick="openReleaseManager()"]');
+    await page.click('#rmCurrent button[onclick="setReleaseEnv(\'r1\',\'prod\')"]');
+    await page.click('button[onclick="closeReleaseManager()"]');
+    await expect(page.locator('#serverProdBanner')).toBeEmpty();
+    expect(releases.r1.envs).toBeUndefined();
+  });
+});
+
+test.describe('"גרסה לבדיקה" במשימת פיתוח - נפרדת משדה "גרסה"', () => {
+  test('שיוך משימת seed לגרסה לבדיקה נשמר ונטען מחדש, בלי לשנות את שדה הגרסה הרגיל', async ({ page }) => {
+    const { devTasksByUid } = await mockFirebase(page, { releases: { r1: { id: 'r1', name: '5.1575', status: 'current', date: '2026-10-01', createdAt: '2026-10-01T00:00:00.000Z' } } });
+    await page.goto('/index.html');
+    await login(page, 'testadmin', 'pw');
+    await page.click('.tab[data-tab="3"]');
+    const row = page.locator('#devBody tr', { hasText: '13770' });
+    await row.locator('button', { hasText: 'עריכה' }).click();
+    await page.selectOption('#devEditRelease', 'r1');
+    await page.click('button[onclick="saveDevTaskModal()"]');
+    await page.waitForTimeout(200);
+    expect(devTasksByUid.dt_001.releaseId).toBe('r1');
+    expect(devTasksByUid.dt_001.ver).toBe('5.1557'); // "גרסה" הרגילה לא נגעה
+
+    await page.reload(); // הסשן נשמר - אין צורך להתחבר שוב
+    await page.waitForSelector('#mainTabs', { state: 'visible' });
+    await page.click('.tab[data-tab="3"]');
+    await expect(page.locator('#devBody')).toContainText('13770');
+    const tagged = await page.evaluate(() => DEV_TASKS.find(t => t._uid === 'dt_001').releaseId);
+    expect(tagged).toBe('r1');
+  });
+});

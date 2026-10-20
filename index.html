@@ -604,22 +604,89 @@ function closeReleaseManager(){
   document.getElementById('releaseManagerBg').classList.remove('open');
 }
 
+// סביבות ההתקנה. בשגרה טסט ו-PROD זהות; בפרויקט שדרת המידע הטסט יכול להקדים את
+// PROD בכמה גרסאות - לכן כל גרסה מסמנת בנפרד באילו סביבות היא הותקנה (r.envs[key]=תאריך).
+var RELEASE_ENVS = [['test','שרת טסט'],['citrix','סיטריקס טסט'],['prod','PROD']];
+
+// הגרסה שכל סביבה נמצאת בה = זו עם תאריך ההתקנה האחרון באותה סביבה.
+function envSummaryHtml(){
+  return '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">'+RELEASE_ENVS.map(function(e){
+    var best = null;
+    Object.values(RELEASES).forEach(function(r){
+      var d = r.envs && r.envs[e[0]];
+      if(d && (!best || d > best.d || (d===best.d && (r.createdAt||'') > (best.r.createdAt||'')))) best = {r:r, d:d};
+    });
+    return '<span style="background:#e8f5e9;color:#1b5e20;border-radius:10px;padding:3px 10px;font-size:11px;font-weight:700">'+e[1]+': '+(best ? esc(best.r.name) : '—')+'</span>';
+  }).join('')+'</div>';
+}
+
+function releaseEnvChips(r){
+  return '<div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:8px">'+RELEASE_ENVS.map(function(e){
+    var d = r.envs && r.envs[e[0]];
+    return '<button onclick="setReleaseEnv(\''+jsq(r.id)+'\',\''+e[0]+'\')" title="'+(d?'לחץ לביטול הסימון':'סמן כהותקנה בסביבה זו')+'" style="border-radius:10px;padding:2px 9px;cursor:pointer;font-size:11px;font-family:Arial;'+
+      (d ? 'background:#2e7d32;color:#fff;border:1px solid #2e7d32' : 'background:#fff;color:#888;border:1px dashed #bbb')+'">'+e[1]+(d?' ✓ '+esc(d):'')+'</button>';
+  }).join('')+'</div>';
+}
+
+function setReleaseEnv(id, key){
+  if(!isAdmin()) return;
+  var r = RELEASES[id];
+  if(!r) return;
+  var label = RELEASE_ENVS.filter(function(e){ return e[0]===key; })[0][1];
+  r.envs = r.envs || {};
+  if(r.envs[key]){
+    if(!confirm('לבטל את סימון ההתקנה של "'+r.name+'" ב'+label+'?')) return;
+    delete r.envs[key];
+    if(key==='prod') delete r.prodExportDone;
+  } else {
+    var d = prompt('תאריך התקנת "'+r.name+'" ב'+label+' (YYYY-MM-DD):', new Date().toISOString().slice(0,10));
+    if(!d) return;
+    if(!/^\d{4}-\d\d-\d\d$/.test(d.trim())){ alert('תאריך לא תקין - נדרש YYYY-MM-DD'); return; }
+    r.envs[key] = d.trim();
+    if(key==='prod'){
+      r.prodExportDone = false;
+      alert('גרסה "'+r.name+'" סומנה כעלתה ל-PROD.\nיש לייצא מחדש את רשימות הרכיבים משרת האפליקציה, שרתי השידורים ושרת ה-RPD ולייבא אותן בטאב השרתים.\n(סיטריקס לא נכלל: שם כל שינוי הוא גרסה מלאה.)');
+    }
+  }
+  saveRelease(r);
+  renderReleaseManager();
+  renderServerProdBanner();
+}
+
+// ponytail: אין זיהוי אוטומטי של "יובא מחדש" - אישור ידני של אדמין, כי שרתי PROD
+// שונים מיובאים בזמנים שונים. אם יהיה צורך: להשוות תאריך ייבוא אחרון לכל שרת מול r.envs.prod.
+function renderServerProdBanner(){
+  var el = document.getElementById('serverProdBanner');
+  if(!el) return;
+  el.innerHTML = Object.values(RELEASES).filter(function(r){ return r.envs && r.envs.prod && !r.prodExportDone; }).map(function(r){
+    return '<div style="background:#fff3e0;border:1px solid #e65100;color:#bf360c;border-radius:8px;padding:8px 12px;margin-bottom:8px;font-size:12px;line-height:1.6">⚠️ גרסה <b>'+esc(r.name)+'</b> עלתה ל-PROD ב-'+esc(r.envs.prod)+' - יש לייצא מחדש רשימות רכיבים משרת האפליקציה, שרתי השידורים ושרת ה-RPD (לא סיטריקס: שם כל שינוי הוא גרסה מלאה). '+
+      (isAdmin() ? '<button onclick="ackProdExport(\''+jsq(r.id)+'\')" style="margin-right:8px;background:#e65100;color:#fff;border:none;border-radius:6px;padding:3px 10px;cursor:pointer;font-size:11px;font-family:Arial">✅ הרשימות יוצאו מחדש</button>' : '')+'</div>';
+  }).join('');
+}
+function ackProdExport(id){
+  var r = RELEASES[id];
+  if(!r || !isAdmin()) return;
+  r.prodExportDone = true;
+  saveRelease(r);
+  renderServerProdBanner();
+}
+
 function renderReleaseManager(){
   var cur = getCurrentRelease();
   var curEl = document.getElementById('rmCurrent');
   if(cur){
-    curEl.innerHTML = '<div style="font-size:14px;font-weight:700;color:#1a1a2e">🏷️ '+esc(cur.name)+'</div>'+
-      '<div style="font-size:12px;color:#888;margin-top:2px">נפתחה ב-'+esc(cur.date||'')+(cur.notes?' · '+esc(cur.notes):'')+'</div>'+
+    curEl.innerHTML = envSummaryHtml()+'<div style="font-size:14px;font-weight:700;color:#1a1a2e">🏷️ '+esc(cur.name)+'</div>'+
+      '<div style="font-size:12px;color:#888;margin-top:2px">נפתחה ב-'+esc(cur.date||'')+(cur.notes?' · '+esc(cur.notes):'')+'</div>'+releaseEnvChips(cur)+
       '<button onclick="closeCurrentRelease()" style="margin-top:8px;background:#c62828;color:#fff;border:none;border-radius:6px;padding:6px 14px;cursor:pointer;font-size:12px;font-family:Arial">🔒 סגור גרסה</button>';
   } else {
-    curEl.innerHTML = '<div style="font-size:13px;color:#888">אין גרסה נוכחית פעילה</div>';
+    curEl.innerHTML = envSummaryHtml()+'<div style="font-size:13px;color:#888">אין גרסה נוכחית פעילה</div>';
   }
   var pastEl = document.getElementById('rmPast');
   var past = Object.values(RELEASES).filter(function(r){ return r.status==='closed'; })
     .sort(function(a,b){ return (b.closedAt||'').localeCompare(a.closedAt||''); });
   pastEl.innerHTML = past.length ? past.map(function(r){
     return '<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border:1px solid #eee;border-radius:6px;margin-bottom:6px">'+
-      '<div><b>'+esc(r.name)+'</b><span style="color:#888;font-size:11px;margin-right:8px">נסגרה ב-'+esc((r.closedAt||'').slice(0,10))+'</span></div>'+
+      '<div><b>'+esc(r.name)+'</b><span style="color:#888;font-size:11px;margin-right:8px">נסגרה ב-'+esc((r.closedAt||'').slice(0,10))+'</span>'+releaseEnvChips(r)+'</div>'+
       '<button onclick="openReleaseArchive(\''+r.id+'\')" style="background:#1565c0;color:#fff;border:none;border-radius:5px;padding:4px 10px;cursor:pointer;font-size:11px;font-family:Arial">📁 ארכיון</button>'+
     '</div>';
   }).join('') : '<div style="color:#aaa;font-size:12px">אין עדיין גרסאות סגורות</div>';
@@ -2728,6 +2795,9 @@ function openEditDevTask(idx){
   document.getElementById('devEditNotes').value=t.notes||'';
   document.getElementById('devEditComp').value=t.comp||'';
   document.getElementById('devEditVer').value=t.ver||'';
+  document.getElementById('devEditRelease').innerHTML = '<option value="">— ללא שיוך —</option>'+Object.values(RELEASES)
+    .sort(function(a,b){ return (b.createdAt||'').localeCompare(a.createdAt||''); })
+    .map(function(r){ return '<option value="'+esc(r.id)+'"'+(r.id===t.releaseId?' selected':'')+'>'+esc(r.name)+(r.status==='current'?' (נוכחית)':'')+'</option>'; }).join('');
   document.getElementById('devEditIface').value=t.iface||'';
   populateDevTesterSelect(t.testerUid||'', t.tester||'');
   populateDevEditSelect('devEditTStatus','tStatus',t.tStatus||'');
@@ -2821,6 +2891,7 @@ async function saveDevTaskModal(){
     comp: document.getElementById('devEditComp').value.trim(),
     ver: document.getElementById('devEditVer').value.trim(),
     iface: document.getElementById('devEditIface').value.trim(),
+    releaseId: document.getElementById('devEditRelease').value,
     tester: newTesterName,
     testerUid: newTesterUid,
     tStatus: newTStatus,
@@ -2956,7 +3027,7 @@ function sendDevTesterEmail(user, task) {
   });
 }
 
-var DEV_OVERRIDE_FIELDS = ['tester','testerUid','tStatus','tNotes','status','sLog','specLink','dev','desc','notes','comp','ver','iface','id','linkedLaunchId'];
+var DEV_OVERRIDE_FIELDS = ['tester','testerUid','tStatus','tNotes','status','sLog','specLink','dev','desc','notes','comp','ver','iface','id','linkedLaunchId','releaseId'];
 
 // טוען עדכונים לפי מזהה פנימי יציב (t._uid) - לא לפי מיקום במערך, ולא לפי "מספר משימה"
 // (t.id) שהוא שדה עסקי חופשי שמוזן ע"י המשתמש ולכן יכול להיות ריק, לא ייחודי, או
@@ -4024,6 +4095,7 @@ function isoToIsraeliDateTime(iso){
 }
 
 function renderServerGrid(){
+  renderServerProdBanner();
   var wrap = document.getElementById('serverGridWrap');
   if(!wrap) return;
   populateImportServerSelect();
@@ -4742,6 +4814,7 @@ function updateChangeLogNote(id, note){
     <div style="font-size:11px;color:#999;margin-top:8px">מזהה רכיב אוטומטית מכל שם קובץ (למשל DHCTL.ecf → DH), ומתעלם מקבצים בתת-תיקיות. אפשר לייבא שוב באותו אופן בכל פעם שרוצים לבדוק מה השתנה.</div>
   </div>
 
+  <div id="serverProdBanner"></div>
   <div id="serverGridWrap" style="overflow:auto;max-height:600px;border:1px solid #eee;border-radius:8px"></div>
 
   <div style="margin-top:22px">
@@ -4909,6 +4982,10 @@ function updateChangeLogNote(id, note){
         <label style="font-size:11px;color:#666;font-weight:700;display:block;margin-bottom:3px">גרסה</label>
         <input id="devEditVer" style="width:100%;padding:8px 10px;border:1.5px solid #ddd;border-radius:6px;font-size:13px;font-family:Arial;direction:ltr;box-sizing:border-box">
       </div>
+    </div>
+    <div style="margin-bottom:10px">
+      <label style="font-size:11px;color:#666;font-weight:700;display:block;margin-bottom:3px">גרסה לבדיקה <span style="font-weight:400;color:#999">(בנפרד מ"גרסה" - באיזו גרסה המשימה נבדקת עכשיו)</span></label>
+      <select id="devEditRelease" style="width:100%;padding:8px 10px;border:1.5px solid #ddd;border-radius:6px;font-size:13px;font-family:Arial;direction:rtl;box-sizing:border-box"></select>
     </div>
     <div style="margin-bottom:10px">
       <label style="font-size:11px;color:#666;font-weight:700;display:block;margin-bottom:3px">ממשק</label>
