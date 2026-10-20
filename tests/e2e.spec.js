@@ -3131,3 +3131,151 @@ test.describe('מעבר גרסת עבודה, ארכיון והחזרה מארכ�
     expect(devTasksByUid.d1.status).toBe('נבדק');
   });
 });
+
+test.describe('"לידיעה בלבד" - תת-טאב בטאב עליה לאוויר', () => {
+  const NOW = '2026-10-01T00:00:00.000Z';
+  const rel = (id, name, status) => ({ id, name, status, date: '2026-10-01', createdAt: NOW });
+  const dev = (uid, num, desc, releaseId, extra) => Object.assign({ _uid: uid, id: num, dev: 'x', status: 'פתוח', desc, notes: '', comp: 'DH', ver: '5.1575', iface: '', specLink: '', tester: '', testerUid: '', tNotes: '', tStatus: '', releaseId }, extra || {});
+  const seed = () => ({
+    releases: { r0: rel('r0', '5.1559', 'closed'), r1: rel('r1', '5.1575', 'current') },
+    devTasksByUid: {
+      f1: dev('f1', '91001', 'שינוי תשתית לידיעה', 'r1', { fyi: true }),
+      f2: dev('f2', '91002', 'עוד שינוי לידיעה', 'r1', { fyi: true }),
+      n1: dev('n1', '91003', 'משימה רגילה לבדיקה', 'r1'),
+      old: dev('old', '91004', 'לידיעה מגרסה ישנה', 'r0', { fyi: true }),
+    },
+  });
+  const openFyi = async (page) => {
+    await page.click('.tab[data-tab="5"]');
+    await page.click('#launchSub_fyi');
+  };
+
+  test('משימות לידיעה לא מופיעות בטבלת הפיתוחים ולא בספירה; רק רגילות מוצגות', async ({ page }) => {
+    await mockFirebase(page, seed());
+    await page.goto('/index.html');
+    await login(page, 'testadmin', 'pw');
+    await page.click('.tab[data-tab="3"]');
+    await expect(page.locator('#devBody')).toContainText('משימה רגילה לבדיקה');
+    await expect(page.locator('#devBody')).not.toContainText('שינוי תשתית לידיעה');
+    await expect(page.locator('#devBody')).not.toContainText('עוד שינוי לידיעה');
+  });
+
+  test('התת-טאב מציג רק לידיעה של הגרסה הנוכחית, ברירת מחדל לא נקרא, עם תג ספירה בטאב', async ({ page }) => {
+    await mockFirebase(page, seed());
+    await page.goto('/index.html');
+    await login(page, 'testadmin', 'pw');
+    await expect(page.locator('#fyiTabBadge')).toContainText('2'); // כבר בכניסה, לפני שביקרנו בטאב
+    await openFyi(page);
+    await expect(page.locator('#fyiBody')).toContainText('שינוי תשתית לידיעה');
+    await expect(page.locator('#fyiBody')).toContainText('עוד שינוי לידיעה');
+    await expect(page.locator('#fyiBody')).not.toContainText('משימה רגילה לבדיקה');
+    await expect(page.locator('#fyiBody')).not.toContainText('לידיעה מגרסה ישנה');
+    expect(await page.locator('#fyiBody tr[data-unread="1"]').count()).toBe(2);
+    await expect(page.locator('#launchSub_fyi')).toContainText('2 חדשים');
+  });
+
+  test('סימון "נקרא" נשמר לכל משתמש בנפרד, מוריד את התג, ושורד רענון', async ({ page }) => {
+    const { devTasksByUid } = await mockFirebase(page, seed());
+    devTasksByUid.f1.fyiReads = { someone_else: 111 }; // משתמש אחר כבר קרא - אצלי עדיין לא נקרא
+    await page.goto('/index.html');
+    await login(page, 'testadmin', 'pw');
+    await openFyi(page);
+    expect(await page.locator('#fyiBody tr[data-unread="1"]').count()).toBe(2);
+    const myUid = await page.evaluate(() => CU._uid);
+
+    await page.locator('#fyiBody tr[data-fyi-uid="f1"] button', { hasText: 'נקרא' }).click();
+    await expect(page.locator('#fyiTabBadge')).toContainText('1');
+    expect(devTasksByUid.f1.fyiReads[myUid]).toBeGreaterThan(0);
+    expect(devTasksByUid.f1.fyiReads.someone_else).toBe(111); // לא נדרס
+    expect(devTasksByUid.f2.fyiReads).toBeUndefined();
+
+    await page.reload();
+    await page.waitForSelector('#mainTabs', { state: 'visible' });
+    await expect(page.locator('#fyiTabBadge')).toContainText('1');
+    await openFyi(page);
+    expect(await page.locator('#fyiBody tr[data-unread="1"]').count()).toBe(1);
+  });
+
+  test('"סמן הכל כנקרא" מסמן את כולם ומסיר את התג', async ({ page }) => {
+    const { devTasksByUid } = await mockFirebase(page, seed());
+    await page.goto('/index.html');
+    await login(page, 'testadmin', 'pw');
+    await openFyi(page);
+    await page.click('button[onclick="markAllFyiRead()"]');
+    await expect(page.locator('#fyiTabBadge')).toBeEmpty();
+    const myUid = await page.evaluate(() => CU._uid);
+    expect(devTasksByUid.f1.fyiReads[myUid]).toBeGreaterThan(0);
+    expect(devTasksByUid.f2.fyiReads[myUid]).toBeGreaterThan(0);
+    expect(devTasksByUid.old.fyiReads).toBeUndefined(); // פריט מגרסה ישנה לא נוגעים בו
+  });
+
+  test('טעות סיווג: "החזר לפיתוחים" מחזיר משימה לטבלת הפיתוחים', async ({ page }) => {
+    const { devTasksByUid } = await mockFirebase(page, seed());
+    page.on('dialog', d => d.accept());
+    await page.goto('/index.html');
+    await login(page, 'testadmin', 'pw');
+    await openFyi(page);
+    await page.locator('#fyiBody tr[data-fyi-uid="f1"] button', { hasText: 'החזר לפיתוחים' }).click();
+    await expect(page.locator('#fyiBody')).not.toContainText('שינוי תשתית לידיעה');
+    expect(!!devTasksByUid.f1.fyi).toBe(false);
+    await page.click('.tab[data-tab="3"]');
+    await expect(page.locator('#devBody')).toContainText('שינוי תשתית לידיעה');
+  });
+
+  test('סימון משימה רגילה כ"לידיעה בלבד" דרך מודל העריכה מעביר אותה לתת-טאב, כולל משימת seed', async ({ page }) => {
+    const { devTasksByUid } = await mockFirebase(page, seed());
+    await page.goto('/index.html');
+    await login(page, 'testadmin', 'pw');
+    await page.click('.tab[data-tab="3"]');
+    const row = page.locator('#devBody tr', { hasText: '13770' });
+    await row.locator('button', { hasText: 'עריכה' }).click();
+    await page.check('#devEditFyi');
+    await page.click('button[onclick="saveDevTaskModal()"]');
+    await page.waitForTimeout(250);
+    expect(devTasksByUid.dt_001.fyi).toBe(true);
+    await expect(page.locator('#devBody')).not.toContainText('13770');
+
+    await page.reload(); // הסימון חייב לשרוד טעינה מחדש (משימת seed נטענת מעל הבסיס הקבוע)
+    await page.waitForSelector('#mainTabs', { state: 'visible' });
+    await page.click('.tab[data-tab="3"]');
+    await expect(page.locator('#devBody')).toContainText('91003'); // הטבלה נטענה
+    await expect(page.locator('#devBody')).not.toContainText('13770');
+    await openFyi(page);
+    await expect(page.locator('#fyiBody')).toContainText('13770');
+    // מהתת-טאב אפשר להגיע לעריכה כדי לתקן
+    await page.locator('#fyiBody tr[data-fyi-uid="dt_001"] button', { hasText: 'עריכה' }).click();
+    await expect(page.locator('#devEditModal')).toBeVisible();
+    await expect(page.locator('#devEditFyi')).toBeChecked();
+  });
+
+  test('שמירת עריכה ממודל פתוח לא דורסת סימון "נקרא" שנכתב בינתיים ע"י משתמש אחר', async ({ page }) => {
+    const { devTasksByUid } = await mockFirebase(page, seed());
+    await page.goto('/index.html');
+    await login(page, 'testadmin', 'pw');
+    await page.click('.tab[data-tab="3"]');
+    const row = page.locator('#devBody tr', { hasText: '91003' });
+    await row.locator('button', { hasText: 'עריכה' }).click();
+    devTasksByUid.n1.fyiReads = { other_user: 222 }; // נכתב בשרת בזמן שהמודל פתוח
+    await page.check('#devEditFyi');
+    await page.click('button[onclick="saveDevTaskModal()"]');
+    await page.waitForTimeout(250);
+    expect(devTasksByUid.n1.fyi).toBe(true);
+    expect(devTasksByUid.n1.fyiReads.other_user).toBe(222);
+  });
+
+  test('במעבר גרסה, משימות לידיעה מופיעות ברשימה (עם סימון) ועוברות לארכיון יחד עם השאר', async ({ page }) => {
+    const { devTasksByUid } = await mockFirebase(page, seed());
+    await page.goto('/index.html');
+    await login(page, 'testadmin', 'pw');
+    page.once('dialog', d => d.accept('5.1576'));
+    await page.click('button[onclick="openReleaseManager()"]');
+    await page.click('button[onclick="openNewReleaseForm()"]');
+    await expect(page.locator('#rtBody')).toContainText('👁️ 91001');
+    // הגרסה r1 לא סומנה PROD, אז ברירת המחדל לא מסומן; מסמנים רק את f1 לארכיון
+    await page.locator('#rtBody label', { hasText: '91001' }).locator('input').check();
+    await page.click('#rtConfirmBtn');
+    await expect(page.locator('#rmCurrent')).toContainText('5.1576');
+    expect(devTasksByUid.f1.releaseId).toBe('r1'); // בארכיון
+    expect(devTasksByUid.f2.releaseId).not.toBe('r1'); // ממשיך לגרסה החדשה
+  });
+});

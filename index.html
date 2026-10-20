@@ -184,7 +184,7 @@ tr:hover td{background:#fffbf0}
   <div class="tab" id="tabUsers" data-tab="2" onclick="switchTab(2)" style="display:none">👥 משתמשים</div>
   <div class="tab" id="tabSanity" data-tab="4" onclick="switchTab(4)" style="display:none">✅ בדיקות שפיות <span id="sanityBadge" style="display:none;background:#D40511;color:#fff;border-radius:50%;padding:1px 6px;font-size:10px;font-weight:700;margin-right:4px"></span></div>
   <div class="tab" id="tabDev" data-tab="3" onclick="switchTab(3)" style="display:none">🛠️ פיתוחים ותיקונים לבדיקה</div>
-  <div class="tab" id="tabLaunch" data-tab="5" onclick="switchTab(5)" style="display:none">🚀 משימות בעליה לאוויר</div>
+  <div class="tab" id="tabLaunch" data-tab="5" onclick="switchTab(5)" style="display:none">🚀 משימות בעליה לאוויר <span id="fyiTabBadge"></span></div>
   <div class="tab" id="tabServers" data-tab="6" onclick="switchTab(6)" style="display:none">🖥️ שרתים</div>
 </div>
 
@@ -491,7 +491,7 @@ function showApp() {
   document.getElementById('uBadge').style.display = 'flex';
   document.getElementById('uName').textContent = 'שלום, ' + CU.name;
   document.getElementById('mainTabs').style.display = 'flex';
-  loadReleases().then(refreshLiveReleaseViews);
+  loadReleases().then(refreshLiveReleaseViews).then(loadDevTasks).then(updateFyiBadge);
 
   if (isAdmin()) {
     document.getElementById('backupControls').style.display = 'inline';
@@ -720,7 +720,7 @@ async function openNewReleaseForm(){
   var cur = getCurrentRelease();
   var prodDone = !cur || !!(cur.envs && cur.envs.prod);
   var rows = DEV_TASKS.filter(function(t){ return !t.deleted && isInCurrentRelease(t); }).map(function(t){
-    return {kind:'dev', key:t._uid, label:((t.id||'')+' '+(t.desc||'')).trim(), sub:[t.status, t.tStatus].filter(Boolean).join(' · '), checked:prodDone};
+    return {kind:'dev', key:t._uid, label:((t.fyi?'👁️ ':'')+(t.id||'')+' '+(t.desc||'')).trim(), sub:[t.status, t.tStatus].filter(Boolean).join(' · '), checked:prodDone};
   }).concat(Object.values(LAUNCH_TASKS).filter(function(t){ return !t.deleted && isInCurrentRelease(t); }).map(function(t){
     return {kind:'launch', key:t.id, label:t.task||'', sub:t.status||'פתוח', checked:prodDone};
   }));
@@ -2164,7 +2164,7 @@ function switchTab(i) {
   if(i===2)renderUsers();
   if(i===3){Promise.all([loadDevLists(),loadDevTasks()]).then(function(){renderDevTable();populateDevFilters();filterDevTable();});}
   if(i===4)loadSanityTab();
-  if(i===5){loadLaunchTab().then(function(){renderLaunchTable();});}
+  if(i===5){Promise.all([loadLaunchTab(),loadDevTasks()]).then(function(){renderLaunchTable();renderFyiTable();});}
   if(i===6){SERVER_EDIT_MODE=false;loadServerData().then(function(){renderServerGrid();renderChangeLog();});}
 }
 
@@ -2711,11 +2711,12 @@ function buildDevStats(){
   var el=document.getElementById('s3');
   if(!el)return;
   var cnt={};
-  DEV_TASKS.forEach(function(t){var s=t.status||'לא מוגדר';cnt[s]=(cnt[s]||0)+1;});
+  var tasks=DEV_TASKS.filter(function(t){return !t.fyi;}); // משימות "לידיעה בלבד" לא נספרות כמשימות בדיקה
+  tasks.forEach(function(t){var s=t.status||'לא מוגדר';cnt[s]=(cnt[s]||0)+1;});
   var tCnt={};
-  DEV_TASKS.forEach(function(t){if(t.tStatus)tCnt[t.tStatus]=(tCnt[t.tStatus]||0)+1;});
+  tasks.forEach(function(t){if(t.tStatus)tCnt[t.tStatus]=(tCnt[t.tStatus]||0)+1;});
   el.innerHTML=
-    '<div class="stat"><div class="n" style="color:#1a1a2e">'+DEV_TASKS.length+'</div><div class="l">סה"כ</div></div>'+
+    '<div class="stat"><div class="n" style="color:#1a1a2e">'+tasks.length+'</div><div class="l">סה"כ</div></div>'+
     '<div class="stat"><div class="n n-open">'+(cnt['פתוח']||0)+'</div><div class="l">פתוח</div></div>'+
     '<div class="stat"><div class="n n-wait">'+(cnt['בפיתוח']||0)+'</div><div class="l">בפיתוח</div></div>'+
     '<div class="stat"><div class="n" style="color:#1565c0">'+(cnt['בבדיקה']||0)+'</div><div class="l">בבדיקה</div></div>'+
@@ -2731,7 +2732,8 @@ function renderDevTable(){
   // לעולם לא ממיינים את DEV_TASKS עצמו - idx בכל שורה הוא מיקום נוכחי בזיכרון בלבד,
   // לא מזהה יציב (השמירה בפועל מבוססת על t.id - ראו saveDevTaskModal). ממיינים רק
   // את סדר התצוגה, כדי שהתנהגות הטבלה תישאר צפויה ולא תלויה במיקום.
-  var order = DEV_TASKS.map(function(_, i){ return i; }).filter(function(i){ return isInCurrentRelease(DEV_TASKS[i]); });
+  var order = DEV_TASKS.map(function(_, i){ return i; }).filter(function(i){ return isInCurrentRelease(DEV_TASKS[i]) && !DEV_TASKS[i].fyi; });
+  updateFyiBadge();
   var relBadgeEl = document.getElementById('devReleaseBadge');
   if (relBadgeEl) relBadgeEl.innerHTML = releaseBadgeHtml();
   if (devSortCol) {
@@ -2967,6 +2969,7 @@ function openEditDevTask(idx){
     .sort(function(a,b){ return (b.createdAt||'').localeCompare(a.createdAt||''); })
     .map(function(r){ return '<option value="'+esc(r.id)+'"'+(r.id===t.releaseId?' selected':'')+'>'+esc(r.name)+(r.status==='current'?' (נוכחית)':'')+'</option>'; }).join('');
   document.getElementById('devEditIface').value=t.iface||'';
+  document.getElementById('devEditFyi').checked=!!t.fyi;
   populateDevTesterSelect(t.testerUid||'', t.tester||'');
   populateDevEditSelect('devEditTStatus','tStatus',t.tStatus||'');
   document.getElementById('devEditTNotes').value=t.tNotes||'';
@@ -3060,6 +3063,7 @@ async function saveDevTaskModal(){
     ver: document.getElementById('devEditVer').value.trim(),
     iface: document.getElementById('devEditIface').value.trim(),
     releaseId: document.getElementById('devEditRelease').value,
+    fyi: document.getElementById('devEditFyi').checked,
     tester: newTesterName,
     testerUid: newTesterUid,
     tStatus: newTStatus,
@@ -3126,6 +3130,8 @@ async function saveDevTaskModal(){
     mergedLog.sort(function(a, b) { return a.t - b.t; });
 
     var fullRecord = Object.assign({}, t, updatedFields, { sLog: mergedLog });
+    // סימוני "נקרא" של משתמשים אחרים שנכתבו בזמן שהמודל היה פתוח - לא דורסים
+    if (fresh.fyiReads) fullRecord.fyiReads = Object.assign({}, fullRecord.fyiReads, fresh.fyiReads);
 
     var putRes = await fetch(BASE + '/devTasksByUid/' + encodeURIComponent(taskUid) + '.json', {
       method: 'PUT',
@@ -3195,7 +3201,7 @@ function sendDevTesterEmail(user, task) {
   });
 }
 
-var DEV_OVERRIDE_FIELDS = ['tester','testerUid','tStatus','tNotes','status','sLog','specLink','dev','desc','notes','comp','ver','iface','id','linkedLaunchId','releaseId'];
+var DEV_OVERRIDE_FIELDS = ['tester','testerUid','tStatus','tNotes','status','sLog','specLink','dev','desc','notes','comp','ver','iface','id','linkedLaunchId','releaseId','fyi','fyiReads'];
 
 // טוען עדכונים לפי מזהה פנימי יציב (t._uid) - לא לפי מיקום במערך, ולא לפי "מספר משימה"
 // (t.id) שהוא שדה עסקי חופשי שמוזן ע"י המשתמש ולכן יכול להיות ריק, לא ייחודי, או
@@ -3856,6 +3862,95 @@ function launchTimingBadge(timing) {
     return '<span style="display:inline-block;background:#fff8e1;color:#f57f17;border-radius:10px;padding:2px 9px;font-size:11px;font-weight:700;white-space:nowrap">🟡 בימים שלאחר מכן</span>';
   }
   return '<span style="color:#ccc">—</span>';
+}
+
+// ── "לידיעה בלבד": משימות פיתוח עם fyi:true. לא נספרות ולא מוצגות בטבלת הפיתוחים,
+// ומוצגות בתת-טאב בטאב עליה לאוויר עם סימון נקרא/לא נקרא לכל משתמש (t.fyiReads[uid]=זמן).
+var launchSub = 'tasks';
+function setLaunchSub(k){
+  launchSub = k;
+  document.getElementById('launchSubTasks').style.display = k==='tasks' ? '' : 'none';
+  document.getElementById('launchSubFyi').style.display = k==='fyi' ? '' : 'none';
+  ['tasks','fyi'].forEach(function(s){
+    var b = document.getElementById('launchSub_'+s);
+    b.style.background = s===k ? '#1a1a2e' : '#fff';
+    b.style.color = s===k ? '#fff' : '#1a1a2e';
+  });
+  if(k==='fyi') renderFyiTable();
+}
+function fyiItems(){
+  return DEV_TASKS.filter(function(t){ return t.fyi && !t.deleted && isInCurrentRelease(t); });
+}
+function fyiUnread(t){
+  return !(t.fyiReads && CU && t.fyiReads[CU._uid]);
+}
+function updateFyiBadge(){
+  var n = CU ? fyiItems().filter(fyiUnread).length : 0;
+  var tab = document.getElementById('fyiTabBadge');
+  if(tab) tab.innerHTML = n ? '<span style="background:#D40511;color:#fff;border-radius:10px;padding:0 7px;font-size:11px">'+n+'</span>' : '';
+  var sub = document.getElementById('launchSub_fyi');
+  if(sub) sub.textContent = '👁️ לידיעה בלבד' + (n ? ' ('+n+' חדשים)' : '');
+}
+function renderFyiTable(){
+  updateFyiBadge();
+  var tb = document.getElementById('fyiBody');
+  if(!tb) return;
+  var items = fyiItems();
+  if(!items.length){
+    tb.innerHTML = '<tr><td colspan="5" style="padding:30px;text-align:center;color:#aaa">אין פריטים לידיעה בגרסה הנוכחית</td></tr>';
+    return;
+  }
+  var btn = function(label, fn, bg){ return '<button onclick="'+fn+'" style="background:'+bg+';color:#fff;border:none;border-radius:4px;padding:3px 8px;cursor:pointer;font-size:11px;font-family:Arial;margin-left:4px">'+label+'</button>'; };
+  tb.innerHTML = items.map(function(t){
+    var unread = fyiUnread(t);
+    var u = jsq(t._uid);
+    return '<tr style="vertical-align:top;background:'+(unread?'#fffde7':'#fff')+'" data-fyi-uid="'+esc(t._uid)+'" data-unread="'+(unread?1:0)+'">'+
+      '<td style="padding:7px 10px;border-bottom:1px solid #eee;white-space:nowrap;font-weight:700;color:#D40511">'+esc(t.id||'')+(unread?' <span style="background:#D40511;color:#fff;border-radius:8px;padding:0 6px;font-size:10px">חדש</span>':'')+'</td>'+
+      '<td style="padding:7px 10px;border-bottom:1px solid #eee;line-height:1.5'+(unread?';font-weight:700':'')+'">'+esc(t.desc||'')+'</td>'+
+      '<td style="padding:7px 10px;border-bottom:1px solid #eee;font-size:11px;color:#555">'+esc([t.comp,t.iface,t.ver].filter(Boolean).join(' · '))+'</td>'+
+      '<td style="padding:7px 10px;border-bottom:1px solid #eee;font-size:11px;color:#555;line-height:1.5">'+esc(t.notes||'')+'</td>'+
+      '<td style="padding:7px 10px;border-bottom:1px solid #eee;white-space:nowrap">'+
+        btn(unread?'✔ נקרא':'↺ לא נקרא', "setFyiRead('"+u+"',"+(unread?'true':'false')+")", unread?'#2e7d32':'#888')+
+        btn('✏️ עריכה', "jumpToDevTask('"+u+"')", '#1565c0')+
+        btn('↩️ החזר לפיתוחים', "setFyiFlag('"+u+"',false)", '#e65100')+
+      '</td></tr>';
+  }).join('');
+}
+
+// כתיבה אטומית מרובת-נתיבים (כמו מעבר גרסה) - לא דורסת סימוני נקרא של משתמשים אחרים.
+async function patchRoot(updates){
+  var res = await fetch(FB+'/.json', {method:'PATCH', headers:{'Content-Type':'application/json'}, body:JSON.stringify(updates)});
+  if(!res.ok) throw new Error('השרת דחה את הכתיבה (סטטוס '+res.status+')');
+}
+function setFyiRead(uid, read){ return markFyi([uid], read); }
+function markAllFyiRead(){ return markFyi(fyiItems().filter(fyiUnread).map(function(t){ return t._uid; }), true); }
+async function markFyi(uids, read){
+  if(!uids.length || !CU) return;
+  var now = Date.now(), updates = {};
+  uids.forEach(function(u){ updates['devTasksByUid/'+u+'/fyiReads/'+CU._uid] = read ? now : null; });
+  try{
+    await patchRoot(updates);
+  }catch(e){ alert('❌ סימון הקריאה נכשל: '+e.message); return; }
+  uids.forEach(function(u){
+    var t = DEV_TASKS.find(function(x){ return x._uid===u; });
+    if(!t) return;
+    t.fyiReads = Object.assign({}, t.fyiReads);
+    if(read) t.fyiReads[CU._uid] = now; else delete t.fyiReads[CU._uid];
+  });
+  renderFyiTable();
+}
+async function setFyiFlag(uid, val){
+  var t = DEV_TASKS.find(function(x){ return x._uid===uid; });
+  if(!t) return;
+  try{
+    var upd = {}; upd['devTasksByUid/'+uid+'/fyi'] = val;
+    await patchRoot(upd);
+    var ver = (await (await fetch(FB+'/devTasksByUid/'+encodeURIComponent(uid)+'.json?t='+Date.now())).json()) || {};
+    if(!!ver.fyi !== val) throw new Error('האימות מול השרת נכשל');
+  }catch(e){ alert('❌ השינוי נכשל: '+e.message); return; }
+  t.fyi = val;
+  renderFyiTable();
+  renderDevTable();
 }
 
 var launchSortCol = '', launchSortDir = 1;
@@ -4896,6 +4991,27 @@ function updateChangeLogNote(id, note){
 </div>
 
 <div class="pane" id="pane5" style="padding:14px 20px;direction:rtl">
+  <div style="display:flex;gap:6px;margin-bottom:12px">
+    <button id="launchSub_tasks" onclick="setLaunchSub('tasks')" style="padding:6px 14px;border-radius:16px;border:1px solid #1a1a2e;cursor:pointer;font-size:12px;font-weight:700;font-family:Arial;background:#1a1a2e;color:#fff">🚀 משימות</button>
+    <button id="launchSub_fyi" onclick="setLaunchSub('fyi')" style="padding:6px 14px;border-radius:16px;border:1px solid #1a1a2e;cursor:pointer;font-size:12px;font-weight:700;font-family:Arial;background:#fff;color:#1a1a2e">👁️ לידיעה בלבד</button>
+  </div>
+  <div id="launchSubFyi" style="display:none">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+      <div style="font-size:12px;color:#666">שינויים בגרסה שאינם דורשים בדיקה. ברירת מחדל: לא נקרא. טעות סיווג? "החזר לפיתוחים".</div>
+      <button onclick="markAllFyiRead()" style="background:#1565c0;color:#fff;border:none;border-radius:6px;padding:6px 12px;cursor:pointer;font-size:12px;font-family:Arial">✔ סמן הכל כנקרא</button>
+    </div>
+    <table style="width:100%;border-collapse:collapse;font-size:12px">
+      <thead><tr style="background:#1a1a2e;color:#fff">
+        <th style="padding:8px 10px;text-align:right;white-space:nowrap">מס' משימה</th>
+        <th style="padding:8px 10px;text-align:right;min-width:260px">תיאור</th>
+        <th style="padding:8px 10px;text-align:right">רכיב / ממשק / גרסה</th>
+        <th style="padding:8px 10px;text-align:right;min-width:180px">הערות</th>
+        <th style="padding:8px 10px;text-align:right;white-space:nowrap">פעולות</th>
+      </tr></thead>
+      <tbody id="fyiBody"></tbody>
+    </table>
+  </div>
+  <div id="launchSubTasks">
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
     <div style="font-size:16px;font-weight:700;color:#1a1a2e">🚀 משימות בעליה לאוויר <span id="launchReleaseBadge"></span></div>
     <button onclick="openNewLaunch()" style="background:#D40511;color:#fff;border:none;border-radius:6px;padding:8px 16px;cursor:pointer;font-size:13px;font-weight:700;font-family:Arial">+ משימה חדשה</button>
@@ -4911,6 +5027,7 @@ function updateChangeLogNote(id, note){
     </tr></thead>
     <tbody id="launchBody"></tbody>
   </table>
+  </div>
 
   <!-- LAUNCH TASK MODAL -->
   <div id="launchModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9000;align-items:center;justify-content:center">
@@ -5186,6 +5303,7 @@ function updateChangeLogNote(id, note){
       <label style="font-size:11px;color:#666;font-weight:700;display:block;margin-bottom:3px">ממשק</label>
       <input id="devEditIface" style="width:100%;padding:8px 10px;border:1.5px solid #ddd;border-radius:6px;font-size:13px;font-family:Arial;direction:ltr;box-sizing:border-box">
     </div>
+    <label style="display:flex;align-items:center;gap:8px;margin-bottom:10px;font-size:12px;color:#444;cursor:pointer"><input type="checkbox" id="devEditFyi"> 👁️ לידיעה בלבד (לא נבדקת - מוצגת בתת-טאב "לידיעה בלבד" בטאב עליה לאוויר)</label>
     <div style="border-top:1px solid #eee;margin:14px 0;padding-top:10px;font-size:12px;font-weight:700;color:#666">בדיקה</div>
     <div style="display:flex;gap:8px;margin-bottom:10px">
       <div style="flex:1">
