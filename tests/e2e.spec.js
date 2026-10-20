@@ -2136,21 +2136,31 @@ test.describe('מיון טבלאות לפי לחיצה על כותרת עמוד�
   });
 });
 
+
+// פותח גרסה חדשה דרך ניהול הגרסאות ומאשר את חלון המעבר (אם הוא מוצג).
+async function openNewRelease(page, name) {
+  page.once('dialog', d => d.accept(name));
+  await page.click('button[onclick="openReleaseManager()"]');
+  await page.click('button[onclick="openNewReleaseForm()"]');
+  await Promise.race([
+    page.locator('#releaseTransitionBg.open').waitFor({ state: 'visible' }).then(() => page.click('#rtConfirmBtn')),
+    page.locator('#rmCurrent', { hasText: name }).waitFor({ state: 'visible' }),
+  ]).catch(() => {});
+  await expect(page.locator('#rmCurrent')).toContainText(name);
+}
+
 test.describe('ניהול גרסאות (Release) - אחרי עליה לאוויר', () => {
   test('פתיחת גרסה חדשה מציגה תג "גרסה נוכחית" בפיתוחים/שפיות/עליה-לאוויר, ומשימה חדשה מתויגת אליה אוטומטית', async ({ page }) => {
     const { releases } = await mockFirebase(page, {});
     await page.goto('/index.html');
     await login(page, 'testadmin', 'pw');
 
-    page.once('dialog', d => d.accept('8.4.2'));
-    await page.click('button[onclick="openReleaseManager()"]');
-    await page.click('button[onclick="openNewReleaseForm()"]');
-    await expect(page.locator('#rmCurrent')).toContainText('8.4.2');
+    await openNewRelease(page, '8.4.2');
     await page.click('button[onclick="closeReleaseManager()"]');
 
-    const relIds = Object.keys(releases);
+    const relIds = Object.keys(releases).filter(id => releases[id].status === 'current');
     expect(relIds.length).toBe(1);
-    expect(releases[relIds[0]].status).toBe('current');
+    expect(releases[relIds[0]].name).toBe('8.4.2');
 
     // הבאדג' מוצג בטאב פיתוחים ותיקונים
     await page.click('.tab[data-tab="3"]');
@@ -2167,15 +2177,10 @@ test.describe('ניהול גרסאות (Release) - אחרי עליה לאווי�
 
   test('סגירת גרסה מסתירה פריטים ששויכו אליה מהתצוגה החיה, אבל פריטים ישנים ללא שיוך גרסה נשארים גלויים', async ({ page }) => {
     const oldTask = { _uid: 'dt_old', id: '10001', dev: 'x', status: 'פתוח', desc: 'משימה ישנה בלי שיוך גרסה', notes: '', comp: '', ver: '', iface: '', specLink: '', tester: '', testerUid: '', tNotes: '', tStatus: '' };
-    const { releases, devTasksByUid: liveDevTasks } = await mockFirebase(page, { devTasksByUid: { dt_old: oldTask } });
+    const relId = 'r_900';
+    const { releases, devTasksByUid: liveDevTasks } = await mockFirebase(page, { devTasksByUid: { dt_old: oldTask }, releases: { [relId]: { id: relId, name: '9.0.0', status: 'current', date: '2026-10-01', createdAt: '2026-10-01T00:00:00.000Z' } } });
     await page.goto('/index.html');
     await login(page, 'testadmin', 'pw');
-
-    page.once('dialog', d => d.accept('9.0.0'));
-    await page.click('button[onclick="openReleaseManager()"]');
-    await page.click('button[onclick="openNewReleaseForm()"]');
-    const relId = Object.keys(releases)[0];
-    await page.click('button[onclick="closeReleaseManager()"]');
 
     await page.click('.tab[data-tab="3"]');
     await expect(page.locator('#devBody')).toContainText('משימה ישנה בלי שיוך גרסה');
@@ -2931,5 +2936,198 @@ test.describe('"גרסה לבדיקה" במשימת פיתוח - נפרדת מש
     await expect(page.locator('#devBody')).toContainText('13770');
     const tagged = await page.evaluate(() => DEV_TASKS.find(t => t._uid === 'dt_001').releaseId);
     expect(tagged).toBe('r1');
+  });
+});
+
+test.describe('מעבר גרסת עבודה, ארכיון והחזרה מארכיון', () => {
+  const NOW = '2026-10-01T00:00:00.000Z';
+  const rel = (id, name, extra) => Object.assign({ id, name, status: 'current', date: '2026-10-01', createdAt: NOW }, extra || {});
+  const dev = (uid, num, desc, releaseId, extra) => Object.assign({ _uid: uid, id: num, dev: 'x', status: 'פתוח', desc, notes: '', comp: '', ver: '5.1559', iface: '', specLink: '', tester: '', testerUid: '', tNotes: '', tStatus: '', releaseId }, extra || {});
+  const launch = (id, task, releaseId, status) => ({ id, task, status: status || 'פתוח', notes: '', closedBy: '', closedAt: '', createdAt: NOW, releaseId });
+
+  async function startTransition(page, name) {
+    page.once('dialog', d => d.accept(name));
+    await page.click('button[onclick="openReleaseManager()"]');
+    await page.click('button[onclick="openNewReleaseForm()"]');
+    await expect(page.locator('#releaseTransitionBg')).toBeVisible();
+  }
+  const uiCurrent = (releases) => Object.values(releases).filter(r => r.status === 'current');
+
+  test('אחרי עלייה ל-PROD: כל המשימות מסומנות לארכיון; משימה שהסרנו ממנה את הסימון עוברת לבדיקה בגרסה החדשה', async ({ page }) => {
+    const { releases, devTasksByUid, launchTasks } = await mockFirebase(page, {
+      releases: { r1: rel('r1', '5.1559', { envs: { prod: '2026-09-01' }, prodExportDone: true }) },
+      devTasksByUid: {
+        d1: dev('d1', '90001', 'משימה שנסגרה', 'r1', { status: 'נסגר' }),
+        d2: dev('d2', '90002', 'משימה להמשך בדיקה', 'r1', { status: 'נבדק' }),
+      },
+      launchTasks: { l1: launch('l1', 'משימת עליה שבוצעה', 'r1', 'בוצע') },
+    });
+    await page.goto('/index.html');
+    await login(page, 'testadmin', 'pw');
+    await startTransition(page, '5.1576');
+    await expect(page.locator('#rtInfo')).toContainText('עלתה ל-PROD');
+    expect(await page.locator('.rtChk:not(:checked)').count()).toBe(0); // הכל מסומן כברירת מחדל
+
+    const d2Row = page.locator('#rtBody label', { hasText: 'משימה להמשך בדיקה' });
+    await d2Row.locator('input').uncheck();
+    await page.click('#rtConfirmBtn');
+    await expect(page.locator('#rmCurrent')).toContainText('5.1576');
+
+    const newId = uiCurrent(releases)[0].id;
+    expect(releases.r1.status).toBe('closed');
+    expect(devTasksByUid.d1.releaseId).toBe('r1'); // ארכיון
+    expect(devTasksByUid.d2.releaseId).toBe(newId); // ממשיך לגרסה החדשה
+    expect(launchTasks.l1.releaseId).toBe('r1');
+
+    await page.click('button[onclick="closeReleaseManager()"]');
+    await page.click('.tab[data-tab="3"]');
+    await expect(page.locator('#devBody')).toContainText('משימה להמשך בדיקה');
+    await expect(page.locator('#devBody')).not.toContainText('משימה שנסגרה');
+  });
+
+  test('גרסה שהותקנה רק בטסט (לא PROD): כל המשימות לא מסומנות, ובמעבר הן נשארות לבדיקה בגרסה החדשה', async ({ page }) => {
+    const { releases, devTasksByUid, launchTasks } = await mockFirebase(page, {
+      releases: { r1: rel('r1', '5.1575', { envs: { test: '2026-10-20', citrix: '2026-10-20' } }) },
+      devTasksByUid: { d1: dev('d1', '90001', 'נבדקה בטסט', 'r1', { status: 'נבדק' }) },
+      launchTasks: { l1: launch('l1', 'משימה שאחרי עליה', 'r1') },
+    });
+    await page.goto('/index.html');
+    await login(page, 'testadmin', 'pw');
+    await startTransition(page, '5.1576');
+    await expect(page.locator('#rtInfo')).toContainText('עדיין לא סומנה כעלתה ל-PROD');
+    expect(await page.locator('.rtChk:checked').count()).toBe(0);
+    await page.click('#rtConfirmBtn');
+    await expect(page.locator('#rmCurrent')).toContainText('5.1576');
+
+    const newId = uiCurrent(releases)[0].id;
+    expect(devTasksByUid.d1.releaseId).toBe(newId);
+    expect(launchTasks.l1.releaseId).toBe(newId); // משימות אחרי עליה מצטברות עד שהגרסה באמת עולה ל-PROD
+    expect(releases.r1.status).toBe('closed');
+  });
+
+  test('מעבר ראשון בלי גרסה פעילה: משימות קיימות (כולל seed) עוברות לארכיון חדש וניתנות לצפייה', async ({ page }) => {
+    const { releases, devTasksByUid } = await mockFirebase(page, {});
+    await page.goto('/index.html');
+    await login(page, 'testadmin', 'pw');
+    await startTransition(page, '5.1575');
+    await expect(page.locator('#rtInfo')).toContainText('ארכיון חדש');
+    await page.click('#rtConfirmBtn');
+    await expect(page.locator('#rmCurrent')).toContainText('5.1575');
+
+    const archive = Object.values(releases).find(r => r.status === 'closed');
+    expect(archive.name).toBe('ארכיון לפני 5.1575');
+    expect(devTasksByUid.dt_001.releaseId).toBe(archive.id); // משימת seed
+    await page.click('button[onclick="closeReleaseManager()"]');
+    await page.click('.tab[data-tab="3"]');
+    await expect(page.locator('#devBody')).not.toContainText('13770');
+
+    await page.click('button[onclick="openReleaseManager()"]');
+    await page.click(`button[onclick="openReleaseArchive('${archive.id}')"]`);
+    await expect(page.locator('#releaseArchiveBody')).toContainText('13770');
+  });
+
+  test('כשל בכתיבת המעבר לא משאיר מצב חצי-גמור (הגרסה הנוכחית והמשימות לא משתנות)', async ({ page }) => {
+    const { releases, devTasksByUid } = await mockFirebase(page, {
+      releases: { r1: rel('r1', '5.1559', { envs: { prod: '2026-09-01' } }) },
+      devTasksByUid: { d1: dev('d1', '90001', 'משימה', 'r1') },
+    });
+    await page.route('**/malm-focus-default-rtdb.firebaseio.com/.json', route =>
+      route.request().method() === 'PATCH' ? route.fulfill({ status: 500, body: 'boom' }) : route.fallback());
+    await page.goto('/index.html');
+    await login(page, 'testadmin', 'pw');
+    await startTransition(page, '5.1576');
+    await page.click('#rtConfirmBtn');
+    await expect(page.locator('#savingMsg')).toContainText('המעבר נכשל');
+    expect(releases.r1.status).toBe('current');
+    expect(Object.keys(releases)).toEqual(['r1']);
+    expect(devTasksByUid.d1.releaseId).toBe('r1');
+  });
+
+  test('החזרה מהארכיון: משימת פיתוח חוזרת לגרסה הנוכחית כ"לבדיקה חוזרת" עם רישום ביומן; משימת עליה חוזרת "פתוח"', async ({ page }) => {
+    const { devTasksByUid, launchTasks } = await mockFirebase(page, {
+      releases: { r0: rel('r0', '5.1559', { status: 'closed', closedAt: NOW }), r1: rel('r1', '5.1575') },
+      devTasksByUid: { d9: dev('d9', '90009', 'משימה מהארכיון', 'r0', { status: 'נסגר', tStatus: 'תקין' }) },
+      launchTasks: { l9: launch('l9', 'משימת עליה מהארכיון', 'r0', 'בוצע') },
+    });
+    page.on('dialog', d => d.accept());
+    await page.goto('/index.html');
+    await login(page, 'testadmin', 'pw');
+    await page.click('button[onclick="openReleaseManager()"]');
+    await page.click('button[onclick="openReleaseArchive(\'r0\')"]');
+    await expect(page.locator('#releaseArchiveBody')).toContainText('משימה מהארכיון');
+
+    await page.click('button[onclick="restoreArchivedItem(\'dev\',\'d9\')"]');
+    await expect(page.locator('#releaseArchiveBody')).not.toContainText('משימה מהארכיון');
+    expect(devTasksByUid.d9.releaseId).toBe('r1');
+    expect(devTasksByUid.d9.tStatus).toBe('לבדיקה חוזרת');
+    expect(devTasksByUid.d9.status).toBe('נסגר'); // סטטוס הפיתוח לא נוגעים
+    expect(devTasksByUid.d9.sLog.some(e => e.s === 'לבדיקה חוזרת' && e.by.includes('הוחזר מהארכיון'))).toBe(true);
+
+    await page.click('button[onclick="restoreArchivedItem(\'launch\',\'l9\')"]');
+    await expect(page.locator('#releaseArchiveBody')).not.toContainText('משימת עליה מהארכיון');
+    expect(launchTasks.l9.releaseId).toBe('r1');
+    expect(launchTasks.l9.status).toBe('פתוח');
+
+    await page.click('button[onclick="closeReleaseArchive()"]');
+    await page.click('button[onclick="closeReleaseManager()"]');
+    await page.click('.tab[data-tab="3"]');
+    await expect(page.locator('#devBody')).toContainText('משימה מהארכיון');
+  });
+
+  test('אי אפשר להחזיר מהארכיון כשאין גרסה נוכחית פעילה', async ({ page }) => {
+    const { devTasksByUid } = await mockFirebase(page, {
+      releases: { r0: rel('r0', '5.1559', { status: 'closed', closedAt: NOW }) },
+      devTasksByUid: { d9: dev('d9', '90009', 'משימה מהארכיון', 'r0') },
+    });
+    const alerts = [];
+    page.on('dialog', d => { alerts.push(d.message()); d.accept(); });
+    await page.goto('/index.html');
+    await login(page, 'testadmin', 'pw');
+    await page.click('button[onclick="openReleaseManager()"]');
+    await page.click('button[onclick="openReleaseArchive(\'r0\')"]');
+    await page.click('button[onclick="restoreArchivedItem(\'dev\',\'d9\')"]');
+    expect(alerts.join('\n')).toContain('אין גרסה נוכחית');
+    expect(devTasksByUid.d9.releaseId).toBe('r0');
+  });
+
+  test('סימון PROD מציע לסגור משימות "נבדק" (בלי סימון מראש); רק המסומנות נסגרות, וסוגרות גם את משימת רבקה המקושרת', async ({ page }) => {
+    const { devTasksByUid, db } = await mockFirebase(page, {
+      releases: { r1: rel('r1', '5.1575', { envs: { test: '2026-10-20' } }) },
+      devTasksByUid: {
+        d1: dev('d1', '90001', 'עלתה בפועל', 'r1', { status: 'נבדק', linkedSourceSheet: 'rivka', linkedSourceId: 'rv1' }),
+        d2: dev('d2', '90002', 'לא עלתה', 'r1', { status: 'נבדק' }),
+      },
+      rivka: [{ _id: 'rv1', נ: 'בקשה מרבקה', מב: 'רבקה', ת: '2026-10-01', כ: 'כותרת', ב: 'גוף', מט: '', ע: 'בינוני', ס: 'ממתין לגרסה', chat: { malm: [], dhl: [] } }],
+    });
+    page.on('dialog', d => { if (d.type() === 'prompt') d.accept('2026-10-21'); else d.accept(); });
+    await page.goto('/index.html');
+    await login(page, 'testadmin', 'pw');
+    await page.click('button[onclick="openReleaseManager()"]');
+    await page.click('#rmCurrent button[onclick="setReleaseEnv(\'r1\',\'prod\')"]');
+    await expect(page.locator('#prodCloseBg')).toBeVisible();
+    expect(await page.locator('.pcChk:checked').count()).toBe(0);
+
+    await page.locator('#pcBody label', { hasText: 'עלתה בפועל' }).locator('input').check();
+    await page.click('button[onclick="confirmProdClose()"]');
+    await expect.poll(() => db.rivka[0].ס).toBe('בוצע');
+    expect(devTasksByUid.d1.status).toBe('נסגר');
+    expect(devTasksByUid.d1.sLog.some(e => e.s === 'נסגר' && e.by.includes('PROD'))).toBe(true);
+    expect(devTasksByUid.d2.status).toBe('נבדק');
+  });
+
+  test('סימון PROD ו"דלג" לא סוגר שום משימה', async ({ page }) => {
+    const { devTasksByUid } = await mockFirebase(page, {
+      releases: { r1: rel('r1', '5.1575') },
+      devTasksByUid: { d1: dev('d1', '90001', 'נבדקה', 'r1', { status: 'נבדק' }) },
+    });
+    page.on('dialog', d => { if (d.type() === 'prompt') d.accept('2026-10-21'); else d.accept(); });
+    await page.goto('/index.html');
+    await login(page, 'testadmin', 'pw');
+    await page.click('button[onclick="openReleaseManager()"]');
+    await page.click('#rmCurrent button[onclick="setReleaseEnv(\'r1\',\'prod\')"]');
+    await expect(page.locator('#prodCloseBg')).toBeVisible();
+    await page.click('button[onclick="closeProdCloseOffer()"]');
+    await expect(page.locator('#prodCloseBg')).toBeHidden();
+    expect(devTasksByUid.d1.status).toBe('נבדק');
   });
 });

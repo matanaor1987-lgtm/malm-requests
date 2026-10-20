@@ -117,6 +117,26 @@ async function mockFirebase(page, initial) {
     }
 
     if (method === 'PATCH') {
+      // PATCH על שורש ה-DB עם מפתחות-נתיב ("releases/x/status") - עדכון מרובה-נתיבים אטומי
+      // כמו ב-Firebase האמיתי (משמש את מעבר הגרסה).
+      if (path === '/.json') {
+        let body; try { body = req.postDataJSON(); } catch (e) { body = {}; }
+        const stores = { releases, devTasksByUid, launchTasks, sanity };
+        Object.keys(body).forEach((p) => {
+          const parts = p.split('/');
+          let o = stores[parts[0]];
+          if (!o) return;
+          for (let i = 1; i < parts.length - 1; i++) { o[parts[i]] = o[parts[i]] || {}; o = o[parts[i]]; }
+          o[parts[parts.length - 1]] = body[p];
+        });
+        return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+      }
+      const lpm = path.match(/^\/launchTasks\/([^/]+)\.json$/);
+      if (lpm) {
+        let body; try { body = req.postDataJSON(); } catch (e) { body = {}; }
+        launchTasks[lpm[1]] = Object.assign(launchTasks[lpm[1]] || {}, body);
+        return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+      }
       const m = path.match(/^\/sanity\/([^/]+)\.json$/);
       const dm = path.match(/^\/devTasksByUid\/([^/]+)\.json$/);
       const svm = path.match(/^\/serverComponents\/values\/([^/]+)\.json$/);

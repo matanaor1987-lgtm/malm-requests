@@ -646,6 +646,7 @@ function setReleaseEnv(id, key){
     if(key==='prod'){
       r.prodExportDone = false;
       alert('גרסה "'+r.name+'" סומנה כעלתה ל-PROD.\nיש לייצא מחדש את רשימות הרכיבים משרת האפליקציה, שרתי השידורים ושרת ה-RPD ולייבא אותן בטאב השרתים.\n(סיטריקס לא נכלל: שם כל שינוי הוא גרסה מלאה.)');
+      offerCloseTestedOnProd(r);
     }
   }
   saveRelease(r);
@@ -703,31 +704,120 @@ function closeCurrentRelease(){
   refreshLiveReleaseViews();
 }
 
-// פותח גרסה חדשה כ"נוכחית" - פעולה נפרדת ומפורשת מסגירת הגרסה הקודמת (לא
-// אוטומטית אחרי סגירה). אם בכל זאת יש גרסה שסומנה "נוכחית" באותו רגע (מצב לא
-// תקין - לכל היותר גרסה אחת נוכחית) - סוגרים אותה במרומז כחלק מהפתיחה, כדי
-// שלא ייווצרו שתי גרסאות "נוכחיות" בו-זמנית.
-function openNewReleaseForm(){
-  var name = prompt('שם/מספר הגרסה החדשה (למשל: 8.4.2, או "עליה לאוויר ספטמבר 2026"):');
+// מעבר לגרסת עבודה חדשה. לפני שהגרסה הנוכחית נסגרת, מוצג חלון עם כל המשימות החיות
+// (פיתוחים + עליה לאוויר): מסומן = לארכיון של הגרסה שנסגרת, לא מסומן = עובר לבדיקה
+// בגרסה החדשה. ברירת מחדל: הכל מסומן רק אם הגרסה הנוכחית כבר עלתה ל-PROD (או שאין
+// גרסה נוכחית בכלל); גרסה שרק הותקנה בטסט לא מעבירה כלום לארכיון בלי החלטה מפורשת.
+// הכל נכתב בבקשת PATCH אחת על שורש ה-DB (אטומית) - אי אפשר להישאר באמצע מעבר.
+// בדיקות שפיות נשארות מקושרות לגרסה שנסגרת (כמו בסגירה רגילה).
+var transitionState = null;
+
+async function openNewReleaseForm(){
+  if(!isAdmin()) return;
+  var name = prompt('שם/מספר הגרסה החדשה (למשל: 5.1576, או "עליה לאוויר ספטמבר 2026"):');
   if(!name || !name.trim()) return;
-  var prevCurrent = getCurrentRelease();
-  if(prevCurrent){
-    prevCurrent.status = 'closed';
-    prevCurrent.closedAt = new Date().toISOString();
-    saveRelease(prevCurrent);
+  await Promise.all([loadDevLists(), loadDevTasks(), loadLaunchTab()]);
+  var cur = getCurrentRelease();
+  var prodDone = !cur || !!(cur.envs && cur.envs.prod);
+  var rows = DEV_TASKS.filter(function(t){ return !t.deleted && isInCurrentRelease(t); }).map(function(t){
+    return {kind:'dev', key:t._uid, label:((t.id||'')+' '+(t.desc||'')).trim(), sub:[t.status, t.tStatus].filter(Boolean).join(' · '), checked:prodDone};
+  }).concat(Object.values(LAUNCH_TASKS).filter(function(t){ return !t.deleted && isInCurrentRelease(t); }).map(function(t){
+    return {kind:'launch', key:t.id, label:t.task||'', sub:t.status||'פתוח', checked:prodDone};
+  }));
+  transitionState = {name:name.trim(), cur:cur, prodDone:prodDone, rows:rows};
+  if(!rows.length) return confirmReleaseTransition();
+  renderReleaseTransition();
+  document.getElementById('releaseTransitionBg').classList.add('open');
+}
+function closeReleaseTransition(){
+  document.getElementById('releaseTransitionBg').classList.remove('open');
+  transitionState = null;
+}
+function renderReleaseTransition(){
+  var s = transitionState;
+  document.getElementById('rtInfo').innerHTML = (s.cur
+    ? 'הגרסה שנסגרת: <b>'+esc(s.cur.name)+'</b> — '+(s.prodDone
+        ? 'עלתה ל-PROD ('+esc(s.cur.envs.prod)+'), לכן כל המשימות מסומנות לארכיון.'
+        : '<b style="color:#e65100">עדיין לא סומנה כעלתה ל-PROD</b>, לכן כל המשימות עוברות לגרסה החדשה אלא אם תסמן אותן לארכיון.')
+    : 'אין גרסה פעילה כרגע - המשימות המסומנות יועברו לארכיון חדש.')+
+    '<br>גרסה חדשה: <b>'+esc(s.name)+'</b>';
+  function section(kind, title){
+    var idx = [];
+    s.rows.forEach(function(r, i){ if(r.kind===kind) idx.push(i); });
+    if(!idx.length) return '';
+    return '<div style="margin-bottom:14px"><div style="font-weight:700;color:#1a1a2e;margin-bottom:6px">'+title+' ('+idx.length+')'+
+      ' <button onclick="rtSetAll(\''+kind+'\',true)" style="margin-right:8px;font-size:11px;padding:1px 8px;cursor:pointer">סמן הכל</button>'+
+      '<button onclick="rtSetAll(\''+kind+'\',false)" style="font-size:11px;padding:1px 8px;cursor:pointer">נקה הכל</button></div>'+
+      idx.map(function(i){
+        var r = s.rows[i];
+        return '<label style="display:flex;gap:8px;align-items:flex-start;padding:5px 0;border-bottom:1px solid #f0f0f0;font-size:12px;cursor:pointer">'+
+          '<input type="checkbox" class="rtChk" data-i="'+i+'"'+(r.checked?' checked':'')+' onchange="transitionState.rows['+i+'].checked=this.checked">'+
+          '<span style="flex:1">'+esc(r.label)+'<span style="color:#888;margin-right:8px">'+esc(r.sub)+'</span></span></label>';
+      }).join('')+'</div>';
   }
-  var rec = {
-    id: genId(),
-    name: name.trim(),
-    date: new Date().toISOString().slice(0,10),
-    notes: '',
-    status: 'current',
-    createdAt: new Date().toISOString()
-  };
-  RELEASES[rec.id] = rec;
-  saveRelease(rec);
-  renderReleaseManager();
-  refreshLiveReleaseViews();
+  document.getElementById('rtBody').innerHTML = section('dev','🛠️ פיתוחים ותיקונים')+section('launch','🚀 משימות עליה לאוויר');
+}
+function rtSetAll(kind, val){
+  transitionState.rows.forEach(function(r){ if(r.kind===kind) r.checked = val; });
+  renderReleaseTransition();
+}
+
+async function confirmReleaseTransition(){
+  var s = transitionState;
+  if(!s) return;
+  var el = document.getElementById('savingMsg');
+  el.style.display='block'; el.style.background='#1a1a2e'; el.textContent='⏳ עובר לגרסה חדשה...';
+  var now = new Date().toISOString();
+  var today = now.slice(0,10);
+  var newRec = {id:genId(), name:s.name, date:today, notes:'', status:'current', createdAt:now};
+  var archiveRec = null;
+  var archiveId = s.cur ? s.cur.id : '';
+  if(!s.cur && s.rows.some(function(r){ return r.checked; })){
+    archiveRec = {id:genId(), name:'ארכיון לפני '+s.name, date:today, notes:'', status:'closed', createdAt:now, closedAt:now};
+    archiveId = archiveRec.id;
+  }
+  var updates = {};
+  s.rows.forEach(function(r){
+    updates[(r.kind==='dev'?'devTasksByUid/':'launchTasks/')+r.key+'/releaseId'] = r.checked ? archiveId : newRec.id;
+  });
+  updates['releases/'+newRec.id] = newRec;
+  if(archiveRec) updates['releases/'+archiveRec.id] = archiveRec;
+  if(s.cur){
+    updates['releases/'+s.cur.id+'/status'] = 'closed';
+    updates['releases/'+s.cur.id+'/closedAt'] = now;
+  }
+  try{
+    var res = await fetch(FB+'/.json', {method:'PATCH', headers:{'Content-Type':'application/json'}, body:JSON.stringify(updates)});
+    if(!res.ok) throw new Error('השרת דחה את הכתיבה (סטטוס '+res.status+')');
+    // אימות מול השרת - לא מסתפקים ב-200
+    var fresh = {};
+    var results = await Promise.all(['releases','devTasksByUid','launchTasks'].map(function(k){
+      return fetch(FB+'/'+k+'.json?t='+Date.now()).then(function(r){ return r.json(); }).then(function(d){ fresh[k] = d || {}; });
+    }));
+    var bad = Object.keys(updates).find(function(path){
+      if(path.indexOf('/releaseId') < 0) return false;
+      var p = path.split('/');
+      return ((fresh[p[0]][p[1]]||{}).releaseId||'') !== updates[path];
+    });
+    if(bad || (fresh.releases[newRec.id]||{}).status !== 'current' || (s.cur && (fresh.releases[s.cur.id]||{}).status !== 'closed')){
+      throw new Error('האימות מול השרת נכשל - המעבר לא נשמר במלואו. רענן ובדוק.');
+    }
+    RELEASES = fresh.releases;
+    s.rows.forEach(function(r){
+      if(r.kind==='dev'){ var t = DEV_TASKS.find(function(x){ return x._uid===r.key; }); if(t) t.releaseId = updates['devTasksByUid/'+r.key+'/releaseId']; }
+      else if(LAUNCH_TASKS[r.key]) LAUNCH_TASKS[r.key].releaseId = updates['launchTasks/'+r.key+'/releaseId'];
+    });
+    closeReleaseTransition();
+    el.textContent='✓ המעבר לגרסה '+newRec.name+' הושלם';
+    setTimeout(function(){ el.style.display='none'; }, 1800);
+    renderReleaseManager();
+    refreshLiveReleaseViews();
+  }catch(e){
+    el.textContent='❌ המעבר נכשל: '+e.message;
+    el.style.background='#c62828';
+    setTimeout(function(){ el.style.display='none'; el.style.background='#1a1a2e'; }, 7000);
+    loadReleases().then(renderReleaseManager);
+  }
 }
 
 function saveRelease(rec){
@@ -752,6 +842,7 @@ function openReleaseArchive(releaseId){
   var rel = RELEASES[releaseId];
   if(!rel) return;
   document.getElementById('releaseArchiveTitle').textContent = '📁 ארכיון — ' + rel.name;
+  document.getElementById('releaseArchiveTitle').dataset.rid = releaseId;
   document.getElementById('releaseArchiveBody').innerHTML = '<div style="padding:20px;color:#888">טוען...</div>';
   document.getElementById('releaseArchiveBg').classList.add('open');
   Promise.all([loadSanityTab(), loadDevLists(), loadDevTasks(), loadLaunchTab()]).then(function(){
@@ -781,19 +872,96 @@ function renderReleaseArchiveBody(releaseId){
       '<td style="padding:6px;border-bottom:1px solid #eee">'+esc(t.status||'')+'</td>'+
       '<td style="padding:6px;border-bottom:1px solid #eee;color:#555">'+esc(t.notes||'')+'</td></tr>';
   });
+  var restoreBtn = function(kind, key){
+    return '<td style="padding:6px;border-bottom:1px solid #eee"><button onclick="restoreArchivedItem(\''+kind+'\',\''+jsq(key)+'\')" style="background:#2e7d32;color:#fff;border:none;border-radius:4px;padding:3px 8px;cursor:pointer;font-size:11px;font-family:Arial;white-space:nowrap">↩️ החזר לבדיקה</button></td>';
+  };
   html += section('🛠️ פיתוחים ותיקונים', devItems, function(t){
     return '<tr><td style="padding:6px;border-bottom:1px solid #eee;font-weight:700;color:#D40511;min-width:70px">'+esc(t.id||'')+'</td>'+
       '<td style="padding:6px;border-bottom:1px solid #eee">'+esc(t.desc||'')+'</td>'+
       '<td style="padding:6px;border-bottom:1px solid #eee">'+esc(t.status||'')+'</td>'+
-      '<td style="padding:6px;border-bottom:1px solid #eee">'+esc(t.tStatus||'')+'</td></tr>';
+      '<td style="padding:6px;border-bottom:1px solid #eee">'+esc(t.tStatus||'')+'</td>'+restoreBtn('dev', t._uid)+'</tr>';
   });
   html += section('🚀 משימות עליה לאוויר', launchItems, function(t){
     return '<tr><td style="padding:6px;border-bottom:1px solid #eee;white-space:pre-wrap;min-width:160px">'+esc(t.task||'')+'</td>'+
       '<td style="padding:6px;border-bottom:1px solid #eee">'+esc(t.status||'')+'</td>'+
-      '<td style="padding:6px;border-bottom:1px solid #eee;color:#555">'+esc(t.notes||'')+'</td></tr>';
+      '<td style="padding:6px;border-bottom:1px solid #eee;color:#555">'+esc(t.notes||'')+'</td>'+restoreBtn('launch', t.id)+'</tr>';
   });
 
   document.getElementById('releaseArchiveBody').innerHTML = html;
+}
+
+// החזרת משימה מהארכיון לבדיקה בגרסה הנוכחית (למשל כשרוצים לוודא שגרסה חדשה לא שברה
+// משהו שכבר עבד). פיתוח: סטטוס בדיקה "לבדיקה חוזרת" + רישום ביומן; עליה לאוויר: חוזר "פתוח".
+async function restoreArchivedItem(kind, key){
+  var cur = getCurrentRelease();
+  if(!cur){ alert('אין גרסה נוכחית פעילה - פתח גרסה חדשה לפני החזרה מהארכיון.'); return; }
+  if(!confirm('להחזיר את המשימה לבדיקה בגרסה "'+cur.name+'"?')) return;
+  var url = FB+(kind==='dev' ? '/devTasksByUid/'+encodeURIComponent(key) : '/launchTasks/'+encodeURIComponent(key))+'.json';
+  var upd = {releaseId: cur.id};
+  try{
+    if(kind==='dev'){
+      upd.tStatus = 'לבדיקה חוזרת';
+      if(DEV_LISTS.tStatus.indexOf(upd.tStatus) < 0){ DEV_LISTS.tStatus.push(upd.tStatus); saveDevLists().catch(function(){}); }
+      var t = DEV_TASKS.find(function(x){ return x._uid===key; }) || {};
+      var fr = await fetch(url+'?t='+Date.now());
+      var fresh = (await fr.json()) || {};
+      upd.sLog = (fresh.sLog || t.sLog || []).concat([{field:'סטטוס בדיקה', s:upd.tStatus, t:Date.now(), by:(CU?CU.name:'')+' (הוחזר מהארכיון)'}]);
+    } else {
+      Object.assign(upd, {status:'פתוח', closedBy:'', closedAt:''});
+    }
+    var res = await fetch(url, {method:'PATCH', headers:{'Content-Type':'application/json'}, body:JSON.stringify(upd)});
+    if(!res.ok) throw new Error('השרת דחה את הכתיבה (סטטוס '+res.status+')');
+    var ver = (await (await fetch(url+'?t='+Date.now())).json()) || {};
+    if(ver.releaseId !== cur.id) throw new Error('האימות מול השרת נכשל');
+    var local = kind==='dev' ? DEV_TASKS.find(function(x){ return x._uid===key; }) : LAUNCH_TASKS[key];
+    if(local) Object.assign(local, upd);
+  }catch(e){
+    alert('❌ ההחזרה נכשלה: '+e.message);
+    return;
+  }
+  renderReleaseArchiveBody(document.getElementById('releaseArchiveTitle').dataset.rid);
+  refreshLiveReleaseViews();
+}
+
+// בסימון "עלתה ל-PROD": הצעה (בלי ברירת מחדל מסומנת, דורשת אישור) לסגור את משימות
+// הפיתוח שנבדקו - "נסגר" אצלנו = עלה ל-PROD, וזה סוגר גם את המשימה המקושרת אצל רבקה/מלמ.
+var prodCloseState = null;
+async function offerCloseTestedOnProd(rel){
+  await Promise.all([loadDevLists(), loadDevTasks()]);
+  var tasks = DEV_TASKS.filter(function(t){ return !t.deleted && t.releaseId===rel.id && t.status==='נבדק'; });
+  if(!tasks.length) return;
+  prodCloseState = {rel:rel, tasks:tasks, sel:{}};
+  document.getElementById('pcInfo').textContent = 'גרסה "'+rel.name+'" סומנה כעלתה ל-PROD. אלה משימות פיתוח בסטטוס "נבדק" - סמן את אלה שיעלו בפועל כדי לסגור אותן (וגם את המשימה המקושרת אצל רבקה/מלמ):';
+  document.getElementById('pcBody').innerHTML = tasks.map(function(t, i){
+    return '<label style="display:flex;gap:8px;padding:5px 0;border-bottom:1px solid #f0f0f0;font-size:12px;cursor:pointer"><input type="checkbox" class="pcChk" data-uid="'+esc(t._uid)+'"><span>'+esc(((t.id||'')+' '+(t.desc||'')).trim())+'</span></label>';
+  }).join('');
+  document.getElementById('prodCloseBg').classList.add('open');
+}
+function closeProdCloseOffer(){
+  document.getElementById('prodCloseBg').classList.remove('open');
+  prodCloseState = null;
+}
+async function confirmProdClose(){
+  var s = prodCloseState;
+  var uids = Array.from(document.querySelectorAll('.pcChk')).filter(function(c){ return c.checked; }).map(function(c){ return c.dataset.uid; });
+  closeProdCloseOffer();
+  if(!s || !uids.length) return;
+  var failed = [];
+  for(var i=0; i<uids.length; i++){
+    var t = DEV_TASKS.find(function(x){ return x._uid===uids[i]; });
+    try{
+      var url = FB+'/devTasksByUid/'+encodeURIComponent(uids[i])+'.json';
+      var fresh = (await (await fetch(url+'?t='+Date.now())).json()) || {};
+      var log = (fresh.sLog || t.sLog || []).concat([{field:'סטטוס פיתוח', s:'נסגר', t:Date.now(), by:(CU?CU.name:'')+' (עלייה ל-PROD '+s.rel.name+')'}]);
+      var res = await fetch(url, {method:'PATCH', headers:{'Content-Type':'application/json'}, body:JSON.stringify({status:'נסגר', sLog:log})});
+      var ver = (await (await fetch(url+'?t='+Date.now())).json()) || {};
+      if(!res.ok || ver.status !== 'נסגר') throw new Error('verify');
+      Object.assign(t, {status:'נסגר', sLog:log});
+      if(t.linkedSourceSheet && t.linkedSourceId) await closeLinkedSourceTask(t.linkedSourceSheet, t.linkedSourceId);
+    }catch(e){ failed.push(t ? (t.id||t.desc) : uids[i]); }
+  }
+  renderDevTable();
+  if(failed.length) alert('❌ לא נסגרו: '+failed.join(', '));
 }
 
 // תג קטן שמוצג בתוך שורת רבקה/מלמ אם היא משויכת לגרסה (בשונה מ-releaseBadgeHtml,
@@ -2431,7 +2599,7 @@ function jsq(s){return esc(String(s==null?'':s).replace(/\\/g,'\\\\').replace(/'
 // ראו populateDevTesterSelect ו-sendDevTesterEmail.
 var DEV_LISTS = {
   status: ['פתוח','בפיתוח','בבדיקה','נבדק','נסגר'],
-  tStatus: ['תקין','לא תקין','לבדיקה בעליה לאוויר','לא רלוונטי']
+  tStatus: ['תקין','לא תקין','לבדיקה בעליה לאוויר','לבדיקה חוזרת','לא רלוונטי']
 };
 var DEV_LIST_LABELS = { status: 'סטטוס פיתוח', tStatus: 'סטטוס בדיקה' };
 
@@ -4849,6 +5017,33 @@ function updateChangeLogNote(id, note){
       <button onclick="closeReleaseArchive()" style="background:none;border:none;font-size:18px;cursor:pointer;color:#888">✕</button>
     </div>
     <div id="releaseArchiveBody"></div>
+  </div>
+</div>
+
+<!-- RELEASE TRANSITION MODAL: בחירת משימות לארכיון / להמשך בדיקה בגרסה החדשה -->
+<div class="modal-bg" id="releaseTransitionBg">
+  <div style="background:#fff;border-radius:12px;padding:24px;width:92%;max-width:720px;direction:rtl;max-height:88vh;overflow-y:auto">
+    <div style="font-size:15px;font-weight:700;color:#1a1a2e;margin-bottom:10px">▶️ מעבר לגרסת עבודה חדשה</div>
+    <div id="rtInfo" style="font-size:12px;color:#444;line-height:1.7;margin-bottom:6px"></div>
+    <div style="font-size:12px;color:#666;margin-bottom:12px">✔ מסומן = עובר לארכיון · לא מסומן = נשאר לבדיקה בגרסה החדשה</div>
+    <div id="rtBody"></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px">
+      <button onclick="closeReleaseTransition()" style="padding:8px 16px;border:1px solid #ddd;border-radius:6px;cursor:pointer;font-size:13px;font-family:Arial;background:#fff">ביטול</button>
+      <button id="rtConfirmBtn" onclick="confirmReleaseTransition()" style="padding:8px 16px;background:#6a1b9a;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px;font-weight:700;font-family:Arial">בצע מעבר</button>
+    </div>
+  </div>
+</div>
+
+<!-- PROD CLOSE OFFER: סגירת משימות "נבדק" בעליה ל-PROD (דורש אישור) -->
+<div class="modal-bg" id="prodCloseBg">
+  <div style="background:#fff;border-radius:12px;padding:24px;width:92%;max-width:620px;direction:rtl;max-height:85vh;overflow-y:auto">
+    <div style="font-size:15px;font-weight:700;color:#1a1a2e;margin-bottom:10px">✅ סגירת משימות שעלו ל-PROD</div>
+    <div id="pcInfo" style="font-size:12px;color:#444;line-height:1.7;margin-bottom:10px"></div>
+    <div id="pcBody"></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px">
+      <button onclick="closeProdCloseOffer()" style="padding:8px 16px;border:1px solid #ddd;border-radius:6px;cursor:pointer;font-size:13px;font-family:Arial;background:#fff">דלג</button>
+      <button onclick="confirmProdClose()" style="padding:8px 16px;background:#2e7d32;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px;font-weight:700;font-family:Arial">סגור את המסומנות</button>
+    </div>
   </div>
 </div>
 
