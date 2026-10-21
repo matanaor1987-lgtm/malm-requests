@@ -716,7 +716,7 @@ async function openNewReleaseForm(presetName, opts){
   if(!isAdmin()) return;
   var name = presetName || prompt('שם/מספר הגרסה החדשה (למשל: 5.1576, או "עליה לאוויר ספטמבר 2026"):');
   if(!name || !name.trim()) return;
-  await Promise.all([loadDevLists(), loadDevTasks(), loadLaunchTab()]);
+  await Promise.all([loadDevLists(), loadDevTasks(), loadLaunchTab(), loadSanityTab()]);
   var cur = getCurrentRelease();
   var prodDone = !cur || !!(cur.envs && cur.envs.prod);
   var rows = DEV_TASKS.filter(function(t){ return !t.deleted && isInCurrentRelease(t); }).map(function(t){
@@ -724,7 +724,9 @@ async function openNewReleaseForm(presetName, opts){
   });
   // opts.keep = משימות שהייבוא משייך לגרסה החדשה (לא מסומנות לארכיון); opts.extra = עדכוני הייבוא
   if(opts && opts.keep) rows.forEach(function(r){ if(r.kind==='dev' && opts.keep.has(r.key)) r.checked = false; });
-  transitionState = {name:name.trim(), cur:cur, prodDone:prodDone, rows:rows, extra:opts && opts.extra};
+  // בדיקות שפיות נפתחות מחדש בכל גרסה: הנוכחיות (כולל הערות) לארכיון, והעתק נקי לגרסה החדשה
+  var sanity = Object.values(SANITY_TASKS).filter(function(t){ return !t.deleted && isInCurrentRelease(t); });
+  transitionState = {name:name.trim(), cur:cur, prodDone:prodDone, rows:rows, sanity:sanity, extra:opts && opts.extra};
   if(!rows.length) return confirmReleaseTransition();
   renderReleaseTransition();
   document.getElementById('releaseTransitionBg').classList.add('open');
@@ -740,7 +742,8 @@ function renderReleaseTransition(){
         ? 'עלתה ל-PROD ('+esc(s.cur.envs.prod)+'), לכן כל המשימות מסומנות לארכיון.'
         : '<b style="color:#e65100">עדיין לא סומנה כעלתה ל-PROD</b>, לכן כל המשימות עוברות לגרסה החדשה אלא אם תסמן אותן לארכיון.')
     : 'אין גרסה פעילה כרגע - המשימות המסומנות יועברו לארכיון חדש.')+
-    '<br>גרסה חדשה: <b>'+esc(s.name)+'</b>';
+    '<br>גרסה חדשה: <b>'+esc(s.name)+'</b>'+
+    (s.sanity.length ? '<br>🧪 <b>'+s.sanity.length+'</b> בדיקות שפיות יעברו לארכיון (כולל ההערות) ויפתחו מחדש נקיות לגרסה החדשה.' : '');
   function section(kind, title){
     var idx = [];
     s.rows.forEach(function(r, i){ if(r.kind===kind) idx.push(i); });
@@ -772,7 +775,7 @@ async function confirmReleaseTransition(){
   var newRec = {id:genId(), name:s.name, date:today, notes:'', status:'current', createdAt:now};
   var archiveRec = null;
   var archiveId = s.cur ? s.cur.id : '';
-  if(!s.cur && s.rows.some(function(r){ return r.checked; })){
+  if(!s.cur && (s.sanity.length || s.rows.some(function(r){ return r.checked; }))){
     archiveRec = {id:genId(), name:'ארכיון לפני '+s.name, date:today, notes:'', status:'closed', createdAt:now, closedAt:now};
     archiveId = archiveRec.id;
   }
@@ -786,6 +789,12 @@ async function confirmReleaseTransition(){
     updates['releases/'+s.cur.id+'/status'] = 'closed';
     updates['releases/'+s.cur.id+'/closedAt'] = now;
   }
+  s.sanity.forEach(function(t){
+    var cid = 'sanity_'+Date.now()+'_'+Math.random().toString(36).slice(2,9);
+    updates['sanity/'+t.id+'/releaseId'] = archiveId;
+    updates['sanity/'+cid] = {id:cid, name:t.name||'', module:t.module||'', env:t.env||'', desc:t.desc||'', assignee:t.assignee||'',
+      status:'פתוח', notes:'', adminNotes:'', closedBy:'', createdAt:now, releaseId:newRec.id};
+  });
   // משימות עליה לאוויר של הגרסה שנסגרת עוברות לגרסה החדשה כמו שהן (לא נארכבות ולא נעלמות);
   // ארכוב שלהן הוא שלב עתידי. משימות רבקה/מלמ לא נוגעים בהן בכלל - הן לא תלויות בגרסה.
   if(s.cur) Object.values(LAUNCH_TASKS).forEach(function(t){
@@ -805,6 +814,7 @@ async function confirmReleaseTransition(){
     });
     Object.keys(LAUNCH_TASKS).forEach(function(id){ if(updates['launchTasks/'+id+'/releaseId']) LAUNCH_TASKS[id].releaseId = updates['launchTasks/'+id+'/releaseId']; });
     if(s.extra) await loadDevTasks(); // משימות שיובאו
+    if(s.sanity.length) await loadSanityTab();
     closeReleaseTransition();
     el.textContent='✓ המעבר לגרסה '+newRec.name+' הושלם'+(s.extra?' והמשימות יובאו':'');
     setTimeout(function(){ el.style.display='none'; }, 1800);
@@ -2732,6 +2742,7 @@ function renderDevTable(){
   // את סדר התצוגה, כדי שהתנהגות הטבלה תישאר צפויה ולא תלויה במיקום.
   var order = DEV_TASKS.map(function(_, i){ return i; }).filter(function(i){ return isInCurrentRelease(DEV_TASKS[i]) && !DEV_TASKS[i].fyi; });
   updateFyiBadge();
+  updateProgramBtn();
   if(devSub==='program') renderProgramView();
   var relBadgeEl = document.getElementById('devReleaseBadge');
   if (relBadgeEl) relBadgeEl.innerHTML = releaseBadgeHtml();
@@ -3955,7 +3966,7 @@ async function setFyiFlag(uid, val){
 // בודק מול השרת שכל נתיב בעדכון באמת נשמר (השוואה עמוקה, כולל גיזום ערכים ריקים של Firebase).
 async function verifyRootUpdates(updates){
   var fresh = {};
-  await Promise.all(['releases','devTasksByUid','launchTasks'].map(function(k){
+  await Promise.all(['releases','devTasksByUid','launchTasks','sanity'].map(function(k){
     return fetch(FB+'/'+k+'.json?t='+Date.now()).then(function(r){ return r.json(); }).then(function(d){ fresh[k] = d || {}; });
   }));
   var bad = Object.keys(updates).find(function(path){
@@ -4107,6 +4118,17 @@ function setDevSub(k){
   });
   if(k==='program') renderProgramView();
 }
+// הכפתור מופיע רק כשיש משימות שמשויכות לתוכנית, ונקרא בשם התוכנית (למשל "שדרת המידע")
+function updateProgramBtn(){
+  var names = {};
+  DEV_TASKS.forEach(function(t){ if(!t.deleted && t.program) names[t.program] = (names[t.program]||0)+1; });
+  var keys = Object.keys(names);
+  var btn = document.getElementById('devSub_program');
+  if(!btn) return;
+  btn.style.display = keys.length ? '' : 'none';
+  btn.textContent = '📡 ' + (keys.length===1 ? keys[0] : 'תוכניות') + ' ('+keys.reduce(function(n,k){ return n+names[k]; },0)+')';
+  if(!keys.length && devSub==='program') setDevSub('all');
+}
 function programTaskState(t){
   if(t.tStatus==='לא תקין') return 'bad';
   if(t.status==='נסגר' || t.status==='נבדק' || t.tStatus==='תקין') return 'done';
@@ -4119,8 +4141,6 @@ function renderProgramView(){
   var progs = {};
   DEV_TASKS.forEach(function(t){ if(!t.deleted && t.program) (progs[t.program] = progs[t.program] || []).push(t); });
   var names = Object.keys(progs);
-  var btn = document.getElementById('devSub_program');
-  if(btn) btn.textContent = '📡 תוכניות' + (names.length ? ' ('+names.reduce(function(n,k){ return n+progs[k].length; },0)+')' : '');
   if(!names.length){ el.innerHTML = '<div style="padding:30px;text-align:center;color:#aaa">אין עדיין משימות המשויכות לתוכנית (שדה "תוכנית" נקבע בייבוא)</div>'; return; }
   var colors = {done:['#e8f5e9','#2e7d32','תקין / נבדק'], wip:['#e3f2fd','#1565c0','בבדיקה'], bad:['#ffebee','#c62828','לא תקין'], open:['#fff8e1','#f57f17','פתוח']};
   el.innerHTML = names.map(function(name){
@@ -5000,7 +5020,7 @@ function updateChangeLogNote(id, note){
   <div style="font-size:16px;font-weight:700;color:#1a1a2e;margin-bottom:14px">&#128295; פיתוחים ותיקונים לבדיקה <span id="devReleaseBadge"></span></div>
   <div style="display:flex;gap:6px;margin-bottom:12px">
     <button id="devSub_all" onclick="setDevSub('all')" style="padding:6px 14px;border-radius:16px;border:1px solid #1a1a2e;cursor:pointer;font-size:12px;font-weight:700;font-family:Arial;background:#1a1a2e;color:#fff">🛠️ משימות הגרסה</button>
-    <button id="devSub_program" onclick="setDevSub('program')" style="padding:6px 14px;border-radius:16px;border:1px solid #00695c;cursor:pointer;font-size:12px;font-weight:700;font-family:Arial;background:#fff;color:#00695c">📡 תוכניות</button>
+    <button id="devSub_program" onclick="setDevSub('program')" style="display:none;padding:6px 14px;border-radius:16px;border:1px solid #00695c;cursor:pointer;font-size:12px;font-weight:700;font-family:Arial;background:#fff;color:#00695c">📡 תוכניות</button>
   </div>
   <div id="devSubProgram" style="display:none"></div>
   <div id="devSubMain">
