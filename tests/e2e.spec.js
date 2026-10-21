@@ -3279,3 +3279,187 @@ test.describe('"לידיעה בלבד" - תת-טאב בטאב עליה לאוו�
     expect(devTasksByUid.f2.releaseId).not.toBe('r1'); // ממשיך לגרסה החדשה
   });
 });
+
+test.describe('ייבוא חבילת משימות (קישור ?import=) ותצוגת תוכניות', () => {
+  const fs = require('fs');
+  const NOW = '2026-10-01T00:00:00.000Z';
+  const rel = (id, name, extra) => Object.assign({ id, name, status: 'current', date: '2026-10-01', createdAt: NOW }, extra || {});
+  const pkg = () => ({
+    name: 'רשימת רבקה - בדיקה', release: '5.1575', source: 't.xlsx',
+    tasks: [
+      { id: '99001', dev: 'קארו', desc: 'הסבת מסרי REST API מכס - ממשק 1007 לקוחות', comp: 'NE', ver: '5.1568', notes: 'בבדיקות', rStatus: 'Dev Test', status: 'בבדיקה', tStatus: '', fyi: false, program: 'שדרת המידע', iface: 'REST 1007' },
+      { id: '99002', dev: 'פילון', desc: 'שינוי תשתיתי', comp: 'IG', ver: '5.1571', notes: 'תשתיתי - לא בטוחה', rStatus: 'Valid in version', status: '', tStatus: '', fyi: true, program: '', iface: '' },
+      { id: '13770', dev: 'קארו', desc: 'משימה קיימת (seed)', comp: 'DH', ver: '5.1557', notes: 'בוצע כבר אצלכם - לוודא שלא משתבש', rStatus: 'Valid in version', status: 'פתוח', tStatus: 'לבדיקה חוזרת', fyi: false, program: '', iface: '' },
+    ],
+  });
+  const routePkg = (page, p) => page.route('**/imports/test.json*', r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(p || pkg()) }));
+  const open = async (page, url) => { await page.goto(url || '/index.html?import=test'); await login(page, 'testadmin', 'pw'); };
+
+  test('קישור ?import= מציג תצוגה מקדימה: חדש/קיים, לידיעה, וגרסת יעד לפי שם החבילה', async ({ page }) => {
+    await mockFirebase(page, { releases: { r1: rel('r1', '5.1575') } });
+    await routePkg(page);
+    await open(page);
+    await expect(page.locator('#importBg')).toBeVisible();
+    await expect(page.locator('#impSummary')).toContainText('2 משימות חדשות');
+    await expect(page.locator('#impSummary')).toContainText('1 קיימות');
+    await expect(page.locator('#impSummary')).toContainText('1 לידיעה בלבד');
+    await expect(page.locator('#impBody tr[data-imp-id="13770"]')).toContainText('קיים');
+    await expect(page.locator('#impBody tr[data-imp-id="99001"]')).toContainText('חדש');
+    await expect(page.locator('#impRelease')).toHaveValue('r1');
+  });
+
+  test('ייבוא לגרסה קיימת: חדשות נוצרות, קיימת משויכת (בלי כפילות), לידיעה בתת-טאב, rStatus נשמר', async ({ page }) => {
+    const { devTasksByUid } = await mockFirebase(page, { releases: { r1: rel('r1', '5.1575') } });
+    await routePkg(page);
+    await open(page);
+    await page.click('#impConfirmBtn');
+    await expect(page.locator('#importBg')).toBeHidden();
+    await expect(page.locator('#devBody')).toContainText('99001');
+
+    const a = devTasksByUid.imp_99001;
+    expect(a).toMatchObject({ id: '99001', dev: 'קארו', status: 'בבדיקה', releaseId: 'r1', program: 'שדרת המידע', iface: 'REST 1007', rStatus: 'Dev Test', fyi: false });
+    expect(devTasksByUid.imp_99002).toMatchObject({ fyi: true, status: '', tStatus: '', releaseId: 'r1' });
+    // משימה קיימת: לא נוצרה כפילות, שויכה לגרסה, סומנה לבדיקה חוזרת, ההערה נוספה
+    expect(devTasksByUid.imp_13770).toBeUndefined();
+    expect(devTasksByUid.dt_001).toMatchObject({ releaseId: 'r1', tStatus: 'לבדיקה חוזרת', rStatus: 'Valid in version' });
+    expect(devTasksByUid.dt_001.notes).toContain('רבקה 5.1575');
+    // לידיעה לא בטבלת הפיתוחים אלא בתת-טאב
+    await expect(page.locator('#devBody')).not.toContainText('שינוי תשתיתי');
+    await expect(page.locator('#devBody tr', { hasText: '99001' })).toContainText('רבקה: Dev Test');
+    await page.click('.tab[data-tab="5"]');
+    await page.click('#launchSub_fyi');
+    await expect(page.locator('#fyiBody')).toContainText('שינוי תשתיתי');
+
+    // השדות החדשים על משימת seed קיימת חייבים לשרוד טעינה מחדש (DEV_OVERRIDE_FIELDS)
+    await page.goto('/index.html');
+    await page.waitForSelector('#mainTabs', { state: 'visible' });
+    await page.click('.tab[data-tab="3"]');
+    await expect(page.locator('#devBody')).toContainText('99001');
+    const seeded = await page.evaluate(() => { const t = DEV_TASKS.find(x => x._uid === 'dt_001'); return { r: t.rStatus, rel: t.releaseId }; });
+    expect(seeded).toEqual({ r: 'Valid in version', rel: 'r1' });
+  });
+
+  test('ייבוא חוזר של אותה חבילה אידמפוטנטי: אין כפילויות', async ({ page }) => {
+    const { devTasksByUid } = await mockFirebase(page, { releases: { r1: rel('r1', '5.1575') } });
+    await routePkg(page);
+    await open(page);
+    await page.click('#impConfirmBtn');
+    await expect(page.locator('#importBg')).toBeHidden();
+    await page.goto('/index.html?import=test');
+    await page.waitForSelector('#importBg.open');
+    await expect(page.locator('#impSummary')).toContainText('0 משימות חדשות');
+    await expect(page.locator('#impSummary')).toContainText('3 קיימות');
+    await page.click('#impConfirmBtn');
+    await expect(page.locator('#importBg')).toBeHidden();
+    expect(Object.keys(devTasksByUid).filter(k => k.startsWith('imp_')).length).toBe(2);
+    const dupes = await page.evaluate(() => DEV_TASKS.filter(t => t.id === '99001').length);
+    expect(dupes).toBe(1);
+  });
+
+  test('בתצוגה המקדימה אפשר לשנות קטגוריה ולהוציא שורה מהייבוא', async ({ page }) => {
+    const { devTasksByUid } = await mockFirebase(page, { releases: { r1: rel('r1', '5.1575') } });
+    await routePkg(page);
+    await open(page);
+    await page.locator('#impBody tr[data-imp-id="99001"] .impCat').selectOption('fyi');   // טעות סיווג - לבדיקה במקום לידיעה
+    await page.locator('#impBody tr[data-imp-id="99002"] .impCat').selectOption('test');
+    await page.locator('#impBody tr[data-imp-id="13770"] .impChk').uncheck();
+    await page.click('#impConfirmBtn');
+    await expect(page.locator('#importBg')).toBeHidden();
+    expect(devTasksByUid.imp_99001.fyi).toBe(true);
+    expect(devTasksByUid.imp_99002.fyi).toBe(false);
+    expect(devTasksByUid.dt_001).toBeUndefined(); // השורה שהוצאה לא נגעו בה
+  });
+
+  test('גרסה חדשה: הייבוא נכתב יחד עם מעבר הגרסה; משימה קיימת מהחבילה לא עוברת לארכיון', async ({ page }) => {
+    const { releases, devTasksByUid } = await mockFirebase(page, { releases: { r0: rel('r0', '5.1559', { envs: { prod: '2026-09-01' } }) } });
+    await routePkg(page);
+    await open(page);
+    await expect(page.locator('#impRelease')).toHaveValue('__new__');
+    await expect(page.locator('#impSummary')).toContainText('5.1559');
+    await page.click('#impConfirmBtn');
+    await expect(page.locator('#releaseTransitionBg')).toBeVisible();
+    // r0 עלתה ל-PROD => ברירת מחדל מסומן לארכיון, חוץ ממשימה שהחבילה משייכת לגרסה החדשה
+    await expect(page.locator('#rtBody label', { hasText: '13770' }).locator('input')).not.toBeChecked();
+    await expect(page.locator('#rtBody label', { hasText: '14281' }).locator('input')).toBeChecked(); // משימת seed אחרת
+    await page.click('#rtConfirmBtn');
+    await expect(page.locator('#rmCurrent')).toContainText('5.1575');
+
+    const cur = Object.values(releases).find(r => r.status === 'current');
+    expect(cur.name).toBe('5.1575');
+    expect(releases.r0.status).toBe('closed');
+    expect(devTasksByUid.imp_99001.releaseId).toBe(cur.id);
+    expect(devTasksByUid.dt_001.releaseId).toBe(cur.id); // 13770 - נשארת לבדיקה
+    expect(devTasksByUid.dt_002.releaseId).toBe('r0');   // שאר ה-seed בארכיון
+  });
+
+  test('כשל בכתיבה לא משאיר ייבוא חלקי', async ({ page }) => {
+    const { devTasksByUid } = await mockFirebase(page, { releases: { r1: rel('r1', '5.1575') } });
+    await routePkg(page);
+    await page.route('**/malm-focus-default-rtdb.firebaseio.com/.json', route =>
+      route.request().method() === 'PATCH' ? route.fulfill({ status: 500, body: 'boom' }) : route.fallback());
+    await open(page);
+    await page.click('#impConfirmBtn');
+    await expect(page.locator('#savingMsg')).toContainText('הייבוא נכשל');
+    expect(Object.keys(devTasksByUid).length).toBe(0);
+  });
+
+  test('קישור לא תקין / משתמש שאינו אדמין / חבילה חסרה - לא פותחים ייבוא', async ({ page, browser }) => {
+    await mockFirebase(page, { releases: { r1: rel('r1', '5.1575') } });
+    await routePkg(page);
+    await open(page, '/index.html?import=..%2Ftest');
+    await page.waitForTimeout(400);
+    await expect(page.locator('#importBg')).toBeHidden();
+
+    const alerts = [];
+    page.on('dialog', d => { alerts.push(d.message()); d.accept(); });
+    await page.goto('/index.html?import=missing');
+    await page.waitForTimeout(800);
+    expect(alerts.join('\n')).toContain('לא ניתן לטעון');
+    await expect(page.locator('#importBg')).toBeHidden();
+  });
+
+  test('החבילה האמיתית imports/v75.json נטענת: 70 משימות, 2 קיימות, 6 לידיעה, 35 שדרת המידע', async ({ page }) => {
+    await mockFirebase(page, { releases: { r1: rel('r1', '5.1575') } });
+    const real = fs.readFileSync(require('path').join(__dirname, '..', 'imports', 'v75.json'), 'utf8');
+    await page.route('**/imports/v75.json*', r => r.fulfill({ status: 200, contentType: 'application/json', body: real }));
+    await open(page, '/index.html?import=v75');
+    await expect(page.locator('#importBg')).toBeVisible();
+    expect(await page.locator('#impBody tr').count()).toBe(70);
+    await expect(page.locator('#impSummary')).toContainText('68 משימות חדשות');
+    await expect(page.locator('#impSummary')).toContainText('2 קיימות');
+    await expect(page.locator('#impSummary')).toContainText('6 לידיעה בלבד');
+    expect(await page.locator('#impBody tr', { hasText: '📡 שדרת המידע' }).count()).toBe(35);
+    await page.click('#impConfirmBtn');
+    await expect(page.locator('#importBg')).toBeHidden();
+    const n = await page.evaluate(() => DEV_TASKS.filter(t => t._uid.startsWith('imp_')).length);
+    expect(n).toBe(68);
+  });
+
+  test('תצוגת תוכניות: התקדמות, צבעים לפי מצב, מיון לפי ממשק, וכוללת גם משימות מגרסה בארכיון', async ({ page }) => {
+    const base = { dev: 'x', desc: 'משימה', notes: '', comp: '', ver: '5.1575', specLink: '', tester: '', testerUid: '', tNotes: '', program: 'שדרת המידע' };
+    const { } = await mockFirebase(page, {
+      releases: { r0: rel('r0', '5.1559', { status: 'closed', closedAt: NOW }), r1: rel('r1', '5.1575') },
+      devTasksByUid: {
+        p1: { ...base, _uid: 'p1', id: '80001', iface: 'REST 1019', status: 'נבדק', tStatus: 'תקין', releaseId: 'r1' },
+        p2: { ...base, _uid: 'p2', id: '80002', iface: 'REST 1007', status: 'בבדיקה', tStatus: '', releaseId: 'r1' },
+        p3: { ...base, _uid: 'p3', id: '80003', iface: 'REST 1003', status: 'בבדיקה', tStatus: 'לא תקין', releaseId: 'r1' },
+        p4: { ...base, _uid: 'p4', id: '80004', iface: 'REST 1035', status: 'פתוח', tStatus: '', releaseId: 'r0' }, // בארכיון - נספר
+      },
+    });
+    await page.goto('/index.html');
+    await login(page, 'testadmin', 'pw');
+    await page.click('.tab[data-tab="3"]');
+    await page.click('#devSub_program');
+    await expect(page.locator('#devSubMain')).toBeHidden();
+    await expect(page.locator('[data-program-pct]')).toHaveText('25%');
+    const order = await page.locator('tr[data-program-task]').evaluateAll(rs => rs.map(r => r.dataset.programTask));
+    expect(order).toEqual(['80003', '80002', '80001', '80004']); // 1003, 1007, 1019, 1035
+    expect(await page.locator('tr[data-state="bad"]').count()).toBe(1);
+    expect(await page.locator('tr[data-state="done"]').count()).toBe(1);
+    expect(await page.locator('tr[data-state="wip"]').count()).toBe(1);
+    expect(await page.locator('tr[data-state="open"]').count()).toBe(1);
+
+    await page.locator('tr[data-program-task="80002"] button').click();
+    await expect(page.locator('#devEditModal')).toBeVisible(); // עריכה זמינה מתוך התצוגה
+  });
+});

@@ -491,7 +491,7 @@ function showApp() {
   document.getElementById('uBadge').style.display = 'flex';
   document.getElementById('uName').textContent = 'שלום, ' + CU.name;
   document.getElementById('mainTabs').style.display = 'flex';
-  loadReleases().then(refreshLiveReleaseViews).then(loadDevTasks).then(updateFyiBadge);
+  loadReleases().then(refreshLiveReleaseViews).then(loadDevTasks).then(updateFyiBadge).then(checkImportLink);
 
   if (isAdmin()) {
     document.getElementById('backupControls').style.display = 'inline';
@@ -712,9 +712,9 @@ function closeCurrentRelease(){
 // בדיקות שפיות נשארות מקושרות לגרסה שנסגרת (כמו בסגירה רגילה).
 var transitionState = null;
 
-async function openNewReleaseForm(){
+async function openNewReleaseForm(presetName, opts){
   if(!isAdmin()) return;
-  var name = prompt('שם/מספר הגרסה החדשה (למשל: 5.1576, או "עליה לאוויר ספטמבר 2026"):');
+  var name = presetName || prompt('שם/מספר הגרסה החדשה (למשל: 5.1576, או "עליה לאוויר ספטמבר 2026"):');
   if(!name || !name.trim()) return;
   await Promise.all([loadDevLists(), loadDevTasks(), loadLaunchTab()]);
   var cur = getCurrentRelease();
@@ -724,7 +724,9 @@ async function openNewReleaseForm(){
   }).concat(Object.values(LAUNCH_TASKS).filter(function(t){ return !t.deleted && isInCurrentRelease(t); }).map(function(t){
     return {kind:'launch', key:t.id, label:t.task||'', sub:t.status||'פתוח', checked:prodDone};
   }));
-  transitionState = {name:name.trim(), cur:cur, prodDone:prodDone, rows:rows};
+  // opts.keep = משימות שהייבוא משייך לגרסה החדשה (לא מסומנות לארכיון); opts.extra = עדכוני הייבוא
+  if(opts && opts.keep) rows.forEach(function(r){ if(r.kind==='dev' && opts.keep.has(r.key)) r.checked = false; });
+  transitionState = {name:name.trim(), cur:cur, prodDone:prodDone, rows:rows, extra:opts && opts.extra};
   if(!rows.length) return confirmReleaseTransition();
   renderReleaseTransition();
   document.getElementById('releaseTransitionBg').classList.add('open');
@@ -786,29 +788,22 @@ async function confirmReleaseTransition(){
     updates['releases/'+s.cur.id+'/status'] = 'closed';
     updates['releases/'+s.cur.id+'/closedAt'] = now;
   }
+  if(s.extra) Object.assign(updates, s.extra(newRec.id)); // ייבוא נכתב באותה כתיבה אטומית; גובר על שיוך השורות
   try{
     var res = await fetch(FB+'/.json', {method:'PATCH', headers:{'Content-Type':'application/json'}, body:JSON.stringify(updates)});
     if(!res.ok) throw new Error('השרת דחה את הכתיבה (סטטוס '+res.status+')');
     // אימות מול השרת - לא מסתפקים ב-200
-    var fresh = {};
-    var results = await Promise.all(['releases','devTasksByUid','launchTasks'].map(function(k){
-      return fetch(FB+'/'+k+'.json?t='+Date.now()).then(function(r){ return r.json(); }).then(function(d){ fresh[k] = d || {}; });
-    }));
-    var bad = Object.keys(updates).find(function(path){
-      if(path.indexOf('/releaseId') < 0) return false;
-      var p = path.split('/');
-      return ((fresh[p[0]][p[1]]||{}).releaseId||'') !== updates[path];
-    });
-    if(bad || (fresh.releases[newRec.id]||{}).status !== 'current' || (s.cur && (fresh.releases[s.cur.id]||{}).status !== 'closed')){
-      throw new Error('האימות מול השרת נכשל - המעבר לא נשמר במלואו. רענן ובדוק.');
-    }
+    var v = await verifyRootUpdates(updates);
+    if(v.bad) throw new Error('האימות מול השרת נכשל - המעבר לא נשמר במלואו. רענן ובדוק.');
+    var fresh = v.fresh;
     RELEASES = fresh.releases;
     s.rows.forEach(function(r){
       if(r.kind==='dev'){ var t = DEV_TASKS.find(function(x){ return x._uid===r.key; }); if(t) t.releaseId = updates['devTasksByUid/'+r.key+'/releaseId']; }
       else if(LAUNCH_TASKS[r.key]) LAUNCH_TASKS[r.key].releaseId = updates['launchTasks/'+r.key+'/releaseId'];
     });
+    if(s.extra) await loadDevTasks(); // משימות שיובאו
     closeReleaseTransition();
-    el.textContent='✓ המעבר לגרסה '+newRec.name+' הושלם';
+    el.textContent='✓ המעבר לגרסה '+newRec.name+' הושלם'+(s.extra?' והמשימות יובאו':'');
     setTimeout(function(){ el.style.display='none'; }, 1800);
     renderReleaseManager();
     refreshLiveReleaseViews();
@@ -2734,6 +2729,7 @@ function renderDevTable(){
   // את סדר התצוגה, כדי שהתנהגות הטבלה תישאר צפויה ולא תלויה במיקום.
   var order = DEV_TASKS.map(function(_, i){ return i; }).filter(function(i){ return isInCurrentRelease(DEV_TASKS[i]) && !DEV_TASKS[i].fyi; });
   updateFyiBadge();
+  if(devSub==='program') renderProgramView();
   var relBadgeEl = document.getElementById('devReleaseBadge');
   if (relBadgeEl) relBadgeEl.innerHTML = releaseBadgeHtml();
   if (devSortCol) {
@@ -2748,7 +2744,7 @@ function renderDevTable(){
     return '<tr style="background:'+bg+';vertical-align:top" data-tester="'+esc(t.tester)+'" data-status="'+esc(t.status)+'" data-tstatus="'+esc(t.tStatus)+'" data-comp="'+esc(t.comp)+'" data-iface="'+esc(t.iface)+'" data-ver="'+esc(t.ver)+'">'+
       '<td style="padding:7px 10px;border-bottom:1px solid #eee;white-space:nowrap;font-weight:700;color:#D40511">'+esc(t.id)+'</td>'+
       '<td style="padding:7px 10px;border-bottom:1px solid #eee;white-space:nowrap">'+esc(t.dev)+'</td>'+
-      '<td style="padding:7px 10px;border-bottom:1px solid #eee;white-space:nowrap">'+esc(t.status||'—')+'</td>'+
+      '<td style="padding:7px 10px;border-bottom:1px solid #eee;white-space:nowrap">'+esc(t.status||'—')+(t.rStatus?'<div style="font-size:10px;color:#888">רבקה: '+esc(t.rStatus)+'</div>':'')+'</td>'+
       '<td style="padding:7px 10px;border-bottom:1px solid #eee;font-size:11px;line-height:1.5">'+esc(t.desc)+'</td>'+
       '<td style="padding:7px 10px;border-bottom:1px solid #eee;font-size:11px">'+
         (t.specLink?'<a href="'+esc(t.specLink)+'" target="_blank" rel="noopener">🔗 פתח</a>':'—')+
@@ -3201,7 +3197,7 @@ function sendDevTesterEmail(user, task) {
   });
 }
 
-var DEV_OVERRIDE_FIELDS = ['tester','testerUid','tStatus','tNotes','status','sLog','specLink','dev','desc','notes','comp','ver','iface','id','linkedLaunchId','releaseId','fyi','fyiReads'];
+var DEV_OVERRIDE_FIELDS = ['tester','testerUid','tStatus','tNotes','status','sLog','specLink','dev','desc','notes','comp','ver','iface','id','linkedLaunchId','releaseId','fyi','fyiReads','program','rStatus'];
 
 // טוען עדכונים לפי מזהה פנימי יציב (t._uid) - לא לפי מיקום במערך, ולא לפי "מספר משימה"
 // (t.id) שהוא שדה עסקי חופשי שמוזן ע"י המשתמש ולכן יכול להיות ריק, לא ייחודי, או
@@ -3951,6 +3947,209 @@ async function setFyiFlag(uid, val){
   t.fyi = val;
   renderFyiTable();
   renderDevTable();
+}
+
+// בודק מול השרת שכל נתיב בעדכון באמת נשמר (השוואה עמוקה, כולל גיזום ערכים ריקים של Firebase).
+async function verifyRootUpdates(updates){
+  var fresh = {};
+  await Promise.all(['releases','devTasksByUid','launchTasks'].map(function(k){
+    return fetch(FB+'/'+k+'.json?t='+Date.now()).then(function(r){ return r.json(); }).then(function(d){ fresh[k] = d || {}; });
+  }));
+  var bad = Object.keys(updates).find(function(path){
+    var p = path.split('/'), node = fresh[p[0]];
+    for(var i=1; i<p.length && node!=null; i++) node = node[p[i]];
+    return !deepEqual(node==null ? '' : node, updates[path]==null ? '' : updates[path]);
+  });
+  return {fresh:fresh, bad:bad};
+}
+
+// ── ייבוא חבילת משימות (imports/<שם>.json) ──────────────────────────────────────────
+// החבילה נבנית מקובץ ה-Excel של רבקה (tools/xlsx_to_import.py). פותחים אותה בקישור
+//   index.html?import=<שם>
+// מוצגת תצוגה מקדימה (חדש/קיים, לידיעה/בדיקה, גרסה יעד) וכפתור אחד מבצע את הייבוא.
+// משימה שכבר קיימת (לפי מספר משימה) לא משוכפלת ולא עוברת לארכיון - היא משויכת לגרסה
+// היעד לבדיקה. מזהה המשימה החדשה קבוע (imp_<מספר>) ולכן ייבוא חוזר לא יוצר כפילויות.
+var importState = null;
+
+function checkImportLink(){
+  var name = new URLSearchParams(location.search).get('import');
+  if(!name || !isAdmin() || !/^[\w.-]+$/.test(name)) return;
+  openImportPreview(name);
+}
+
+async function openImportPreview(name){
+  var pkg;
+  try{
+    var res = await fetch('imports/'+name+'.json?t='+Date.now());
+    if(!res.ok) throw new Error('סטטוס '+res.status);
+    pkg = await res.json();
+  }catch(e){ alert('❌ לא ניתן לטעון את חבילת הייבוא "'+name+'": '+e.message); return; }
+  await Promise.all([loadDevLists(), loadDevTasks()]);
+  var byId = {};
+  DEV_TASKS.forEach(function(t){ if(!t.deleted && t.id) byId[t.id] = t; });
+  var rows = pkg.tasks.map(function(t){
+    return {t:t, existing:byId[t.id]||null, include:true, cat:t.fyi?'fyi':'test'};
+  });
+  var cur = getCurrentRelease();
+  var match = Object.values(RELEASES).filter(function(r){ return r.name===pkg.release; })[0];
+  // ברירת מחדל: גרסה בשם הנכון אם קיימת; אחרת גרסה חדשה (עם חלון מעבר גרסה)
+  importState = {pkg:pkg, rows:rows, target: match ? match.id : '__new__'};
+  renderImportPreview();
+  document.getElementById('importBg').classList.add('open');
+}
+function closeImportPreview(){
+  document.getElementById('importBg').classList.remove('open');
+  importState = null;
+  if(history.replaceState) history.replaceState(null, '', location.pathname);
+}
+function renderImportPreview(){
+  var s = importState, nNew = 0, nEx = 0, nFyi = 0;
+  s.rows.forEach(function(r){
+    if(!r.include) return;
+    if(r.existing) nEx++; else nNew++;
+    if(r.cat==='fyi') nFyi++;
+  });
+  document.getElementById('impTitle').textContent = '📥 ייבוא: ' + s.pkg.name;
+  var cur = getCurrentRelease();
+  var relOpts = Object.values(RELEASES).sort(function(a,b){ return (b.createdAt||'').localeCompare(a.createdAt||''); }).map(function(r){
+    return '<option value="'+esc(r.id)+'"'+(s.target===r.id?' selected':'')+'>'+esc(r.name)+(r.status==='current'?' (נוכחית)':' (סגורה)')+'</option>';
+  }).join('');
+  document.getElementById('impRelease').innerHTML = '<option value="__new__"'+(s.target==='__new__'?' selected':'')+'>➕ גרסה חדשה '+esc(s.pkg.release)+' (עם מעבר גרסה)</option>'+relOpts;
+  document.getElementById('impSummary').innerHTML =
+    '<b>'+nNew+'</b> משימות חדשות · <b>'+nEx+'</b> קיימות (ישויכו לגרסה לבדיקה, לא יועברו לארכיון) · <b>'+nFyi+'</b> לידיעה בלבד'+
+    (s.target==='__new__' && cur ? '<div style="color:#e65100;margin-top:4px">הגרסה הנוכחית היא "'+esc(cur.name)+'" - יופיע חלון מעבר גרסה לבחירת משימות לארכיון.</div>' : '');
+  document.getElementById('impBody').innerHTML = s.rows.map(function(r, i){
+    var t = r.t;
+    return '<tr style="background:'+(r.include?'#fff':'#f3f3f3')+'" data-imp-id="'+esc(t.id)+'">'+
+      '<td style="padding:4px 6px;border-bottom:1px solid #eee"><input type="checkbox" class="impChk"'+(r.include?' checked':'')+' onchange="importState.rows['+i+'].include=this.checked;renderImportPreview()"></td>'+
+      '<td style="padding:4px 6px;border-bottom:1px solid #eee;font-weight:700;color:#D40511;white-space:nowrap">'+esc(t.id)+'</td>'+
+      '<td style="padding:4px 6px;border-bottom:1px solid #eee;white-space:nowrap">'+(r.existing?'<span style="color:#1565c0">קיים</span>':'<span style="color:#2e7d32">חדש</span>')+'</td>'+
+      '<td style="padding:4px 6px;border-bottom:1px solid #eee;line-height:1.4">'+esc((t.desc||'').slice(0,110))+(t.program?' <span style="background:#e0f2f1;color:#00695c;border-radius:8px;padding:0 6px;font-size:10px">📡 '+esc(t.program)+(t.iface?' '+esc(t.iface):'')+'</span>':'')+'<div style="color:#888;font-size:10px">'+esc(t.notes||'')+'</div></td>'+
+      '<td style="padding:4px 6px;border-bottom:1px solid #eee"><select class="impCat" onchange="importState.rows['+i+'].cat=this.value;renderImportPreview()" style="font-size:11px">'+
+        '<option value="test"'+(r.cat==='test'?' selected':'')+'>לבדיקה</option><option value="fyi"'+(r.cat==='fyi'?' selected':'')+'>לידיעה</option></select></td></tr>';
+  }).join('');
+}
+function impSetTarget(v){ importState.target = v; renderImportPreview(); }
+
+// בונה את כל העדכונים כמפת נתיבים ל-PATCH אטומי אחד על שורש ה-DB
+function buildImportUpdates(s, releaseId){
+  var up = {}, now = Date.now();
+  s.rows.filter(function(r){ return r.include; }).forEach(function(r){
+    var t = r.t, fyi = r.cat==='fyi';
+    if(r.existing){
+      var b = 'devTasksByUid/'+r.existing._uid+'/';
+      up[b+'releaseId'] = releaseId;
+      up[b+'rStatus'] = t.rStatus||'';
+      up[b+'fyi'] = fyi;
+      if(t.tStatus && !fyi) up[b+'tStatus'] = t.tStatus;
+      if(t.program) up[b+'program'] = t.program;
+      if(t.notes && (r.existing.notes||'').indexOf(t.notes) < 0) up[b+'notes'] = (r.existing.notes ? r.existing.notes+'\n' : '')+'רבקה '+s.pkg.release+': '+t.notes;
+    } else {
+      up['devTasksByUid/imp_'+t.id] = {
+        _uid:'imp_'+t.id, id:t.id, dev:t.dev||'', status:fyi?'':(t.status||'פתוח'), desc:t.desc||'', notes:t.notes||'',
+        comp:t.comp||'', ver:t.ver||'', iface:t.iface||'', specLink:'', tester:'', testerUid:'', tNotes:'',
+        tStatus:fyi?'':(t.tStatus||''), releaseId:releaseId, rStatus:t.rStatus||'', program:t.program||'', fyi:fyi,
+        sLog:[{field:'ייבוא', s:'יובא מ'+s.pkg.name, t:now, by:CU?CU.name:''}]
+      };
+    }
+  });
+  return up;
+}
+
+async function confirmImport(){
+  var s = importState;
+  if(!s) return;
+  if(!s.rows.some(function(r){ return r.include; })){ alert('לא נבחרה אף משימה לייבוא.'); return; }
+  if(s.target === '__new__'){
+    // הייבוא נכתב יחד עם מעבר הגרסה באותה כתיבה אטומית (ראו confirmReleaseTransition)
+    var keep = new Set(s.rows.filter(function(r){ return r.include && r.existing; }).map(function(r){ return r.existing._uid; }));
+    var name = s.pkg.release;
+    closeImportPreview();
+    openNewReleaseForm(name, {keep:keep, extra:function(newId){ return buildImportUpdates(s, newId); }});
+    return;
+  }
+  var el = document.getElementById('savingMsg');
+  el.style.display='block'; el.style.background='#1a1a2e'; el.textContent='⏳ מייבא...';
+  try{
+    var updates = buildImportUpdates(s, s.target);
+    await patchRoot(updates);
+    var v = await verifyRootUpdates(updates);
+    if(v.bad) throw new Error('האימות מול השרת נכשל - הייבוא לא נשמר במלואו. רענן ובדוק.');
+    await loadDevTasks();
+    var n = Object.keys(updates).filter(function(k){ return k.split('/').length===2; }).length;
+    closeImportPreview();
+    el.textContent = '✓ הייבוא הושלם ('+n+' חדשות, '+(s.rows.filter(function(r){ return r.include && r.existing; }).length)+' קיימות עודכנו)';
+    setTimeout(function(){ el.style.display='none'; }, 3500);
+    refreshLiveReleaseViews();
+    updateFyiBadge();
+    switchTab(3);
+  }catch(e){
+    el.textContent = '❌ הייבוא נכשל: '+e.message;
+    el.style.background = '#c62828';
+    setTimeout(function(){ el.style.display='none'; el.style.background='#1a1a2e'; }, 8000);
+  }
+}
+
+// ── תצוגת תוכנית (למשל "שדרת המידע"): התקדמות כוללת וטבלה לפי ממשק, על כל המשימות
+// שסומנו ב-program - בכל הגרסאות, כולל ארכיון (התוכנית נמשכת על פני כמה גרסאות).
+var devSub = 'all';
+function setDevSub(k){
+  devSub = k;
+  document.getElementById('devSubMain').style.display = k==='all' ? '' : 'none';
+  document.getElementById('devSubProgram').style.display = k==='program' ? '' : 'none';
+  ['all','program'].forEach(function(s){
+    var b = document.getElementById('devSub_'+s);
+    b.style.background = s===k ? (s==='program' ? '#00695c' : '#1a1a2e') : '#fff';
+    b.style.color = s===k ? '#fff' : (s==='program' ? '#00695c' : '#1a1a2e');
+  });
+  if(k==='program') renderProgramView();
+}
+function programTaskState(t){
+  if(t.tStatus==='לא תקין') return 'bad';
+  if(t.status==='נסגר' || t.status==='נבדק' || t.tStatus==='תקין') return 'done';
+  if(t.status==='בבדיקה' || t.status==='בפיתוח') return 'wip';
+  return 'open';
+}
+function renderProgramView(){
+  var el = document.getElementById('devSubProgram');
+  if(!el) return;
+  var progs = {};
+  DEV_TASKS.forEach(function(t){ if(!t.deleted && t.program) (progs[t.program] = progs[t.program] || []).push(t); });
+  var names = Object.keys(progs);
+  var btn = document.getElementById('devSub_program');
+  if(btn) btn.textContent = '📡 תוכניות' + (names.length ? ' ('+names.reduce(function(n,k){ return n+progs[k].length; },0)+')' : '');
+  if(!names.length){ el.innerHTML = '<div style="padding:30px;text-align:center;color:#aaa">אין עדיין משימות המשויכות לתוכנית (שדה "תוכנית" נקבע בייבוא)</div>'; return; }
+  var colors = {done:['#e8f5e9','#2e7d32','תקין / נבדק'], wip:['#e3f2fd','#1565c0','בבדיקה'], bad:['#ffebee','#c62828','לא תקין'], open:['#fff8e1','#f57f17','פתוח']};
+  el.innerHTML = names.map(function(name){
+    var ts = progs[name].slice().sort(function(a,b){
+      return String(a.iface||'~').localeCompare(String(b.iface||'~'), 'he', {numeric:true}) || String(a.id).localeCompare(String(b.id), 'he', {numeric:true});
+    });
+    var cnt = {done:0, wip:0, bad:0, open:0};
+    ts.forEach(function(t){ cnt[programTaskState(t)]++; });
+    var pct = Math.round(cnt.done / ts.length * 100);
+    var chips = Object.keys(colors).map(function(k){
+      return '<span style="background:'+colors[k][0]+';color:'+colors[k][1]+';border-radius:12px;padding:3px 12px;font-size:12px;font-weight:700">'+colors[k][2]+': '+cnt[k]+'</span>';
+    }).join(' ');
+    var rows = ts.map(function(t){
+      var st = programTaskState(t), c = colors[st];
+      var rel = t.releaseId && RELEASES[t.releaseId] ? RELEASES[t.releaseId].name : '';
+      return '<tr data-program-task="'+esc(t.id)+'" data-state="'+st+'" style="border-right:4px solid '+c[1]+'">'+
+        '<td style="padding:6px 10px;border-bottom:1px solid #e0f2f1;font-weight:700;color:#00695c;white-space:nowrap">'+esc(t.iface||'—')+'</td>'+
+        '<td style="padding:6px 10px;border-bottom:1px solid #e0f2f1;color:#D40511;font-weight:700;white-space:nowrap">'+esc(t.id)+'</td>'+
+        '<td style="padding:6px 10px;border-bottom:1px solid #e0f2f1;line-height:1.4">'+esc((t.desc||'').replace(/^הסבת מסרי REST API מכס - /,'').slice(0,120))+'</td>'+
+        '<td style="padding:6px 10px;border-bottom:1px solid #e0f2f1;white-space:nowrap;font-size:11px">'+esc(t.dev||'')+'</td>'+
+        '<td style="padding:6px 10px;border-bottom:1px solid #e0f2f1;white-space:nowrap;font-size:11px">'+esc(t.ver||'')+(rel?'<div style="color:#5e35b1">🏷️ '+esc(rel)+'</div>':'')+'</td>'+
+        '<td style="padding:6px 10px;border-bottom:1px solid #e0f2f1;white-space:nowrap"><span style="background:'+c[0]+';color:'+c[1]+';border-radius:10px;padding:2px 10px;font-size:11px;font-weight:700">'+esc(t.tStatus||t.status||c[2])+'</span></td>'+
+        '<td style="padding:6px 10px;border-bottom:1px solid #e0f2f1"><button onclick="jumpToDevTask(\''+jsq(t._uid)+'\')" style="background:#00695c;color:#fff;border:none;border-radius:4px;padding:3px 8px;cursor:pointer;font-size:11px;font-family:Arial">עריכה</button></td></tr>';
+    }).join('');
+    return '<div style="border:1px solid #b2dfdb;border-radius:10px;margin-bottom:18px;overflow:hidden">'+
+      '<div style="background:linear-gradient(90deg,#004d40,#00796b);color:#fff;padding:12px 16px"><div style="font-size:16px;font-weight:700">📡 '+esc(name)+'</div>'+
+        '<div style="background:rgba(255,255,255,.25);border-radius:6px;height:12px;margin:8px 0;overflow:hidden"><div data-program-bar style="background:#a5d6a7;height:100%;width:'+pct+'%"></div></div>'+
+        '<div style="font-size:12px"><b data-program-pct>'+pct+'%</b> הושלמו ('+cnt.done+' מתוך '+ts.length+')</div></div>'+
+      '<div style="padding:10px 16px;background:#f1f8f7">'+chips+'</div>'+
+      '<div style="max-height:520px;overflow:auto"><table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="background:#e0f2f1;color:#004d40;position:sticky;top:0">'+
+        '<th style="padding:6px 10px;text-align:right">ממשק</th><th style="padding:6px 10px;text-align:right">משימה</th><th style="padding:6px 10px;text-align:right">תיאור</th><th style="padding:6px 10px;text-align:right">מפתח</th><th style="padding:6px 10px;text-align:right">גרסה</th><th style="padding:6px 10px;text-align:right">מצב</th><th></th></tr></thead><tbody>'+rows+'</tbody></table></div></div>';
+  }).join('');
 }
 
 var launchSortCol = '', launchSortDir = 1;
@@ -4796,6 +4995,12 @@ function updateChangeLogNote(id, note){
 
 <div class="pane" id="pane3" style="padding:14px 20px">
   <div style="font-size:16px;font-weight:700;color:#1a1a2e;margin-bottom:14px">&#128295; פיתוחים ותיקונים לבדיקה <span id="devReleaseBadge"></span></div>
+  <div style="display:flex;gap:6px;margin-bottom:12px">
+    <button id="devSub_all" onclick="setDevSub('all')" style="padding:6px 14px;border-radius:16px;border:1px solid #1a1a2e;cursor:pointer;font-size:12px;font-weight:700;font-family:Arial;background:#1a1a2e;color:#fff">🛠️ משימות הגרסה</button>
+    <button id="devSub_program" onclick="setDevSub('program')" style="padding:6px 14px;border-radius:16px;border:1px solid #00695c;cursor:pointer;font-size:12px;font-weight:700;font-family:Arial;background:#fff;color:#00695c">📡 תוכניות</button>
+  </div>
+  <div id="devSubProgram" style="display:none"></div>
+  <div id="devSubMain">
   <div class="stats" id="s3"></div>
   <div style="display:flex;gap:10px;margin-bottom:12px;flex-wrap:wrap;align-items:center">
     <div id="msf_devStatus_wrap" style="position:relative;display:inline-block">
@@ -4855,6 +5060,7 @@ function updateChangeLogNote(id, note){
     </tr></thead>
     <tbody id="devBody"></tbody>
   </table>
+  </div>
   </div>
 </div>
 
@@ -5134,6 +5340,20 @@ function updateChangeLogNote(id, note){
       <button onclick="closeReleaseArchive()" style="background:none;border:none;font-size:18px;cursor:pointer;color:#888">✕</button>
     </div>
     <div id="releaseArchiveBody"></div>
+  </div>
+</div>
+
+<!-- IMPORT PREVIEW MODAL: ייבוא חבילת משימות (תצוגה מקדימה + כפתור אחד) -->
+<div class="modal-bg" id="importBg">
+  <div style="background:#fff;border-radius:12px;padding:20px;width:94%;max-width:900px;direction:rtl;max-height:90vh;overflow-y:auto">
+    <div id="impTitle" style="font-size:15px;font-weight:700;color:#1a1a2e;margin-bottom:8px">📥 ייבוא</div>
+    <div id="impSummary" style="font-size:12px;color:#444;line-height:1.7;margin-bottom:8px"></div>
+    <div style="margin-bottom:10px;font-size:12px">גרסה לבדיקה: <select id="impRelease" onchange="impSetTarget(this.value)" style="font-size:12px;padding:3px 6px"></select></div>
+    <div style="max-height:52vh;overflow:auto;border:1px solid #eee;border-radius:6px"><table style="width:100%;border-collapse:collapse;font-size:12px"><tbody id="impBody"></tbody></table></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px">
+      <button onclick="closeImportPreview()" style="padding:8px 16px;border:1px solid #ddd;border-radius:6px;cursor:pointer;font-size:13px;font-family:Arial;background:#fff">ביטול</button>
+      <button id="impConfirmBtn" onclick="confirmImport()" style="padding:8px 18px;background:#00695c;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px;font-weight:700;font-family:Arial">✅ ייבא</button>
+    </div>
   </div>
 </div>
 
