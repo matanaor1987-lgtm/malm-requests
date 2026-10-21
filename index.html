@@ -704,8 +704,8 @@ function closeCurrentRelease(){
   refreshLiveReleaseViews();
 }
 
-// מעבר לגרסת עבודה חדשה. לפני שהגרסה הנוכחית נסגרת, מוצג חלון עם כל המשימות החיות
-// (פיתוחים + עליה לאוויר): מסומן = לארכיון של הגרסה שנסגרת, לא מסומן = עובר לבדיקה
+// מעבר לגרסת עבודה חדשה. לפני שהגרסה הנוכחית נסגרת, מוצג חלון עם כל משימות הפיתוח
+// החיות: מסומן = לארכיון של הגרסה שנסגרת, לא מסומן = עובר לבדיקה
 // בגרסה החדשה. ברירת מחדל: הכל מסומן רק אם הגרסה הנוכחית כבר עלתה ל-PROD (או שאין
 // גרסה נוכחית בכלל); גרסה שרק הותקנה בטסט לא מעבירה כלום לארכיון בלי החלטה מפורשת.
 // הכל נכתב בבקשת PATCH אחת על שורש ה-DB (אטומית) - אי אפשר להישאר באמצע מעבר.
@@ -721,9 +721,7 @@ async function openNewReleaseForm(presetName, opts){
   var prodDone = !cur || !!(cur.envs && cur.envs.prod);
   var rows = DEV_TASKS.filter(function(t){ return !t.deleted && isInCurrentRelease(t); }).map(function(t){
     return {kind:'dev', key:t._uid, label:((t.fyi?'👁️ ':'')+(t.id||'')+' '+(t.desc||'')).trim(), sub:[t.status, t.tStatus].filter(Boolean).join(' · '), checked:prodDone};
-  }).concat(Object.values(LAUNCH_TASKS).filter(function(t){ return !t.deleted && isInCurrentRelease(t); }).map(function(t){
-    return {kind:'launch', key:t.id, label:t.task||'', sub:t.status||'פתוח', checked:prodDone};
-  }));
+  });
   // opts.keep = משימות שהייבוא משייך לגרסה החדשה (לא מסומנות לארכיון); opts.extra = עדכוני הייבוא
   if(opts && opts.keep) rows.forEach(function(r){ if(r.kind==='dev' && opts.keep.has(r.key)) r.checked = false; });
   transitionState = {name:name.trim(), cur:cur, prodDone:prodDone, rows:rows, extra:opts && opts.extra};
@@ -757,7 +755,7 @@ function renderReleaseTransition(){
           '<span style="flex:1">'+esc(r.label)+'<span style="color:#888;margin-right:8px">'+esc(r.sub)+'</span></span></label>';
       }).join('')+'</div>';
   }
-  document.getElementById('rtBody').innerHTML = section('dev','🛠️ פיתוחים ותיקונים')+section('launch','🚀 משימות עליה לאוויר');
+  document.getElementById('rtBody').innerHTML = section('dev','🛠️ פיתוחים ותיקונים');
 }
 function rtSetAll(kind, val){
   transitionState.rows.forEach(function(r){ if(r.kind===kind) r.checked = val; });
@@ -780,7 +778,7 @@ async function confirmReleaseTransition(){
   }
   var updates = {};
   s.rows.forEach(function(r){
-    updates[(r.kind==='dev'?'devTasksByUid/':'launchTasks/')+r.key+'/releaseId'] = r.checked ? archiveId : newRec.id;
+    updates['devTasksByUid/'+r.key+'/releaseId'] = r.checked ? archiveId : newRec.id;
   });
   updates['releases/'+newRec.id] = newRec;
   if(archiveRec) updates['releases/'+archiveRec.id] = archiveRec;
@@ -788,6 +786,11 @@ async function confirmReleaseTransition(){
     updates['releases/'+s.cur.id+'/status'] = 'closed';
     updates['releases/'+s.cur.id+'/closedAt'] = now;
   }
+  // משימות עליה לאוויר של הגרסה שנסגרת עוברות לגרסה החדשה כמו שהן (לא נארכבות ולא נעלמות);
+  // ארכוב שלהן הוא שלב עתידי. משימות רבקה/מלמ לא נוגעים בהן בכלל - הן לא תלויות בגרסה.
+  if(s.cur) Object.values(LAUNCH_TASKS).forEach(function(t){
+    if(!t.deleted && t.releaseId===s.cur.id) updates['launchTasks/'+t.id+'/releaseId'] = newRec.id;
+  });
   if(s.extra) Object.assign(updates, s.extra(newRec.id)); // ייבוא נכתב באותה כתיבה אטומית; גובר על שיוך השורות
   try{
     var res = await fetch(FB+'/.json', {method:'PATCH', headers:{'Content-Type':'application/json'}, body:JSON.stringify(updates)});
@@ -799,8 +802,8 @@ async function confirmReleaseTransition(){
     RELEASES = fresh.releases;
     s.rows.forEach(function(r){
       if(r.kind==='dev'){ var t = DEV_TASKS.find(function(x){ return x._uid===r.key; }); if(t) t.releaseId = updates['devTasksByUid/'+r.key+'/releaseId']; }
-      else if(LAUNCH_TASKS[r.key]) LAUNCH_TASKS[r.key].releaseId = updates['launchTasks/'+r.key+'/releaseId'];
     });
+    Object.keys(LAUNCH_TASKS).forEach(function(id){ if(updates['launchTasks/'+id+'/releaseId']) LAUNCH_TASKS[id].releaseId = updates['launchTasks/'+id+'/releaseId']; });
     if(s.extra) await loadDevTasks(); // משימות שיובאו
     closeReleaseTransition();
     el.textContent='✓ המעבר לגרסה '+newRec.name+' הושלם'+(s.extra?' והמשימות יובאו':'');

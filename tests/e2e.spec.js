@@ -2977,7 +2977,7 @@ test.describe('מעבר גרסת עבודה, ארכיון והחזרה מארכ�
     expect(releases.r1.status).toBe('closed');
     expect(devTasksByUid.d1.releaseId).toBe('r1'); // ארכיון
     expect(devTasksByUid.d2.releaseId).toBe(newId); // ממשיך לגרסה החדשה
-    expect(launchTasks.l1.releaseId).toBe('r1');
+    expect(launchTasks.l1.releaseId).toBe(newId); // משימות עליה לאוויר לא נארכבות כרגע - עוברות לגרסה החדשה
 
     await page.click('button[onclick="closeReleaseManager()"]');
     await page.click('.tab[data-tab="3"]');
@@ -3461,5 +3461,38 @@ test.describe('ייבוא חבילת משימות (קישור ?import=) ותצו
 
     await page.locator('tr[data-program-task="80002"] button').click();
     await expect(page.locator('#devEditModal')).toBeVisible(); // עריכה זמינה מתוך התצוגה
+  });
+
+  test('מעבר גרסה וייבוא נוגעים רק בפיתוחים/גרסאות: אפס כתיבות ל-/db (משימות מלמ ורבקה), ומשימות עליה לאוויר לא נארכבות', async ({ page }) => {
+    const malmRow = { _id: 'm1', ת: '2026-01-01', ד: 'תחום', מ: 'משימת מלמ מתויגת לגרסה ישנה', ע: 'בינוני', ס: 'פתוח', א: '', dhl: '', chat: { malm: [], dhl: [] }, releaseId: 'r0' };
+    const rivkaRow = { _id: 'rv1', נ: 'בקשת רבקה מתויגת', מב: 'רבקה', ת: '2026-01-01', כ: 'כותרת', ב: 'גוף', מט: '', ע: 'בינוני', ס: 'פתוח', chat: { malm: [], dhl: [] }, releaseId: 'r0' };
+    const launch = (id, task, releaseId, status) => ({ id, task, status: status || 'פתוח', notes: '', closedBy: '', closedAt: '', createdAt: NOW, releaseId });
+    const { db, launchTasks } = await mockFirebase(page, {
+      releases: { r0: rel('r0', '5.1559', { envs: { prod: '2026-09-01' } }) },
+      malm: [malmRow], rivka: [rivkaRow],
+      users: seedUsers().map((u, i) => ({ ...u, _uid: 'u' + i })), // עם _uid קיים - אחרת ensureIds כותב ל-/db בכניסה (לא קשור למעבר גרסה)
+      launchTasks: { l1: launch('l1', 'משימת עליה פתוחה', 'r0'), l2: launch('l2', 'משימת עליה שבוצעה', 'r0', 'בוצע') },
+    });
+    const dbWrites = [];
+    page.on('request', r => { if (['PUT', 'PATCH', 'POST', 'DELETE'].includes(r.method()) && /\/db(\/|\.json)/.test(r.url())) dbWrites.push(r.method() + ' ' + r.url()); });
+    await page.route('**/imports/test.json*', r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ name: 'חבילה', release: '5.1575', tasks: [
+      { id: '99001', dev: 'x', desc: 'חדשה', comp: '', ver: '5.1575', notes: '', rStatus: 'Dev Test', status: 'בבדיקה', tStatus: '', fyi: false, program: '', iface: '' }] }) }));
+    await page.goto('/index.html?import=test');
+    await login(page, 'testadmin', 'pw');
+    await page.click('#impConfirmBtn');
+    await expect(page.locator('#releaseTransitionBg')).toBeVisible();
+    await page.click('#rtConfirmBtn');
+    await expect(page.locator('#rmCurrent')).toContainText('5.1575');
+    const newId = Object.values(await page.evaluate(() => RELEASES)).find(r => r.status === 'current').id;
+
+    expect(dbWrites).toEqual([]);                                   // אפס כתיבות ל-malm/rivka
+    expect(db.malm).toEqual([malmRow]);
+    expect(db.rivka).toEqual([rivkaRow]);
+    expect(launchTasks.l1.releaseId).toBe(newId);                   // עליה לאוויר: עברו לגרסה החדשה, לא נארכבו
+    expect(launchTasks.l2.releaseId).toBe(newId);
+    await page.click('.tab[data-tab="0"]');
+    await expect(page.locator('body')).toContainText('משימת מלמ מתויגת לגרסה ישנה');
+    await page.click('.tab[data-tab="5"]');
+    await expect(page.locator('#launchBody')).toContainText('משימת עליה פתוחה');
   });
 });
