@@ -1950,7 +1950,7 @@ test.describe('העברת משימה מרבקה למלמ כולל', () => {
     await expect(page.locator('#modalTitle')).toContainText('העברת משימה למלמ');
 
     // שדות שיש להם מקבילה ברבקה ממופים אוטומטית
-    await expect(page.locator('#f_ת')).toHaveValue('2026-07-05');
+    await expect(page.locator('#f_ת')).toHaveValue('05/07/2026'); // תצוגה ישראלית; נשמר ISO
     await expect(page.locator('#f_ע')).toHaveValue('2');
     await expect(page.locator('#f_ס')).toHaveValue('בטיפול');
     await expect(page.locator('#f_א')).toHaveValue('דני הבודק'); // "מטפל" ברבקה -> "אחראי מלמ"
@@ -2269,7 +2269,7 @@ test.describe('תוכן מיילים למנהלים - כותרת מזהה שלע
     expect(result.withBoth).toBe('נושא — כותרת שונה');
     // בקשה בלי נושא ובלי כותרת - עדיין מקבלת כותרת מזהה, לא ריקה, כדי שמייל
     // עליה לעולם לא יגיע עם "בקשה: " ריק (הבאג שהתגלה בפועל)
-    expect(result.empty).toBe('בקשה מתאריך 2026-07-01');
+    expect(result.empty).toBe('בקשה מתאריך 01/07/2026');
     expect(result.details).toContain('נושא הבקשה');
     expect(result.details).toContain('מנהלת בדיקה');
     expect(result.details).toContain('תוכן הבקשה המלא');
@@ -2831,20 +2831,29 @@ test.describe('גרסאות - סביבות התקנה (שרת טסט / סיטר�
     r0: { id: 'r0', name: '5.1559', status: 'closed', date: '2026-01-01', createdAt: '2026-01-01T00:00:00.000Z', closedAt: '2026-09-01T00:00:00.000Z' },
     r1: { id: 'r1', name: '5.1575', status: 'current', date: '2026-10-01', createdAt: '2026-10-01T00:00:00.000Z' },
   });
-  // prompt מקבל תאריך, alert נאסף - כדי לבדוק את הודעת ההתראה על PROD
-  const answerDialogs = (page, date, alerts) => page.on('dialog', d => {
-    if (d.type() === 'prompt') d.accept(date);
-    else { alerts.push(d.message()); d.accept(); }
-  });
+  // alert נאסף (הודעת ההתראה על PROD); confirm מאושר. את התאריך מקלידים בחלון התאריך (askDate)
+  const answerDialogs = (page, _date, alerts) => page.on('dialog', d => { alerts.push(d.message()); d.accept(); });
+  // מקליד ספרות בלבד - הלוכסנים נוספים לבד (20102026 => 20/10/2026)
+  const typeDate = async (page, digits) => {
+    await page.locator('#askDateInput').fill('');
+    await page.locator('#askDateInput').pressSequentially(digits);
+    await page.click('#askDateOk');
+  };
 
   test('סימון גרסה כהותקנה בסביבה נשמר עם תאריך ומופיע בסיכום הסביבות', async ({ page }) => {
     const { releases } = await mockFirebase(page, { releases: seedReleases() });
-    answerDialogs(page, '2026-10-20', []);
+    answerDialogs(page, '', []);
     await page.goto('/index.html');
     await login(page, 'testadmin', 'pw');
     await page.click('button[onclick="openReleaseManager()"]');
     await page.click('#rmCurrent button[onclick="setReleaseEnv(\'r1\',\'test\')"]');
+    await page.locator('#askDateInput').fill('');
+    await page.locator('#askDateInput').pressSequentially('20102026');
+    await expect(page.locator('#askDateInput')).toHaveValue('20/10/2026'); // לוכסנים אוטומטיים
+    await page.click('#askDateOk');
     await page.click('#rmCurrent button[onclick="setReleaseEnv(\'r1\',\'citrix\')"]');
+    await typeDate(page, '20102026');
+    await expect(page.locator('#rmCurrent')).toContainText('20/10/2026'); // מוצג בפורמט ישראלי
     await expect(page.locator('#rmCurrent')).toContainText('שרת טסט: 5.1575');
     await expect(page.locator('#rmCurrent')).toContainText('PROD: —');
     expect(releases.r1.envs).toEqual({ test: '2026-10-20', citrix: '2026-10-20' });
@@ -2868,12 +2877,13 @@ test.describe('גרסאות - סביבות התקנה (שרת טסט / סיטר�
   test('סימון עלייה ל-PROD מתריע על ייצוא מחדש של רכיבים (בלי סיטריקס), באנר בטאב השרתים עד אישור', async ({ page }) => {
     const { releases } = await mockFirebase(page, { releases: seedReleases() });
     const alerts = [];
-    answerDialogs(page, '2026-10-21', alerts);
+    answerDialogs(page, '', alerts);
     await page.goto('/index.html');
     await login(page, 'testadmin', 'pw');
     await page.click('button[onclick="openReleaseManager()"]');
     await page.click('#rmCurrent button[onclick="setReleaseEnv(\'r1\',\'prod\')"]');
-    expect(alerts.join('\n')).toContain('ייצא מחדש');
+    await typeDate(page, '21102026');
+    await expect.poll(() => alerts.join('\n')).toContain('ייצא מחדש');
     expect(alerts.join('\n')).toContain('סיטריקס לא נכלל');
     expect(releases.r1.envs.prod).toBe('2026-10-21');
     await page.click('button[onclick="closeReleaseManager()"]');
@@ -2889,12 +2899,15 @@ test.describe('גרסאות - סביבות התקנה (שרת טסט / סיטר�
   test('תאריך לא תקין נדחה ולא נשמר', async ({ page }) => {
     const { releases } = await mockFirebase(page, { releases: seedReleases() });
     const alerts = [];
-    answerDialogs(page, '20/10/2026', alerts);
+    answerDialogs(page, '', alerts);
     await page.goto('/index.html');
     await login(page, 'testadmin', 'pw');
     await page.click('button[onclick="openReleaseManager()"]');
     await page.click('#rmCurrent button[onclick="setReleaseEnv(\'r1\',\'test\')"]');
-    expect(alerts.join('\n')).toContain('תאריך לא תקין');
+    await typeDate(page, '31022026'); // 31 בפברואר - לא קיים
+    await expect(page.locator('#askDateErr')).toContainText('תאריך לא תקין');
+    await expect(page.locator('#askDateBg')).toBeVisible();
+    await page.click('button[onclick="askDateDone(false)"]');
     expect(releases.r1.envs).toBeUndefined();
   });
 
@@ -3119,11 +3132,13 @@ test.describe('מעבר גרסת עבודה, ארכיון והחזרה מארכ�
       },
       rivka: [{ _id: 'rv1', נ: 'בקשה מרבקה', מב: 'רבקה', ת: '2026-10-01', כ: 'כותרת', ב: 'גוף', מט: '', ע: 'בינוני', ס: 'ממתין לגרסה', chat: { malm: [], dhl: [] } }],
     });
-    page.on('dialog', d => { if (d.type() === 'prompt') d.accept('2026-10-21'); else d.accept(); });
+    page.on('dialog', d => d.accept());
     await page.goto('/index.html');
     await login(page, 'testadmin', 'pw');
     await page.click('button[onclick="openReleaseManager()"]');
     await page.click('#rmCurrent button[onclick="setReleaseEnv(\'r1\',\'prod\')"]');
+    await page.fill('#askDateInput', '21/10/2026');
+    await page.click('#askDateOk');
     await expect(page.locator('#prodCloseBg')).toBeVisible();
     expect(await page.locator('.pcChk:checked').count()).toBe(0);
 
@@ -3140,11 +3155,13 @@ test.describe('מעבר גרסת עבודה, ארכיון והחזרה מארכ�
       releases: { r1: rel('r1', '5.1575') },
       devTasksByUid: { d1: dev('d1', '90001', 'נבדקה', 'r1', { status: 'נבדק' }) },
     });
-    page.on('dialog', d => { if (d.type() === 'prompt') d.accept('2026-10-21'); else d.accept(); });
+    page.on('dialog', d => d.accept());
     await page.goto('/index.html');
     await login(page, 'testadmin', 'pw');
     await page.click('button[onclick="openReleaseManager()"]');
     await page.click('#rmCurrent button[onclick="setReleaseEnv(\'r1\',\'prod\')"]');
+    await page.fill('#askDateInput', '21/10/2026');
+    await page.click('#askDateOk');
     await expect(page.locator('#prodCloseBg')).toBeVisible();
     await page.click('button[onclick="closeProdCloseOffer()"]');
     await expect(page.locator('#prodCloseBg')).toBeHidden();
@@ -3481,5 +3498,64 @@ test.describe('ייבוא חבילת משימות (קישור ?import=) ותצו
 
     await page.locator('tr[data-program-task="80002"] button').click();
     await expect(page.locator('#devEditModal')).toBeVisible(); // עריכה זמינה מתוך התצוגה
+  });
+});
+
+test.describe('תאריכים בפורמט ישראלי', () => {
+  test('תאריך בקשה: מוזן DD/MM/YYYY עם לוכסנים אוטומטיים, נשמר ISO ומוצג בטבלה בפורמט ישראלי', async ({ page }) => {
+    const { db } = await mockFirebase(page, {});
+    await page.goto('/index.html');
+    await login(page, 'testadmin', 'pw');
+    await page.click('.tab[data-tab="1"]');
+    await page.click('#btnAdd');
+    await page.fill('#f_נ', 'בקשה לבדיקת תאריך');
+    await page.fill('#f_כ', 'כותרת');
+    await page.fill('#f_ב', 'תוכן');
+    await page.locator('#f_ת').fill('');
+    await page.locator('#f_ת').pressSequentially('15032026');
+    await expect(page.locator('#f_ת')).toHaveValue('15/03/2026');
+    await page.click('button.btn-save');
+    await expect(page.locator('#modalBg')).not.toHaveClass(/open/);
+    await expect(page.locator('#b2')).toContainText('15/03/2026');
+    await expect.poll(() => (db.rivka[0] || {}).ת).toBe('2026-03-15'); // נשמר ISO - מיון/סינון נשארים נכונים
+  });
+
+  test('עריכת בקשה קיימת שומרת את התאריך כמו שהוא (ISO) ומציגה אותו בפורמט ישראלי', async ({ page }) => {
+    const rec = { _id: 'r_d1', נ: 'בקשה קיימת', מב: 'מנהלת בדיקה', ת: '2026-07-05', כ: 'k', ב: 'b', ע: 1, ס: 'פתוח', chat: {} };
+    const { db } = await mockFirebase(page, { rivka: [rec] });
+    await page.goto('/index.html');
+    await login(page, 'testadmin', 'pw');
+    await page.click('.tab[data-tab="1"]');
+    await expect(page.locator('#b2')).toContainText('05/07/2026');
+    await page.locator('#b2 tr', { hasText: 'בקשה קיימת' }).locator('button[title="עריכה"]').click();
+    await expect(page.locator('#f_ת')).toHaveValue('05/07/2026');
+    await page.fill('#f_כ', 'כותרת חדשה');
+    await page.click('button.btn-save');
+    await expect(page.locator('#modalBg')).not.toHaveClass(/open/);
+    await expect.poll(() => db.rivka[0].כ).toBe('כותרת חדשה');
+    expect(db.rivka[0].ת).toBe('2026-07-05');
+  });
+
+  test('שינוי שם גרסה נשמר', async ({ page }) => {
+    const { releases } = await mockFirebase(page, { releases: { r1: { id: 'r1', name: 'ארכיון לפני 5.1575', status: 'closed', date: '2026-09-10', createdAt: '2026-09-10T00:00:00.000Z', closedAt: '2026-10-20T00:00:00.000Z' } } });
+    page.on('dialog', d => d.accept('5.1559'));
+    await page.goto('/index.html');
+    await login(page, 'testadmin', 'pw');
+    await page.click('button[onclick="openReleaseManager()"]');
+    await page.click('#rmPast button[onclick="renameRelease(\'r1\')"]');
+    await expect(page.locator('#rmPast')).toContainText('5.1559');
+    await expect.poll(() => releases.r1.name).toBe('5.1559');
+  });
+
+  test('כותרת הגרסאות מציגה "גרסה נוכחית בטסט" ו"גרסה נוכחית ב-PROD"', async ({ page }) => {
+    await mockFirebase(page, { releases: {
+      r0: { id: 'r0', name: '5.1559', status: 'closed', createdAt: '2026-01-01T00:00:00.000Z', envs: { test: '2026-01-02', prod: '2026-01-05' }, prodExportDone: true },
+      r1: { id: 'r1', name: '5.1575', status: 'current', createdAt: '2026-10-01T00:00:00.000Z', envs: { test: '2026-10-20' } },
+    } });
+    await page.goto('/index.html');
+    await login(page, 'testadmin', 'pw');
+    await page.click('.tab[data-tab="3"]');
+    await expect(page.locator('#devReleaseBadge')).toContainText('גרסה נוכחית בטסט: 5.1575');
+    await expect(page.locator('#devReleaseBadge')).toContainText('גרסה נוכחית ב-PROD: 5.1559');
   });
 });

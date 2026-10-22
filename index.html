@@ -369,8 +369,8 @@ tr:hover td{background:#fffbf0}
       <button onclick="closeStatusReport()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#999;line-height:1;padding:0 4px">&times;</button>
     </div>
     <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:14px">
-      <div class="form-row" style="margin-bottom:0;min-width:140px"><label>מתאריך</label><input type="date" id="sr_from" onchange="renderStatusReport()"></div>
-      <div class="form-row" style="margin-bottom:0;min-width:140px"><label>עד תאריך</label><input type="date" id="sr_to" onchange="renderStatusReport()"></div>
+      <div class="form-row" style="margin-bottom:0;min-width:140px"><label>מתאריך</label><input type="text" inputmode="numeric" maxlength="10" placeholder="DD/MM/YYYY" dir="ltr" id="sr_from" oninput="dateMask(this);if(this.value.length===10)renderStatusReport()" onchange="renderStatusReport()"></div>
+      <div class="form-row" style="margin-bottom:0;min-width:140px"><label>עד תאריך</label><input type="text" inputmode="numeric" maxlength="10" placeholder="DD/MM/YYYY" dir="ltr" id="sr_to" oninput="dateMask(this);if(this.value.length===10)renderStatusReport()" onchange="renderStatusReport()"></div>
       <div class="form-row" style="margin-bottom:0;min-width:140px"><label>סטטוס</label><select id="sr_status" onchange="renderStatusReport()"></select></div>
     </div>
     <div id="statusReportResults"></div>
@@ -419,7 +419,7 @@ function sendEmailNotification(toEmail, toName, subject, message, taskTitle, sta
   }
   if (typeof emailjs === 'undefined') { console.warn('EmailJS not loaded'); return; }
   const now = new Date();
-  const time = now.toLocaleDateString('he-IL') + ' ' + now.toLocaleTimeString('he-IL', {hour:'2-digit',minute:'2-digit'});
+  const time = isoToIsraeliDateTime(now.toISOString());
   emailjs.send('service_q2ekmcf', 'template_jylk5i7', {
     to_email: toEmail,
     to_name: toName || '',
@@ -443,7 +443,7 @@ function rivkaEmailTitle(rec){
   if(rec.נ) parts.push(rec.נ);
   if(rec.כ && rec.כ!==rec.נ) parts.push(rec.כ);
   var title = parts.join(' — ');
-  return title || ('בקשה מתאריך ' + (rec.ת || '—'));
+  return title || ('בקשה מתאריך ' + (fmtDate(rec.ת) || '—'));
 }
 
 // גוף פירוט למייל על משימת רבקה - כולל את כל השדות המזהים (לא רק את הכותרת),
@@ -453,7 +453,7 @@ function rivkaEmailDetails(rec){
   var lines = [];
   lines.push('נושא: ' + rivkaEmailTitle(rec));
   lines.push('מבקש/ת: ' + (rec.מב || '—'));
-  lines.push('תאריך פתיחה: ' + (rec.ת || '—'));
+  lines.push('תאריך פתיחה: ' + (fmtDate(rec.ת) || '—'));
   lines.push('עדיפות: ' + (rec.ע!==undefined && rec.ע!==null && rec.ע!=='' ? rec.ע : '—'));
   if(rec.ב) lines.push('תוכן הבקשה: ' + rec.ב);
   return lines.join('\n');
@@ -589,10 +589,25 @@ function isInCurrentRelease(item){
   return cur ? item.releaseId === cur.id : false;
 }
 
+// שם הגרסה שכל סביבה נמצאת בה = זו עם תאריך ההתקנה האחרון באותה סביבה (ראו RELEASE_ENVS)
+function envReleaseName(key){
+  var best = null;
+  Object.values(RELEASES).forEach(function(r){
+    var d = r.envs && r.envs[key];
+    if(d && (!best || d > best.d || (d===best.d && (r.createdAt||'') > (best.r.createdAt||'')))) best = {r:r, d:d};
+  });
+  return best ? best.r.name : '';
+}
 function releaseBadgeHtml(){
   var cur = getCurrentRelease();
-  if(!cur) return '';
-  return '<span style="display:inline-block;background:#f3e5f5;color:#6a1b9a;border-radius:10px;padding:3px 10px;font-size:11px;font-weight:700;margin-right:8px">🏷️ גרסה נוכחית: '+esc(cur.name)+'</span>';
+  // בטסט: הגרסה שסומנה בשרת/סיטריקס טסט; אם עוד לא סומנה - גרסת העבודה הנוכחית
+  var test = envReleaseName('test') || envReleaseName('citrix') || (cur ? cur.name : '');
+  var prod = envReleaseName('prod');
+  if(!test && !prod) return '';
+  var tag = function(label, name, bg, fg){
+    return '<span style="display:inline-block;background:'+bg+';color:'+fg+';border-radius:10px;padding:3px 10px;font-size:11px;font-weight:700;margin-right:8px">🏷️ '+label+': '+(name ? esc(name) : '—')+'</span>';
+  };
+  return tag('גרסה נוכחית בטסט', test, '#f3e5f5', '#6a1b9a') + tag('גרסה נוכחית ב-PROD', prod, '#e8f5e9', '#1b5e20');
 }
 
 function openReleaseManager(){
@@ -624,11 +639,11 @@ function releaseEnvChips(r){
   return '<div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:8px">'+RELEASE_ENVS.map(function(e){
     var d = r.envs && r.envs[e[0]];
     return '<button onclick="setReleaseEnv(\''+jsq(r.id)+'\',\''+e[0]+'\')" title="'+(d?'לחץ לביטול הסימון':'סמן כהותקנה בסביבה זו')+'" style="border-radius:10px;padding:2px 9px;cursor:pointer;font-size:11px;font-family:Arial;'+
-      (d ? 'background:#2e7d32;color:#fff;border:1px solid #2e7d32' : 'background:#fff;color:#888;border:1px dashed #bbb')+'">'+e[1]+(d?' ✓ '+esc(d):'')+'</button>';
+      (d ? 'background:#2e7d32;color:#fff;border:1px solid #2e7d32' : 'background:#fff;color:#888;border:1px dashed #bbb')+'">'+e[1]+(d?' ✓ '+esc(fmtDate(d)):'')+'</button>';
   }).join('')+'</div>';
 }
 
-function setReleaseEnv(id, key){
+async function setReleaseEnv(id, key){
   if(!isAdmin()) return;
   var r = RELEASES[id];
   if(!r) return;
@@ -639,10 +654,9 @@ function setReleaseEnv(id, key){
     delete r.envs[key];
     if(key==='prod') delete r.prodExportDone;
   } else {
-    var d = prompt('תאריך התקנת "'+r.name+'" ב'+label+' (YYYY-MM-DD):', new Date().toISOString().slice(0,10));
+    var d = await askDate('תאריך התקנת "'+r.name+'" ב'+label+':', new Date().toISOString().slice(0,10));
     if(!d) return;
-    if(!/^\d{4}-\d\d-\d\d$/.test(d.trim())){ alert('תאריך לא תקין - נדרש YYYY-MM-DD'); return; }
-    r.envs[key] = d.trim();
+    r.envs[key] = d;
     if(key==='prod'){
       r.prodExportDone = false;
       alert('גרסה "'+r.name+'" סומנה כעלתה ל-PROD.\nיש לייצא מחדש את רשימות הרכיבים משרת האפליקציה, שרתי השידורים ושרת ה-RPD ולייבא אותן בטאב השרתים.\n(סיטריקס לא נכלל: שם כל שינוי הוא גרסה מלאה.)');
@@ -660,7 +674,7 @@ function renderServerProdBanner(){
   var el = document.getElementById('serverProdBanner');
   if(!el) return;
   el.innerHTML = Object.values(RELEASES).filter(function(r){ return r.envs && r.envs.prod && !r.prodExportDone; }).map(function(r){
-    return '<div style="background:#fff3e0;border:1px solid #e65100;color:#bf360c;border-radius:8px;padding:8px 12px;margin-bottom:8px;font-size:12px;line-height:1.6">⚠️ גרסה <b>'+esc(r.name)+'</b> עלתה ל-PROD ב-'+esc(r.envs.prod)+' - יש לייצא מחדש רשימות רכיבים משרת האפליקציה, שרתי השידורים ושרת ה-RPD (לא סיטריקס: שם כל שינוי הוא גרסה מלאה). '+
+    return '<div style="background:#fff3e0;border:1px solid #e65100;color:#bf360c;border-radius:8px;padding:8px 12px;margin-bottom:8px;font-size:12px;line-height:1.6">⚠️ גרסה <b>'+esc(r.name)+'</b> עלתה ל-PROD ב-'+esc(fmtDate(r.envs.prod))+' - יש לייצא מחדש רשימות רכיבים משרת האפליקציה, שרתי השידורים ושרת ה-RPD (לא סיטריקס: שם כל שינוי הוא גרסה מלאה). '+
       (isAdmin() ? '<button onclick="ackProdExport(\''+jsq(r.id)+'\')" style="margin-right:8px;background:#e65100;color:#fff;border:none;border-radius:6px;padding:3px 10px;cursor:pointer;font-size:11px;font-family:Arial">✅ הרשימות יוצאו מחדש</button>' : '')+'</div>';
   }).join('');
 }
@@ -676,8 +690,8 @@ function renderReleaseManager(){
   var cur = getCurrentRelease();
   var curEl = document.getElementById('rmCurrent');
   if(cur){
-    curEl.innerHTML = envSummaryHtml()+'<div style="font-size:14px;font-weight:700;color:#1a1a2e">🏷️ '+esc(cur.name)+'</div>'+
-      '<div style="font-size:12px;color:#888;margin-top:2px">נפתחה ב-'+esc(cur.date||'')+(cur.notes?' · '+esc(cur.notes):'')+'</div>'+releaseEnvChips(cur)+
+    curEl.innerHTML = envSummaryHtml()+'<div style="font-size:14px;font-weight:700;color:#1a1a2e">🏷️ '+esc(cur.name)+' <button onclick="renameRelease(\''+jsq(cur.id)+'\')" title="שנה שם" style="background:none;border:none;cursor:pointer;font-size:12px">✏️</button></div>'+
+      '<div style="font-size:12px;color:#888;margin-top:2px">נפתחה ב-'+esc(fmtDate(cur.date))+(cur.notes?' · '+esc(cur.notes):'')+'</div>'+releaseEnvChips(cur)+
       '<button onclick="closeCurrentRelease()" style="margin-top:8px;background:#c62828;color:#fff;border:none;border-radius:6px;padding:6px 14px;cursor:pointer;font-size:12px;font-family:Arial">🔒 סגור גרסה</button>';
   } else {
     curEl.innerHTML = envSummaryHtml()+'<div style="font-size:13px;color:#888">אין גרסה נוכחית פעילה</div>';
@@ -687,12 +701,23 @@ function renderReleaseManager(){
     .sort(function(a,b){ return (b.closedAt||'').localeCompare(a.closedAt||''); });
   pastEl.innerHTML = past.length ? past.map(function(r){
     return '<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border:1px solid #eee;border-radius:6px;margin-bottom:6px">'+
-      '<div><b>'+esc(r.name)+'</b><span style="color:#888;font-size:11px;margin-right:8px">נסגרה ב-'+esc((r.closedAt||'').slice(0,10))+'</span>'+releaseEnvChips(r)+'</div>'+
+      '<div><b>'+esc(r.name)+'</b> <button onclick="renameRelease(\''+jsq(r.id)+'\')" title="שנה שם" style="background:none;border:none;cursor:pointer;font-size:12px">✏️</button><span style="color:#888;font-size:11px;margin-right:8px">נסגרה ב-'+esc(fmtDate((r.closedAt||'').slice(0,10)))+'</span>'+releaseEnvChips(r)+'</div>'+
       '<button onclick="openReleaseArchive(\''+r.id+'\')" style="background:#1565c0;color:#fff;border:none;border-radius:5px;padding:4px 10px;cursor:pointer;font-size:11px;font-family:Arial">📁 ארכיון</button>'+
     '</div>';
   }).join('') : '<div style="color:#aaa;font-size:12px">אין עדיין גרסאות סגורות</div>';
 }
 
+// שינוי שם גרסה (למשל "ארכיון לפני 5.1575" => "5.1559")
+function renameRelease(id){
+  var r = RELEASES[id];
+  if(!isAdmin() || !r) return;
+  var name = prompt('שם חדש לגרסה:', r.name);
+  if(!name || !name.trim() || name.trim()===r.name) return;
+  r.name = name.trim();
+  saveRelease(r);
+  renderReleaseManager();
+  refreshLiveReleaseViews();
+}
 function closeCurrentRelease(){
   var cur = getCurrentRelease();
   if(!cur) return;
@@ -739,7 +764,7 @@ function renderReleaseTransition(){
   var s = transitionState;
   document.getElementById('rtInfo').innerHTML = (s.cur
     ? 'הגרסה שנסגרת: <b>'+esc(s.cur.name)+'</b> — '+(s.prodDone
-        ? 'עלתה ל-PROD ('+esc(s.cur.envs.prod)+'), לכן כל המשימות מסומנות לארכיון.'
+        ? 'עלתה ל-PROD ('+esc(fmtDate(s.cur.envs.prod))+'), לכן כל המשימות מסומנות לארכיון.'
         : '<b style="color:#e65100">עדיין לא סומנה כעלתה ל-PROD</b>, לכן כל המשימות עוברות לגרסה החדשה אלא אם תסמן אותן לארכיון.')
     : 'אין גרסה פעילה כרגע - המשימות המסומנות יועברו לארכיון חדש.')+
     '<br>גרסה חדשה: <b>'+esc(s.name)+'</b>'+
@@ -1323,7 +1348,7 @@ function r1(){
         <button class="act-btn" onclick="openEdit('malm',${idx})" title="עריכה">✏️</button>
         ${isAdmin()?`<button class="act-btn" onclick="deleteRec('malm',${idx})" title="מחק" style="color:#D40511">🗑️</button>`:''}
       </td>
-      <td style="color:#888;font-size:11px">${r.ת||''}</td>
+      <td style="color:#888;font-size:11px">${fmtDate(r.ת)}</td>
       <td>${r.ד?`<div class="dtag">${r.ד}</div><br>`:''} ${r.מ||''}${releaseTagHtml(r)}${linkedDevBadgeHtml(r)}</td>
       <td>${pc(r.ע)}</td><td>${sc(r.ס)}</td><td>${m(r.dhl)}</td><td>${m(r.א)}</td>
       <td>${hasUnread(r)?'<span class="unread-dot" title="הערה חדשה"></span>':''}${chatPreviewHtml(r)}</td></tr>`}).join('')
@@ -1371,7 +1396,7 @@ function r2(){
       ${selCb}
       <td style="white-space:nowrap">${eb}${tb2}${db2}</td>
       <td>${m(r.נ)}</td><td>${m(r.מב)}</td>
-      <td style="color:#888;font-size:11px">${r.ת||''}</td>
+      <td style="color:#888;font-size:11px">${fmtDate(r.ת)}</td>
       <td>${r.כ?`<strong>${r.כ}</strong><br>`:''} ${r.ב||''}${releaseTagHtml(r)}${linkedDevBadgeHtml(r)}${rivkaToMalmStatusHtml(r)}</td>
       <td>${m(r.מט)}</td><td>${pc(r.ע)}</td><td>${sc(r.ס)}</td>
       <td>${hasUnread(r)?'<span class="unread-dot" title="הערה חדשה"></span>':''}${chatPreviewHtml(r)}</td></tr>`}).join('')
@@ -1399,8 +1424,8 @@ function openStatusReport(mode){
   const fromEl=document.getElementById('sr_from'), toEl=document.getElementById('sr_to'), selEl=document.getElementById('sr_status');
   if(!fromEl.value){
     const to=new Date(); const from=new Date(); from.setDate(from.getDate()-7);
-    fromEl.value=from.toISOString().slice(0,10);
-    toEl.value=to.toISOString().slice(0,10);
+    fromEl.value=fmtDate(from.toISOString().slice(0,10));
+    toEl.value=fmtDate(to.toISOString().slice(0,10));
   }
   document.getElementById('statusReportTitle').textContent=cfg.title;
   selEl.innerHTML='<option value="">כל הסטטוסים</option>'+cfg.opts().map(s=>`<option value="${s}" ${s===cfg.def?'selected':''}>${s}</option>`).join('');
@@ -1410,8 +1435,8 @@ function openStatusReport(mode){
 function closeStatusReport(){ document.getElementById('statusReportBg').classList.remove('open'); }
 
 function renderStatusReport(){
-  const from=document.getElementById('sr_from').value;
-  const to=document.getElementById('sr_to').value;
+  const from=parseDate(document.getElementById('sr_from').value);
+  const to=parseDate(document.getElementById('sr_to').value);
   const status=document.getElementById('sr_status').value;
   const fromTs = from ? new Date(from+'T00:00:00').getTime() : -Infinity;
   const toTs = to ? new Date(to+'T23:59:59').getTime() : Infinity;
@@ -1464,7 +1489,7 @@ function renderStatusReport(){
     <th>תאריך ושעה</th><th>${cfg.cols[0]}</th><th>${cfg.cols[1]}</th><th>סטטוס</th><th>עודכן ע"י</th>
   </tr></thead><tbody>${rows.map(row=>{
     const d=new Date(row.t);
-    const dateStr=d.toLocaleDateString('he-IL')+' '+d.toLocaleTimeString('he-IL',{hour:'2-digit',minute:'2-digit'});
+    const dateStr=isoToIsraeliDateTime(d.toISOString());
     const statusCell = srMode==='dev' ? m(row.s) : sc(row.s);
     return `<tr><td style="white-space:nowrap;color:#888;font-size:11px">${dateStr}</td><td>${m(row.c1)}</td><td>${m(row.c2)}</td><td>${statusCell}</td><td>${m(row.by)}</td></tr>`;
   }).join('')}</tbody></table></div>`;
@@ -1473,7 +1498,7 @@ function renderStatusReport(){
 function malmFields(r={}){
   return`
     <div class="form-row-group">
-      <div class="form-row narrow"><label>תאריך</label><input id="f_ת" type="date" value="${r.ת||new Date().toISOString().slice(0,10)}"></div>
+      <div class="form-row narrow"><label>תאריך</label><input id="f_ת" ${DATE_INPUT_ATTRS} value="${fmtDate(r.ת||new Date().toISOString().slice(0,10))}" onblur="if(!parseDate(this.value))this.value=fmtDate(new Date().toISOString().slice(0,10))"></div>
       <div class="form-row"><label>תחום</label><input id="f_ד" value="${(r.ד||'').replace(/"/g,'&quot;')}" placeholder="תחום..."></div>
     </div>
     <div class="form-row-group">
@@ -1491,7 +1516,7 @@ function rivkaFields(r={}, isEdit=false){
   return`
     <div class="form-row-group">
       <div class="form-row"><label>נושא</label><input id="f_נ" value="${(r.נ||'').replace(/"/g,'&quot;')}" placeholder="נושא..."></div>
-      <div class="form-row narrow"><label>תאריך</label><input id="f_ת" type="date" value="${r.ת||new Date().toISOString().slice(0,10)}"></div>
+      <div class="form-row narrow"><label>תאריך</label><input id="f_ת" ${DATE_INPUT_ATTRS} value="${fmtDate(r.ת||new Date().toISOString().slice(0,10))}" onblur="if(!parseDate(this.value))this.value=fmtDate(new Date().toISOString().slice(0,10))"></div>
     </div>
     <div class="form-row"><label>כותרת</label><input id="f_כ" value="${(r.כ||'').replace(/"/g,'&quot;')}" placeholder="כותרת..."></div>
     <div class="form-row-group">
@@ -1757,7 +1782,7 @@ async function saveModal(){
   let rec;
   if(editSheet==='malm'){
     rec={
-      ת:g('f_ת'), ד:g('f_ד'), מ:g('f_מ'), ע:g('f_ע'),
+      ת:gdate('f_ת'), ד:g('f_ד'), מ:g('f_מ'), ע:g('f_ע'),
       ס:g('f_ס')||(r?r.ס:'פתוח'),
       dhl:g('f_dhl'), א:g('f_א'),
       ה:r?r.ה||'':'',
@@ -1784,7 +1809,7 @@ async function saveModal(){
     var newMb = mbEl ? (mbUser ? mbUser.name : (mbEl.value.indexOf('legacy:')===0 ? mbEl.value.slice(7) : '')) : (r ? r.מב : (CU?CU.name:''));
     var newMbUid = mbEl ? (mbUser ? mbUser._uid : '') : (r ? r.מבUid : (CU?CU._uid:''));
     rec={
-      נ:g('f_נ'), מב:newMb, מבUid:newMbUid, ת:g('f_ת'), כ:g('f_כ'), ב:g('f_ב'),
+      נ:g('f_נ'), מב:newMb, מבUid:newMbUid, ת:gdate('f_ת'), כ:g('f_כ'), ב:g('f_ב'),
       מט:newMt, מטUid:newMtUid, ע:g('f_ע'),
       ס:r?(g('f_ס')||r.ס):'פתוח',
       ה:r?r.ה||'':'',
@@ -1824,7 +1849,7 @@ async function saveModal(){
   if(pendingFiles.length && editIdx===-1){
     if(!rec.chat)rec.chat={malm:[],dhl:[]};
     const now=new Date();
-    const time=now.toLocaleDateString('he-IL')+' '+now.toLocaleTimeString('he-IL',{hour:'2-digit',minute:'2-digit'});
+    const time=isoToIsraeliDateTime(now.toISOString());
     rec.chat['malm']=[{sender:CU?CU.name:'',side:'malm',text:'📎 קבצים מצורפים',time,ts:now.getTime(),files:[...pendingFiles]}];
     pendingFiles=[];
   }
@@ -1883,7 +1908,7 @@ async function saveTransferToMalm(){
   if(!taskText){ alert('חובה למלא תוכן משימה'); return; }
   var rec = {
     _id: genId(),
-    ת: g('f_ת'), ד: g('f_ד'), מ: taskText, ע: g('f_ע'),
+    ת: gdate('f_ת'), ד: g('f_ד'), מ: taskText, ע: g('f_ע'),
     ס: g('f_ס') || 'פתוח',
     dhl: g('f_dhl'), א: g('f_א'),
     ה: '', chat: {}, reads: {}
@@ -2337,14 +2362,14 @@ async function refreshDB(){
 loadDB();
 
 // Reliable sort key for chat messages: prefer numeric ts (added going forward),
-// fall back to parsing the he-IL display string "D.M.YYYY HH:MM" for older messages
+// fall back to parsing the display string "D.M.YYYY HH:MM" / "DD/MM/YYYY HH:MM" for older messages
 // that were saved before ts existed (string localeCompare on that format is unreliable,
 // e.g. "10.1.2026" sorts before "2.1.2026").
 function msgSortKey(m){
   if(typeof m.ts==='number') return m.ts;
   var s=m.time||'';
   var parts=s.split(' ');
-  var d=(parts[0]||'').split('.');
+  var d=(parts[0]||'').split(/[./]/);
   var t=(parts[1]||'0:0').split(':');
   if(d.length<3) return 0;
   return new Date(Number(d[2]),Number(d[1])-1,Number(d[0]),Number(t[0])||0,Number(t[1])||0).getTime();
@@ -2575,7 +2600,7 @@ function sendMsg(){
   const side=isAdmin()?'malm':'dhl';
   if(!rec.chat[side])rec.chat[side]=[];
   const now=new Date();
-  const time=now.toLocaleDateString('he-IL')+' '+now.toLocaleTimeString('he-IL',{hour:'2-digit',minute:'2-digit'});
+  const time=isoToIsraeliDateTime(now.toISOString());
   const files=[...pendingFiles];
   rec.chat[side].push({sender,side,text:text||'📎 צרף קבצים',time,ts:now.getTime(),files});
   chatTab=side;
@@ -2597,6 +2622,55 @@ function sendMsg(){
 }
 
 function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
+// ── תאריכים: פורמט ישראלי DD/MM/YYYY בכל המסכים. בשמירה נשארים ISO (YYYY-MM-DD) כדי שמיון/סינון/
+// השוואות יישארו נכונים; ערך שאינו ISO (תאריך חופשי ישן) מוצג כמו שהוא.
+function fmtDate(s){ var m=/^(\d{4})-(\d\d)-(\d\d)/.exec(s||''); return m ? m[3]+'/'+m[2]+'/'+m[1] : (s||''); }
+function fmtNow(){ return isoToIsraeliDateTime(new Date().toISOString()); }
+// DD/MM/YYYY (או D/M/YYYY) => ISO; תאריך לא קיים/לא תקין => ''
+function parseDate(s){
+  s = (s||'').trim();
+  if(/^\d{4}-\d\d-\d\d$/.test(s)) return s;
+  var m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(s);
+  if(!m) return '';
+  var d = new Date(+m[3], +m[2]-1, +m[1]);
+  if(d.getFullYear()!==+m[3] || d.getMonth()!==+m[2]-1 || d.getDate()!==+m[1]) return '';
+  return m[3]+'-'+('0'+m[2]).slice(-2)+'-'+('0'+m[1]).slice(-2);
+}
+// oninput לשדה תאריך: מקליד ספרות בלבד ומוסיף לבד את הלוכסנים (22102026 => 22/10/2026)
+function dateMask(el){
+  var d = el.value.replace(/\D/g,'').slice(0,8), out = d.slice(0,2);
+  if(d.length>2) out += '/'+d.slice(2,4);
+  if(d.length>4) out += '/'+d.slice(4);
+  el.value = out;
+}
+var DATE_INPUT_ATTRS = 'type="text" inputmode="numeric" maxlength="10" placeholder="DD/MM/YYYY" dir="ltr" oninput="dateMask(this)"';
+// שדה תאריך בטופס: ערך ישן שאינו ISO נשמר כמו שהוא; ריק => היום (ו-onblur מחזיר לשדה לא תקין את היום)
+function gdate(id){ return parseDate(g(id)) || g(id) || new Date().toISOString().slice(0,10); }
+
+// חלון קלט תאריך (במקום prompt): אותה הקלדה עם לוכסנים אוטומטיים. מחזיר ISO או null בביטול.
+var askDateResolve = null;
+function askDate(title, iso){
+  return new Promise(function(resolve){
+    askDateResolve = resolve;
+    document.getElementById('askDateTitle').textContent = title;
+    document.getElementById('askDateErr').textContent = '';
+    var el = document.getElementById('askDateInput');
+    el.value = fmtDate(iso);
+    document.getElementById('askDateBg').classList.add('open');
+    el.focus();
+  });
+}
+function askDateDone(ok){
+  var iso = '';
+  if(ok){
+    iso = parseDate(document.getElementById('askDateInput').value);
+    if(!iso){ document.getElementById('askDateErr').textContent = 'תאריך לא תקין - נדרש DD/MM/YYYY'; return; }
+  }
+  document.getElementById('askDateBg').classList.remove('open');
+  var r = askDateResolve; askDateResolve = null;
+  if(r) r(ok ? iso : null);
+}
+
 // ערך שנכנס למחרוזת JS בתוך onclick="f('...')": קודם בריחה ל-JS ואז ל-HTML
 function jsq(s){return esc(String(s==null?'':s).replace(/\\/g,'\\\\').replace(/'/g,"\\'"));}
 
@@ -3327,7 +3401,7 @@ function renderSanityAdmin() {
       '<td style="padding:8px 10px;border-bottom:1px solid #eee;white-space:nowrap"><span style="color:' + statusColor + ';font-weight:700">' + esc(t.status||'פתוח') + '</span>' + closedInfo + launchLink + '</td>' +
       '<td style="padding:7px 10px;border-bottom:1px solid #eee"><textarea data-sid="' + t.id + '" onchange="updateSanityField(this.dataset.sid,\'notes\',this.value)" rows="2" style="width:120px;border:1px solid #ddd;border-radius:4px;padding:3px 5px;font-size:11px;font-family:Arial;direction:rtl;resize:vertical">' + esc(t.notes||'') + '</textarea></td>' +
       '<td style="padding:7px 10px;border-bottom:1px solid #eee"><textarea data-sid="' + t.id + '" onchange="updateSanityField(this.dataset.sid,\'adminNotes\',this.value)" rows="2" style="width:120px;border:1px solid #ddd;border-radius:4px;padding:3px 5px;font-size:11px;font-family:Arial;direction:rtl;resize:vertical">' + esc(t.adminNotes||'') + '</textarea></td>' +
-      '<td style="padding:8px 10px;border-bottom:1px solid #eee;font-size:11px;white-space:nowrap">' + esc(t.closedAt ? t.closedAt.slice(0,10) : '') + '</td>' +
+      '<td style="padding:8px 10px;border-bottom:1px solid #eee;font-size:11px;white-space:nowrap">' + esc(t.closedAt ? fmtDate(t.closedAt.slice(0,10)) : '') + '</td>' +
       '<td style="padding:8px 10px;border-bottom:1px solid #eee;white-space:nowrap">' +
         '<button onclick="openEditSanity(\'' + t.id + '\')" style="background:#1565c0;color:#fff;border:none;border-radius:4px;padding:4px 10px;cursor:pointer;font-size:11px;font-family:Arial;margin-left:4px">עריכה</button>' +
         '<button onclick="deleteSanityTask(\'' + t.id + '\')" style="background:#c62828;color:#fff;border:none;border-radius:4px;padding:4px 10px;cursor:pointer;font-size:11px;font-family:Arial">מחיקה</button>' +
@@ -3675,7 +3749,7 @@ async function checkSanityOnLogin() {
     }
     if (open.length > 0) {
       setTimeout(function(){
-        alert('יש לך ' + open.length + ' בדיקת שפיות פתוחה' + (open.length>1?'ות':'') + ' הממתינה לך!\n\nכנס ללשונית "בדיקות שפיות" לביצוע.');
+        alert((open.length>1 ? 'יש לך ' + open.length + ' בדיקות שפיות פתוחות הממתינות לך!' : 'יש לך בדיקת שפיות פתוחה הממתינה לך!') + '\n\nכנס ללשונית "בדיקות שפיות" לביצוע.');
       }, 800);
     }
   } catch(e) {}
@@ -4217,7 +4291,7 @@ function renderLaunchTable() {
       '<td style="padding:8px 10px;border-bottom:1px solid #eee;white-space:nowrap"><span style="color:' + statusColor + ';font-weight:700">' + esc(t.status||'פתוח') + '</span></td>' +
       '<td style="padding:8px 10px;border-bottom:1px solid #eee;white-space:nowrap">' + launchTimingBadge(t.timing) + '</td>' +
       '<td style="padding:8px 10px;border-bottom:1px solid #eee;font-size:12px;color:#555;line-height:1.5;white-space:pre-wrap">' + esc(t.notes||'') + '</td>' +
-      '<td style="padding:8px 10px;border-bottom:1px solid #eee;font-size:11px;white-space:nowrap">' + esc(t.createdAt ? t.createdAt.slice(0,10) : '') + '</td>' +
+      '<td style="padding:8px 10px;border-bottom:1px solid #eee;font-size:11px;white-space:nowrap">' + esc(t.createdAt ? fmtDate(t.createdAt.slice(0,10)) : '') + '</td>' +
       '<td style="padding:8px 10px;border-bottom:1px solid #eee;white-space:nowrap">' +
         '<button onclick="openEditLaunch(\'' + t.id + '\')" style="background:#1565c0;color:#fff;border:none;border-radius:4px;padding:4px 10px;cursor:pointer;font-size:11px;font-family:Arial;margin-left:4px">עריכה</button>' +
         '<button onclick="deleteLaunchTask(\'' + t.id + '\')" style="background:#c62828;color:#fff;border:none;border-radius:4px;padding:4px 10px;cursor:pointer;font-size:11px;font-family:Arial">מחיקה</button>' +
@@ -5363,6 +5437,19 @@ function updateChangeLogNote(id, note){
       <button onclick="closeReleaseArchive()" style="background:none;border:none;font-size:18px;cursor:pointer;color:#888">✕</button>
     </div>
     <div id="releaseArchiveBody"></div>
+  </div>
+</div>
+
+<!-- ASK DATE MODAL: קלט תאריך ישראלי עם לוכסנים אוטומטיים -->
+<div class="modal-bg" id="askDateBg">
+  <div style="background:#fff;border-radius:12px;padding:22px;width:90%;max-width:380px;direction:rtl">
+    <div id="askDateTitle" style="font-size:14px;font-weight:700;color:#1a1a2e;margin-bottom:12px;line-height:1.5"></div>
+    <input id="askDateInput" type="text" inputmode="numeric" maxlength="10" placeholder="DD/MM/YYYY" dir="ltr" oninput="dateMask(this)" onkeydown="if(event.key==='Enter')askDateDone(true)" style="width:100%;padding:9px 10px;border:1.5px solid #ddd;border-radius:6px;font-size:15px;font-family:Arial;box-sizing:border-box;text-align:center">
+    <div id="askDateErr" style="color:#c62828;font-size:12px;margin-top:6px;min-height:16px"></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:10px">
+      <button onclick="askDateDone(false)" style="padding:8px 16px;border:1px solid #ddd;border-radius:6px;cursor:pointer;font-size:13px;font-family:Arial;background:#fff">ביטול</button>
+      <button id="askDateOk" onclick="askDateDone(true)" style="padding:8px 16px;background:#6a1b9a;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px;font-weight:700;font-family:Arial">אישור</button>
+    </div>
   </div>
 </div>
 
