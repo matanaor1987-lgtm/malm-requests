@@ -707,6 +707,120 @@ function renderReleaseManager(){
   }).join('') : '<div style="color:#aaa;font-size:12px">אין עדיין גרסאות סגורות</div>';
 }
 
+// ── דוח גרסאות ───────────────────────────────────────────────────────────────────────
+// בוחרים טווח גרסאות (מ-עד). מוצגים: מצב המשימות כרגע (לפי שיוך הגרסה לבדיקה), וגם "מה השתנה" -
+// יומן שינויי הסטטוס (sLog) של כל משימות הפיתוח בחלון הזמן של הטווח. אפשר להעתיק כטקסט למייל.
+// ponytail: אין היסטוריית שיוך (משימה שעברה גרסה נספרת רק בגרסה האחרונה שלה) - היומן הוא מקור "מה השתנה".
+var reportText = '';
+var REPORT_STATES = [
+  ['bad','🔴 לא תקין'], ['wip','🔵 בבדיקה / בפיתוח'], ['open','🟡 פתוח'],
+  ['ok','🟢 נבדק ותקין'], ['closed','✅ נסגר (עלה ל-PROD)'], ['fyi','👁️ לידיעה בלבד']
+];
+function reportState(t){
+  if(t.fyi) return 'fyi';
+  if(t.tStatus==='לא תקין') return 'bad';
+  if(t.status==='נסגר') return 'closed';
+  if(t.status==='נבדק' || t.tStatus==='תקין') return 'ok';
+  if(t.status==='בבדיקה' || t.status==='בפיתוח') return 'wip';
+  return 'open';
+}
+function openReleaseReport(){
+  if(!isAdmin()) return;
+  Promise.all([loadDevLists(), loadDevTasks(), loadLaunchTab(), loadSanityTab()]).then(function(){
+    var rels = Object.values(RELEASES).sort(function(a,b){ return (a.createdAt||'').localeCompare(b.createdAt||''); });
+    if(!rels.length){ alert('אין עדיין גרסאות במערכת.'); return; }
+    var opts = rels.map(function(r){ return '<option value="'+esc(r.id)+'">'+esc(r.name)+(r.status==='current'?' (נוכחית)':'')+'</option>'; }).join('');
+    var cur = getCurrentRelease() || rels[rels.length-1];
+    document.getElementById('rrFrom').innerHTML = opts;
+    document.getElementById('rrTo').innerHTML = opts;
+    document.getElementById('rrFrom').value = cur.id;
+    document.getElementById('rrTo').value = cur.id;
+    document.getElementById('releaseReportBg').classList.add('open');
+    renderReleaseReport();
+  });
+}
+function closeReleaseReport(){ document.getElementById('releaseReportBg').classList.remove('open'); }
+
+function renderReleaseReport(){
+  var rels = Object.values(RELEASES).sort(function(a,b){ return (a.createdAt||'').localeCompare(b.createdAt||''); });
+  var ia = rels.findIndex(function(r){ return r.id===document.getElementById('rrFrom').value; });
+  var ib = rels.findIndex(function(r){ return r.id===document.getElementById('rrTo').value; });
+  if(ia > ib){ var tmp = ia; ia = ib; ib = tmp; }
+  var from = rels[ia], to = rels[ib];
+  var ids = {};
+  rels.slice(ia, ib+1).forEach(function(r){ ids[r.id] = 1; });
+  var startTs = Date.parse(from.createdAt) || 0;
+  var endTs = to.closedAt ? Date.parse(to.closedAt) : Date.now();
+  var dev = DEV_TASKS.filter(function(t){ return !t.deleted && ids[t.releaseId]; });
+  var groups = {};
+  dev.forEach(function(t){ (groups[reportState(t)] = groups[reportState(t)] || []).push(t); });
+  var sanity = Object.values(SANITY_TASKS).filter(function(t){ return !t.deleted && ids[t.releaseId]; });
+  var launch = Object.values(LAUNCH_TASKS).filter(function(t){ return !t.deleted && ids[t.releaseId]; });
+  var count = function(arr, fn){ return arr.filter(fn).length; };
+  var events = [];
+  DEV_TASKS.forEach(function(t){ (t.sLog||[]).forEach(function(e){ if(e.t>=startTs && e.t<=endTs) events.push({t:e.t, task:t, e:e}); }); });
+  events.sort(function(a,b){ return b.t - a.t; });
+  var shown = events.slice(0, 150);
+
+  var title = from.id===to.id ? from.name : from.name+' → '+to.name;
+  var envs = RELEASE_ENVS.map(function(e){ var d = to.envs && to.envs[e[0]]; return e[1]+': '+(d ? fmtDate(d) : '—'); }).join(' · ');
+  var summary = [
+    'משימות פיתוח: '+dev.length+' ('+REPORT_STATES.map(function(s){ return s[1].replace(/^\S+\s/,'')+' '+(groups[s[0]]||[]).length; }).join(' · ')+')',
+    'בדיקות שפיות: '+sanity.length+' (בוצע '+count(sanity,function(t){ return t.status==='בוצע'; })+' · נכשל '+count(sanity,function(t){ return t.status==='נכשל'; })+' · פתוח '+count(sanity,function(t){ return t.status!=='בוצע' && t.status!=='נכשל'; })+')',
+    'משימות עליה לאוויר: '+launch.length+' (בוצע '+count(launch,function(t){ return t.status==='בוצע'; })+' · פתוח '+count(launch,function(t){ return t.status!=='בוצע'; })+')'
+  ];
+  var line = function(t){ return (t.id||'')+' '+(t.desc||'').slice(0,100); };
+  var evLine = function(x){ return isoToIsraeliDateTime(x.t)+'  '+(x.task.id||'')+'  '+(x.e.field||'')+': '+(x.e.s||'')+(x.e.by?'  ('+x.e.by+')':''); };
+
+  reportText = ['דוח גרסה: '+title+' ('+fmtDate(from.date||(from.createdAt||'').slice(0,10))+' - '+(to.closedAt ? fmtDate(to.closedAt.slice(0,10)) : 'היום')+')', envs, ''].concat(summary).concat(['']);
+  REPORT_STATES.forEach(function(s){
+    var arr = groups[s[0]] || [];
+    if(!arr.length) return;
+    reportText.push('--- '+s[1]+' ('+arr.length+') ---');
+    arr.forEach(function(t){ reportText.push('- '+line(t)); });
+    reportText.push('');
+  });
+  reportText.push('--- מה השתנה: יומן שינויים ('+events.length+(events.length>shown.length?', מוצגים '+shown.length:'')+') ---');
+  shown.forEach(function(x){ reportText.push(evLine(x)); });
+  reportText = reportText.join('\n');
+
+  var html = '<div style="font-size:15px;font-weight:700;color:#1a1a2e">'+esc(title)+'</div>'+
+    '<div style="font-size:12px;color:#666;margin:4px 0 10px">'+esc(envs)+'</div>'+
+    '<div style="font-size:12px;line-height:1.8;margin-bottom:12px">'+summary.map(esc).join('<br>')+'</div>';
+  REPORT_STATES.forEach(function(s){
+    var arr = groups[s[0]] || [];
+    if(!arr.length) return;
+    html += '<div style="margin-bottom:12px"><div style="font-weight:700;margin-bottom:4px">'+s[1]+' ('+arr.length+')</div>'+
+      '<table style="width:100%;border-collapse:collapse;font-size:12px">'+arr.map(function(t){
+        return '<tr><td style="padding:4px 6px;border-bottom:1px solid #eee;color:#D40511;font-weight:700;white-space:nowrap">'+esc(t.id||'')+'</td>'+
+          '<td style="padding:4px 6px;border-bottom:1px solid #eee">'+esc((t.desc||'').slice(0,140))+'</td>'+
+          '<td style="padding:4px 6px;border-bottom:1px solid #eee;white-space:nowrap;color:#555">'+esc([t.status,t.tStatus].filter(Boolean).join(' · '))+'</td></tr>';
+      }).join('')+'</table></div>';
+  });
+  html += '<div style="font-weight:700;margin:14px 0 4px">מה השתנה - יומן שינויים ('+events.length+')</div>'+
+    (shown.length ? '<table style="width:100%;border-collapse:collapse;font-size:11px">'+shown.map(function(x){
+      return '<tr><td style="padding:3px 6px;border-bottom:1px solid #f0f0f0;white-space:nowrap;color:#888">'+esc(isoToIsraeliDateTime(x.t))+'</td>'+
+        '<td style="padding:3px 6px;border-bottom:1px solid #f0f0f0;color:#D40511;font-weight:700">'+esc(x.task.id||'')+'</td>'+
+        '<td style="padding:3px 6px;border-bottom:1px solid #f0f0f0">'+esc((x.e.field||'')+': '+(x.e.s||''))+'</td>'+
+        '<td style="padding:3px 6px;border-bottom:1px solid #f0f0f0;color:#888">'+esc(x.e.by||'')+'</td></tr>';
+    }).join('')+'</table>' : '<div style="color:#aaa;font-size:12px">אין שינויים מתועדים בטווח</div>');
+  document.getElementById('rrBody').innerHTML = html;
+}
+
+function copyReleaseReport(){
+  var ta = document.createElement('textarea');
+  ta.value = reportText;
+  document.body.appendChild(ta);
+  ta.select();
+  var ok = false;
+  try{ ok = document.execCommand('copy'); }catch(e){}
+  document.body.removeChild(ta);
+  var el = document.getElementById('savingMsg');
+  el.style.display='block'; el.style.background = ok ? '#1a1a2e' : '#c62828';
+  el.textContent = ok ? '✓ הדוח הועתק - אפשר להדביק במייל' : '❌ ההעתקה נכשלה';
+  setTimeout(function(){ el.style.display='none'; el.style.background='#1a1a2e'; }, 2000);
+}
+
 // שינוי שם גרסה (למשל "ארכיון לפני 5.1575" => "5.1559")
 function renameRelease(id){
   var r = RELEASES[id];
@@ -5422,6 +5536,7 @@ function updateChangeLogNote(id, note){
       בדיקות שפיות, משימות פיתוח ומשימות עליה-לאוויר חדשות משויכות אוטומטית לגרסה הנוכחית.
       סגירת גרסה מסתירה את הפריטים ששויכו אליה מהמסכים השוטפים (הם לא נמחקים - נגישים תמיד דרך הארכיון).
     </div>
+    <button onclick="openReleaseReport()" style="width:100%;background:#fff;color:#6a1b9a;border:1.5px solid #6a1b9a;border-radius:6px;padding:8px;cursor:pointer;font-size:13px;font-weight:700;font-family:Arial;margin-bottom:12px">📊 דוח גרסאות - מה השתנה בין גרסאות</button>
     <div id="rmCurrent" style="background:#f9f9f9;border-radius:8px;padding:12px;margin-bottom:14px"></div>
     <button onclick="openNewReleaseForm()" style="width:100%;background:#6a1b9a;color:#fff;border:none;border-radius:6px;padding:9px;cursor:pointer;font-size:13px;font-weight:700;font-family:Arial;margin-bottom:18px">+ פתח גרסה חדשה</button>
     <div style="font-size:13px;font-weight:700;color:#1a1a2e;margin-bottom:8px">גרסאות סגורות</div>
@@ -5437,6 +5552,22 @@ function updateChangeLogNote(id, note){
       <button onclick="closeReleaseArchive()" style="background:none;border:none;font-size:18px;cursor:pointer;color:#888">✕</button>
     </div>
     <div id="releaseArchiveBody"></div>
+  </div>
+</div>
+
+<!-- RELEASE REPORT MODAL: דוח גרסאות / מה השתנה בין גרסאות -->
+<div class="modal-bg" id="releaseReportBg">
+  <div style="background:#fff;border-radius:12px;padding:20px;width:94%;max-width:860px;direction:rtl;max-height:90vh;overflow-y:auto">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+      <div style="font-size:15px;font-weight:700;color:#1a1a2e">📊 דוח גרסאות</div>
+      <button onclick="closeReleaseReport()" style="background:none;border:none;font-size:18px;cursor:pointer;color:#888">✕</button>
+    </div>
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;font-size:12px;margin-bottom:12px">
+      מגרסה <select id="rrFrom" onchange="renderReleaseReport()" style="padding:4px 6px"></select>
+      עד גרסה <select id="rrTo" onchange="renderReleaseReport()" style="padding:4px 6px"></select>
+      <button onclick="copyReleaseReport()" style="margin-right:auto;background:#6a1b9a;color:#fff;border:none;border-radius:6px;padding:6px 12px;cursor:pointer;font-size:12px;font-family:Arial">📋 העתק כטקסט למייל</button>
+    </div>
+    <div id="rrBody"></div>
   </div>
 </div>
 
